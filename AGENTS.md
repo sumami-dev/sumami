@@ -402,6 +402,32 @@ Two independent, **dependency-free** files (no build step, no npm, no bundler):
 
 Deployment recipes (plain `<script>`, self-hosting, CDN, multi-site) live in `js/README.md`.
 
+### 4.5a Hot and cold: Parquet is the archive, DuckDB is the working set
+
+The server holds an **exclusive lock** on the DuckDB file, so the database cannot be
+copied while the service runs — and copying a 400 GB file is not a backup strategy
+anyway. The cold tier is therefore **Parquet**, partitioned by day:
+
+```
+archive/
+  sessions/day=2026-11-03/data_0.parquet
+  events/day=2026-11-04/data_0.parquet
+  websites.parquet
+```
+
+* `sumami backup --out ./archive` writes it — **one pass per table**
+  (`COPY … TO … (FORMAT PARQUET, COMPRESSION ZSTD, PARTITION_BY (day))`).
+* `sumami --parquet './archive/*' summary <id>` reads it **in place**: the archive is
+  queried through `read_parquet()`, never imported, so analysing years of history costs
+  nothing but the query.
+* The archive is self-describing (Hive-style partitions) — DuckDB, Spark, Polars and
+  pandas can all read it without knowing our layout.
+* The **same report code** runs over both tiers, so the numbers are identical by
+  construction. `cli/tests/archive.rs` asserts exactly that.
+
+Rule: the hot tier holds the last N days (14–90), the cold tier holds everything older.
+A 20 GB disk plus a 90-day hot window plus daily roll-ups covers ten years of history.
+
 ### 4.5b Demo data (`sumami seed`)
 
 `sumami seed --db <file> --days 30 --visitors 140` fills a database with **synthetic**

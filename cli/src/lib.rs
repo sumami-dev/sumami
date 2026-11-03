@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod backup;
 mod output;
 mod seed;
 mod source;
@@ -39,6 +40,9 @@ struct Cli {
     /// Print raw JSON instead of a table.
     #[arg(long, global = true)]
     json: bool,
+    /// Analyse a Parquet archive instead of the database (e.g. './archive/*').
+    #[arg(long, global = true, env = "SUMAMI_PARQUET")]
+    parquet: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -97,6 +101,24 @@ enum Command {
         /// End of the window.
         #[arg(long)]
         to: Option<String>,
+    },
+    /// Write the database to a Parquet archive (one file per day).
+    Backup {
+        /// The directory to write the archive to.
+        #[arg(long, default_value = "archive")]
+        out: PathBuf,
+        /// Only archive this website.
+        #[arg(long)]
+        website: Option<String>,
+        /// Start of the range (YYYY-MM-DD).
+        #[arg(long)]
+        from: Option<String>,
+        /// End of the range (YYYY-MM-DD).
+        #[arg(long)]
+        to: Option<String>,
+        /// Keep files that already exist.
+        #[arg(long)]
+        skip_existing: bool,
     },
     /// Delete data that is older than the retention window.
     Prune {
@@ -259,6 +281,49 @@ pub fn run() -> Result<()> {
             println!("start the server and open the dashboard to see it");
             Ok(())
         }
+        Command::Backup {
+            out,
+            website,
+            from,
+            to,
+            skip_existing,
+        } => {
+            let path = cli
+                .db
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("sumami.duckdb"));
+
+            // The backup reads the database, so the server must be stopped (DuckDB
+            // allows a single writer per file). `--url` is not supported here for the
+            // same reason.
+            let db = sumami_service::pool::Db::open(&path, "256MB")
+                .map_err(|err| anyhow!("opening {}: {err}", path.display()))?;
+
+            let from = from.as_deref().map(parse_date).transpose()?;
+            let to = to.as_deref().map(parse_date).transpose()?;
+
+            let stats = db
+                .with_write(|conn| {
+                    backup::export(
+                        conn,
+                        &out,
+                        website.as_deref(),
+                        from,
+                        to,
+                        skip_existing,
+                    )
+                })
+                .map_err(|err| anyhow!("{err}"))?;
+
+            println!(
+                "archived {} rows into {} file(s) under {}",
+                stats.rows,
+                stats.files,
+                stats.directory.display()
+            );
+            println!("read it back with:  sumami --parquet '{}/' summary <website-id>", stats.directory.display());
+            Ok(())
+        }
         Command::Prune { website } => {
             let source = open_source(&cli, true)?;
             let (sessions, events) = source.prune(website.as_deref())?;
@@ -290,6 +355,9 @@ pub fn run() -> Result<()> {
                 }
                 Source::Remote { base, .. } => {
                     eprintln!("[sumami] source: {base}");
+                }
+                Source::Parquet { pattern, .. } => {
+                    eprintln!("[sumami] source: {pattern} (parquet archive)");
                 }
             }
             let (report, website, range, limit) = match &cli.command {
@@ -407,6 +475,11 @@ pub fn run() -> Result<()> {
 
 /// Open the configured source.
 fn open_source(cli: &Cli, writable: bool) -> Result<Source> {
+    // The cold tier: a Parquet archive, queried in place.
+    if let Some(pattern) = &cli.parquet {
+        return Source::parquet(pattern);
+    }
+
     if let Some(url) = &cli.url {
         return Source::remote(
             url,
@@ -426,6 +499,12 @@ fn open_source(cli: &Cli, writable: bool) -> Result<Source> {
     } else {
         Source::local(&path)
     }
+}
+
+/// Parse a `YYYY-MM-DD` date.
+fn parse_date(value: &str) -> Result<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d")
+        .map_err(|err| anyhow!("invalid date '{value}': {err}"))
 }
 
 /// Build the time window.

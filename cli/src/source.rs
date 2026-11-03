@@ -118,6 +118,13 @@ pub enum Source {
         /// The bearer token.
         token: String,
     },
+    /// A Parquet archive (the cold tier).
+    Parquet {
+        /// The connection reading the archive.
+        conn: Connection,
+        /// Where the archive lives (for messages).
+        pattern: String,
+    },
 }
 
 impl Source {
@@ -179,6 +186,17 @@ impl Source {
         Ok(target)
     }
 
+    /// Open a Parquet archive as a source.
+    ///
+    /// The archive is queried in place — it is never imported into the hot database.
+    pub fn parquet(pattern: &str) -> Result<Self> {
+        let conn = crate::backup::open_archive(pattern)?;
+        Ok(Source::Parquet {
+            conn,
+            pattern: pattern.to_string(),
+        })
+    }
+
     /// Log in to a remote server and return a source.
     pub fn remote(
         base: &str,
@@ -222,6 +240,7 @@ impl Source {
             Source::Remote { base, token } => {
                 remote_report(base, token, report, website, range, limit)
             }
+            Source::Parquet { conn, .. } => local_report(conn, report, website, range, limit),
         }
     }
 
@@ -269,6 +288,7 @@ impl Source {
                 "pruning over HTTP is not supported in this version; \
                  stop the server and run `sumami prune --db <path>`"
             )),
+            Source::Parquet { .. } => Err(anyhow!("a Parquet archive is read-only")),
         }
     }
 
@@ -285,6 +305,7 @@ impl Source {
                 "erasing over HTTP is not supported in this version; \
                  run `sumami erase --db <path> <website> against a stopped server"
             )),
+            Source::Parquet { .. } => Err(anyhow!("a Parquet archive is read-only")),
         }
     }
 }
