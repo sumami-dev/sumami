@@ -32,6 +32,16 @@ pub struct Db {
 impl Db {
     /// Open the database (creating it if needed) and make sure the schema exists.
     pub fn open(path: &Path, memory_limit: &str) -> Result<Self> {
+        Self::open_with(path, memory_limit, "32MB", "2GB")
+    }
+
+    /// Open the database and apply the full set of DuckDB settings.
+    pub fn open_with(
+        path: &Path,
+        memory_limit: &str,
+        flush_threshold: &str,
+        temp_limit: &str,
+    ) -> Result<Self> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent).map_err(|e| {
@@ -43,6 +53,13 @@ impl Db {
         let conn = Connection::open(path)
             .map_err(|e| anyhow::anyhow!("opening duckdb database {}: {e}", path.display()))?;
         conn.execute_batch(&format!("SET memory_limit='{memory_limit}'"))?;
+        // Hand freed memory back to the OS sooner than DuckDB's 128 MB default, so a
+        // small box does not stay big after a traffic burst.
+        conn.execute_batch(&format!(
+            "SET allocator_flush_threshold='{flush_threshold}'"
+        ))?;
+        // A query that spills must not fill the disk.
+        conn.execute_batch(&format!("SET max_temp_directory_size='{temp_limit}'"))?;
         // A small WAL keeps a crash from losing the last flush, without huge files.
         conn.execute_batch("SET checkpoint_threshold='16MB'")?;
 

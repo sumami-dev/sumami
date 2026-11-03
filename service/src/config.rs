@@ -28,8 +28,14 @@ pub struct Config {
     pub admin_user: String,
     /// Admin password created on first run (`None` = generate + print once).
     pub admin_password: Option<String>,
-    /// DuckDB `memory_limit`, in bytes. Keeps the process inside a 512 MB VPS.
+    /// DuckDB `memory_limit`. The ceiling for the buffer manager — *not* an
+    /// allocation. Defaults to a quarter of the machine's RAM, capped at 128 MB.
     pub duckdb_memory_limit: String,
+    /// DuckDB `allocator_flush_threshold`: how much freed memory the allocator
+    /// keeps before returning it to the OS. Kept low so a small box stays small.
+    pub duckdb_flush_threshold: String,
+    /// DuckDB `max_temp_directory_size`: how much disk a query may spill.
+    pub duckdb_temp_limit: String,
     /// Maximum number of events buffered in memory before the oldest are dropped.
     pub max_queue: usize,
     /// Seconds between writer flushes.
@@ -41,6 +47,17 @@ pub struct Config {
     /// Keep the query string of collected URLs (`false` by default: query strings
     /// routinely carry session tokens and other personal data).
     pub keep_query: bool,
+    /// Store the page title with every session.
+    ///
+    /// Off by default: at 10M views/day the title is roughly half of the stored bytes
+    /// and almost nobody looks at it. Turn it on for small sites if you want the
+    /// session list to show page titles.
+    pub store_titles: bool,
+    /// Store the whole referring URL instead of just its host.
+    ///
+    /// Off by default: the referrer breakdown only needs the host (that is what
+    /// Umami shows too), and the full URL is the single largest field we store.
+    pub store_full_referrer: bool,
     /// Directory holding the frontend files served at `/app/*` (and the tracker source).
     pub js_dir: PathBuf,
     /// Base URL of the frontend JavaScript. Point this at a CDN to serve the dashboard
@@ -88,8 +105,27 @@ impl Config {
         let admin_user = std::env::var("SUMAMI_ADMIN_USER").unwrap_or_else(|_| "admin".to_string());
         let admin_password = std::env::var("SUMAMI_ADMIN_PASSWORD").ok();
 
+        // DuckDB's own default is 80% of RAM — on a 512 MB VPS that is 410 MB,
+        // which would leave nothing for the OS. We take a quarter of RAM, capped
+        // at 128 MB: the analytics queries stream and spill to disk long before
+        // that, so the limit costs nothing and buys a lot of headroom.
         let duckdb_memory_limit = std::env::var("SUMAMI_DUCKDB_MEMORY_LIMIT")
-            .unwrap_or_else(|_| "256MB".to_string());
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| default_memory_limit());
+
+        // DuckDB's default flush threshold is 128 MB: it would keep that much
+        // freed memory before giving it back. On a small box, hand it back sooner.
+        let duckdb_flush_threshold = std::env::var("SUMAMI_DUCKDB_FLUSH_THRESHOLD")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "32MB".to_string());
+
+        // A runaway query spills to disk; it must not fill the VPS.
+        let duckdb_temp_limit = std::env::var("SUMAMI_DUCKDB_TEMP_LIMIT")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "2GB".to_string());
 
         let max_queue = std::env::var("SUMAMI_MAX_QUEUE")
             .ok()
@@ -106,6 +142,9 @@ impl Config {
             .unwrap_or(0);
 
         let country_header = country_header.or_else(|| std::env::var("SUMAMI_COUNTRY_HEADER").ok());
+
+        let store_titles = env_flag("SUMAMI_STORE_TITLES", false);
+        let store_full_referrer = env_flag("SUMAMI_STORE_FULL_REFERRER", false);
 
         let keep_query = std::env::var("SUMAMI_KEEP_QUERY")
             .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
@@ -149,11 +188,15 @@ impl Config {
             admin_user,
             admin_password,
             duckdb_memory_limit,
+            duckdb_flush_threshold,
+            duckdb_temp_limit,
             max_queue,
             flush_interval_secs,
             retention_days,
             country_header,
             keep_query,
+            store_titles,
+            store_full_referrer,
             js_dir,
             app_url,
             docs_dir,
@@ -163,6 +206,55 @@ impl Config {
             ssl_port,
         })
     }
+}
+
+/// The default DuckDB memory ceiling: a quarter of RAM, capped at 128 MB.
+pub fn default_memory_limit() -> String {
+    let ram = total_ram_bytes().unwrap_or(512 * 1024 * 1024);
+    let limit = (ram / 4).min(128 * 1024 * 1024);
+    format!("{}MB", limit / (1024 * 1024))
+}
+
+/// The machine's total RAM, if we can find it out.
+pub fn total_ram_bytes() -> Option<u64> {
+    // Linux: /proc/meminfo.
+    if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+        for line in meminfo.lines() {
+            if let Some(rest) = line.strip_prefix("MemTotal:") {
+                let kb: u64 = rest
+                    .split_whitespace()
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+                if kb > 0 {
+                    return Some(kb * 1024);
+                }
+            }
+        }
+    }
+
+    // macOS: sysctl.
+    if cfg!(target_os = "macos") {
+        if let Ok(out) = std::process::Command::new("sysctl")
+            .args(["-n", "hw.memsize"])
+            .output()
+        {
+            if let Ok(text) = String::from_utf8(out.stdout) {
+                if let Ok(bytes) = text.trim().parse::<u64>() {
+                    return Some(bytes);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Read a boolean environment variable.
+fn env_flag(key: &str, default: bool) -> bool {
+    std::env::var(key)
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(default)
 }
 
 fn env_path(key: &str) -> Option<PathBuf> {

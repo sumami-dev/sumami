@@ -141,7 +141,12 @@ fn admin(args: AdminArgs) -> Result<()> {
         None,
     )?;
 
-    let db = Db::open(&config.db_path, &config.duckdb_memory_limit)?;
+    let db = Db::open_with(
+        &config.db_path,
+        &config.duckdb_memory_limit,
+        &config.duckdb_flush_threshold,
+        &config.duckdb_temp_limit,
+    )?;
     let password = args
         .password
         .clone()
@@ -212,7 +217,12 @@ async fn serve(args: ServeArgs) -> Result<()> {
     let jwt_secret = config::resolve_jwt_secret(&config.jwt_secret, &config.db_path)?;
     let jwt_secret = Arc::new(jwt_secret);
 
-    let db = Arc::new(Db::open(&config.db_path, &config.duckdb_memory_limit)?);
+    let db = Arc::new(Db::open_with(
+        &config.db_path,
+        &config.duckdb_memory_limit,
+        &config.duckdb_flush_threshold,
+        &config.duckdb_temp_limit,
+    )?);
     config::restrict_permissions(&config.db_path);
 
     // Make sure there is always an admin account to log in with.

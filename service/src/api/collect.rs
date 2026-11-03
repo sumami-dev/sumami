@@ -197,10 +197,24 @@ fn build_hit(
         (chrono::Utc::now().timestamp() / 86_400).max(0) as u64,
     );
 
-    let url = raw.str("url").map(|u| sanitize_url(&u, state.config.keep_query));
-    let referrer = raw
-        .str("referrer")
-        .map(|r| sanitize_url(&r, state.config.keep_query));
+    let url = raw
+        .str("url")
+        .map(|u| sanitize_url(&u, state.config.keep_query));
+    let referrer = raw.str("referrer").map(|r| {
+        let cleaned = sanitize_url(&r, state.config.keep_query);
+        if state.config.store_full_referrer {
+            truncate(&cleaned, 256)
+        } else {
+            // Only the host: it is what the referrer breakdown shows (and what Umami
+            // shows), and the full URL is the largest field we would store.
+            referrer_host(&cleaned)
+        }
+    });
+    let title = if state.config.store_titles {
+        raw.str("title").map(|t| truncate(&t, 256))
+    } else {
+        None
+    };
 
     let country_header = meta
         .country_header
@@ -223,7 +237,7 @@ fn build_hit(
         url,
         referrer,
         hostname: raw.str("hostname"),
-        title: raw.str("title"),
+        title,
         name: raw.str("name"),
         data: raw.data(),
         language: raw.str("language"),
@@ -237,6 +251,34 @@ fn build_hit(
         region: None,
         city: None,
     })
+}
+
+/// Cap the length of a stored string.
+fn truncate(value: &str, max: usize) -> String {
+    if value.len() <= max {
+        value.to_string()
+    } else {
+        let mut end = max;
+        while end > 0 && !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        value[..end].to_string()
+    }
+}
+
+/// The host of a referring URL — what the referrer breakdown groups by.
+///
+/// A referrer that is not a URL (some sites send a bare path) is kept as it is.
+fn referrer_host(referrer: &str) -> String {
+    if let Some(rest) = referrer.strip_prefix("http://") {
+        let host = rest.split('/').next().unwrap_or(rest);
+        return truncate(host, 128);
+    }
+    if let Some(rest) = referrer.strip_prefix("https://") {
+        let host = rest.split('/').next().unwrap_or(rest);
+        return truncate(host, 128);
+    }
+    truncate(referrer, 128)
 }
 
 /// Strip the query string (and fragment) unless explicitly allowed.

@@ -22,9 +22,39 @@ Measured footprint (release binary, DuckDB 2.0.0 statically linked):
 | --- | ---: | ---: |
 | process RSS | 42 MB | 113 MB (allocator retention, see below) |
 | DuckDB buffer manager | 0.5 MB | 1.8 MB |
-| DuckDB memory limit (declared) | 244 MiB (from `SET memory_limit='256MB'`) | — |
+| DuckDB memory limit (declared) | 122 MiB (`SET memory_limit='128MB'`) | — |
 | DuckDB threads | = core count (1 on a 1-vCPU box) | — |
 | database file | 3.5 MB for 4 000 sessions | — |
+
+The declared limit is a **ceiling, not an allocation**: DuckDB's buffer manager held
+0.5–1.8 MB while serving traffic. The RSS growth after a burst is the C allocator
+keeping freed pages, not live data. `SUMAMI_DUCKDB_MEMORY_LIMIT` tunes the ceiling;
+`/api/heartbeat` reports the usage, the configured limit, the limit DuckDB itself
+reports back, and the thread count.
+
+### 4.1a Designed for a 512 MB VPS
+
+The defaults are chosen for the deployment target, not for a workstation:
+
+| Setting | Default | Why |
+| --- | --- | --- |
+| `SUMAMI_DUCKDB_MEMORY_LIMIT` | **min(128 MB, RAM / 4)** | DuckDB's own default is 80% of RAM — 410 MB on a 512 MB box, which would leave nothing for the OS. The limit caps the *buffer*, not the data: queries stream and spill to disk. |
+| `SUMAMI_DUCKDB_FLUSH_THRESHOLD` | 32 MB | DuckDB's default (128 MB) keeps that much freed memory before returning it to the OS. |
+| `SUMAMI_DUCKDB_TEMP_LIMIT` | 2 GB | A query that spills must not fill the disk. |
+| `SUMAMI_STORE_TITLES` | off | The page title is roughly half of the stored bytes and almost nobody looks at it. |
+| `SUMAMI_STORE_FULL_REFERRER` | off | The referrer breakdown groups by host (that is what Umami shows too), and the full URL is the largest field we would store. |
+
+Measured on 10M and 100M row tables (`cli/examples/scale.rs`):
+
+| | 10M rows | 100M rows | 20M rows, realistic cardinality |
+| --- | ---: | ---: | ---: |
+| summary (30-day window) | 53 ms | 1 486 ms | 112 ms |
+| timeseries | 13 ms | 174 ms | 25 ms |
+| pages / referrers | 5 ms | 74–84 ms | 12–100 ms |
+| sessions (50 rows) | 10 ms | 20 ms | 17 ms |
+
+All of it inside a **128 MB** DuckDB limit. The limit bounds RAM, not history:
+DuckDB reads what it needs, aggregates it and spills the rest.
 
 The declared limit is a **ceiling, not an allocation**: DuckDB's buffer manager held
 0.5–1.8 MB while serving traffic. The RSS growth after a burst is the C allocator
