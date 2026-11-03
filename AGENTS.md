@@ -16,6 +16,22 @@ The deployment target is a **cheap VPS** (1 vCPU / 512 MB RAM), not a cloud plat
 No Cloudflare, no Kubernetes, no external database, no object storage required.
 One binary + one DuckDB file = the whole system.
 
+Measured footprint (release binary, DuckDB 2.0.0 statically linked):
+
+| | idle | after 2 000 events + 200 queries |
+| --- | ---: | ---: |
+| process RSS | 42 MB | 113 MB (allocator retention, see below) |
+| DuckDB buffer manager | 0.5 MB | 1.8 MB |
+| DuckDB memory limit (declared) | 244 MiB (from `SET memory_limit='256MB'`) | — |
+| DuckDB threads | = core count (1 on a 1-vCPU box) | — |
+| database file | 3.5 MB for 4 000 sessions | — |
+
+The declared limit is a **ceiling, not an allocation**: DuckDB's buffer manager held
+0.5–1.8 MB while serving traffic. The RSS growth after a burst is the C allocator
+keeping freed pages, not live data. `SUMAMI_DUCKDB_MEMORY_LIMIT` tunes the ceiling;
+`/api/heartbeat` reports the usage, the configured limit, the limit DuckDB itself
+reports back, and the thread count.
+
 ```
                     ┌───────────────────────────────┐
    browser ───────▶ │  sumami-server (one binary)    │

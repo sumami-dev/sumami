@@ -258,6 +258,10 @@ pub struct Heartbeat {
     pub duckdb_memory_bytes: i64,
     /// The configured DuckDB memory limit (e.g. `256MB`).
     pub duckdb_memory_limit: String,
+    /// The limit DuckDB itself reports (read back from DuckDB, not from our config).
+    pub duckdb_memory_limit_effective: String,
+    /// How many threads DuckDB may use.
+    pub duckdb_threads: i64,
     /// The size of the database file on disk.
     pub database_size_bytes: i64,
 }
