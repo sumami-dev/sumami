@@ -1,0 +1,21 @@
+# The DuckDB library is linked dynamically so the `sumami` executables stay small
+# (a few MB instead of ~70 MB). The library is looked up next to the binary
+# (`$ORIGIN` on Linux, `@loader_path` on macOS), so a release archive is just:
+#
+#   sumami-server
+#   sumami
+#   libduckdb.so        <- from https://github.com/duckdb/duckdb/releases
+#
+# See AGENTS.md §4.1.
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]

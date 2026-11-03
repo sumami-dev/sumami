@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTTP API — Sumami</title>
+<meta name="description" content="The Sumami HTTP API reference: collection, authentication, website management and statistics endpoints, with request bodies, response shapes and status codes.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      <span>Sumami</span>
+      <span class="brand-cn">数猫咪</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="install.html">Install</a></li>
+        <li><a href="self-host.html">Self-host</a></li>
+        <li><a href="tracker.html">Tracker</a></li>
+        <li><a href="api.html" aria-current="page">API</a></li>
+        <li><a href="cli.html">CLI</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="faq.html">FAQ</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+
+    <h1 class="page-title">HTTP API</h1>
+    <p class="page-lede">
+      The Sumami API is <strong>Umami v2 compatible</strong>: the collection endpoints, the
+      authentication flow and the statistics endpoints follow Umami's shape, so existing
+      Umami dashboards and trackers work unchanged. Sumami is an independent open-source project
+      that implements the Umami v2 HTTP API; no Umami assets are used.
+    </p>
+
+    <h2>Base URL and authentication</h2>
+    <p>
+      All paths are relative to the server root, for example
+      <code>https://analytics.example.com</code>.
+    </p>
+    <p>
+      Statistics and website management require a bearer token:
+    </p>
+    <pre class="shell"><code>Authorization: Bearer &lt;jwt&gt;</code></pre>
+    <p>
+      The endpoints that are deliberately public — and only these — are
+      <code>POST /api/send</code>, <code>POST /api/collect</code>,
+      <code>GET /api/heartbeat</code> and <code>GET /sumami.js</code>. Everything else is
+      default-deny: without a valid token you get <code>401</code>.
+    </p>
+
+    <h2>Status codes and errors</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>200</code></td><td>Success.</td></tr>
+          <tr><td><code>201</code></td><td>Created (website creation).</td></tr>
+          <tr><td><code>204</code></td><td>Deleted (website deletion) — no body.</td></tr>
+          <tr><td><code>400</code></td><td>Malformed request.</td></tr>
+          <tr><td><code>401</code></td><td>Missing or invalid token.</td></tr>
+          <tr><td><code>404</code></td><td>No such website or resource.</td></tr>
+          <tr><td><code>409</code></td><td>A website with that domain already exists.</td></tr>
+          <tr><td><code>500</code></td><td>Server error.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Every error has the same JSON body:</p>
+    <pre class="shell"><code>{ "error": "invalid username or password", "status": 400 }</code></pre>
+
+    <h2>Collection</h2>
+
+    <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/send</span></summary>
+      <div class="endpoint-body">
+        <p>The Umami v2 collection endpoint. Public, no token required.</p>
+        <pre class="shell"><code>curl -X POST https://analytics.example.com/api/send \
+  -H 'content-type: application/json' \
+  -d '{
+    "type": "event",
+    "website": "3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071",
+    "payload": {
+      "url": "/posts/hello",
+      "hostname": "blog.example.com",
+      "title": "Hello",
+      "referrer": "https://news.example.com/",
+      "language": "en-GB",
+      "screen": "1920x1080"
+    }
+  }'</code></pre>
+        <p>The <code>type</code> discriminator decides what the hit is:</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th><code>type</code></th><th>Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>event</code></td><td>A page view when the payload has no <code>name</code>; a custom event when it has one. This is how the Umami v2 tracker behaves.</td></tr>
+              <tr><td><code>screenview</code></td><td>A mobile screen view.</td></tr>
+              <tr><td><code>identify</code></td><td>Attaches <code>data</code> to the current session.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The website may be given as a top-level <code>website</code> field or inside
+          <code>payload</code>; it may be a website id or a website domain. A payload with a
+          <code>name</code> and a <code>data</code> object records a custom event.
+        </p>
+        <p>Responses: <code>200</code> on success, <code>400</code> for an invalid body or an unknown website.</p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/collect</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The legacy (Umami v1) collection endpoint: query parameters instead of a JSON body.
+          Public, no token required. Kept for old trackers.
+        </p>
+        <pre class="shell"><code>curl -X POST 'https://analytics.example.com/api/collect?type=event&amp;id=3f2a...&amp;url=/posts/hello&amp;title=Hello&amp;hostname=blog.example.com'</code></pre>
+        <p>Accepted parameters:</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Parameter</th><th>Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>The website id. Required.</td></tr>
+              <tr><td><code>type</code></td><td><code>event</code>, <code>screenview</code> or <code>identify</code>.</td></tr>
+              <tr><td><code>url</code>, <code>referrer</code>, <code>hostname</code>, <code>title</code>, <code>language</code>, <code>screen</code></td><td>The usual payload fields.</td></tr>
+              <tr><td><code>name</code></td><td>Custom event name.</td></tr>
+              <tr><td><code>sessionId</code></td><td>A client-supplied session id. Only accepted if it looks like a UUID or a simple token — never arbitrary user input.</td></tr>
+              <tr><td><code>data</code></td><td>Base64-encoded JSON. Decoded and stored as-is.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/heartbeat</span></summary>
+      <div class="endpoint-body">
+        <p>Liveness and a few counters. Public, no token required.</p>
+        <pre class="shell"><code>curl -s https://analytics.example.com/api/heartbeat</code></pre>
+        <pre class="shell"><code>{
+  "ok": true,
+  "version": "0.1.0",
+  "uptimeSeconds": 86400,
+  "queued": 12,
+  "dropped": 0,
+  "websites": 3
+}</code></pre>
+        <p>
+          <code>queued</code> is how many events are waiting in the write buffer; <code>dropped</code>
+          counts events discarded because the queue overflowed. A non-zero <code>dropped</code>
+          means the server was overloaded and shed the oldest buffered events — see the
+          <a href="faq.html">FAQ</a>.
+        </p>
+      </div>
+    </details>
+
+    <h2>Authentication</h2>
+
+    <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/login</span></summary>
+      <div class="endpoint-body">
+        <pre class="shell"><code>curl -X POST https://analytics.example.com/api/login \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","password":"a-long-passphrase"}'</code></pre>
+        <pre class="shell"><code>{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "1b2c3d4e-...",
+    "username": "admin",
+    "role": "admin",
+    "createdAt": "2026-01-15T03:30:00"
+  }
+}</code></pre>
+        <p>
+          The password is stored as an Argon2id hash and verified in constant time. An unknown
+          username and a wrong password produce the same message, so the endpoint does not
+          reveal which usernames exist. Tokens are JWTs signed with HS256 and are valid for
+          seven days.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/auth/refresh</span></summary>
+      <div class="endpoint-body">
+        <p>Exchange a still-valid token for a fresh one. Send the current token in the
+        <code>Authorization</code> header.</p>
+        <pre class="shell"><code>curl -X POST https://analytics.example.com/api/auth/refresh \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+        <p>Returns the same shape as <code>/api/login</code>.</p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/me</span></summary>
+      <div class="endpoint-body">
+        <p>The authenticated user.</p>
+        <pre class="shell"><code>curl -s https://analytics.example.com/api/me \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+        <pre class="shell"><code>{ "id": "1b2c3d4e-...", "username": "admin", "role": "admin" }</code></pre>
+      </div>
+    </details>
+
+    <h2>Websites</h2>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites</span></summary>
+      <div class="endpoint-body">
+        <p>List every website, newest first. Requires a token.</p>
+        <pre class="shell"><code>curl -s https://analytics.example.com/api/websites \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+        <pre class="shell"><code>[
+  {
+    "id": "3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071",
+    "name": "My Blog",
+    "domain": "blog.example.com",
+    "createdAt": "2026-01-15T03:30:00",
+    "updatedAt": "2026-01-15T03:30:00",
+    "retentionDays": 365,
+    "countryHeader": null
+  }
+]</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/websites</span></summary>
+      <div class="endpoint-body">
+        <pre class="shell"><code>curl -X POST https://analytics.example.com/api/websites \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $TOKEN" \
+  -d '{"name":"My Blog","domain":"blog.example.com"}'</code></pre>
+        <p>
+          <code>name</code> is required and must not be empty. <code>domain</code> is optional
+          and must be unique; a new website inherits the server's default retention window and
+          country-header setting.
+        </p>
+        <pre class="shell"><code>201 Created
+{
+  "id": "3f2a1b4c-...",
+  "websiteId": "3f2a1b4c-...",
+  "name": "My Blog",
+  "domain": "blog.example.com",
+  "createdAt": "2026-01-15T03:30:00",
+  "updatedAt": "2026-01-15T03:30:00",
+  "retentionDays": 365
+}</code></pre>
+        <p><code>409</code> if a website with that domain already exists.</p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id</span></summary>
+      <div class="endpoint-body">
+        <p>One website, including its data-retention settings.</p>
+        <pre class="shell"><code>curl -s https://analytics.example.com/api/websites/3f2a1b4c-... \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+        <p>Returns the same object shape as the list endpoint.</p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method put">PUT</span> <span class="endpoint-path">/api/websites/:id</span></summary>
+      <div class="endpoint-body">
+        <p>Update a website. Every field is optional; omitted fields keep their current value.</p>
+        <pre class="shell"><code>curl -X PUT https://analytics.example.com/api/websites/3f2a1b4c-... \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $TOKEN" \
+  -d '{"name":"My Blog","domain":"blog.example.com","retentionDays":90,"countryHeader":"CF-IPCountry"}'</code></pre>
+        <p>
+          <code>retentionDays</code> is <code>0</code> for "keep forever". <code>countryHeader</code>
+          names the request header that carries the country code; omit it to keep the current
+          setting. A <code>null</code> value does not clear it — the header stays as it was.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method delete">DELETE</span> <span class="endpoint-path">/api/websites/:id</span></summary>
+      <div class="endpoint-body">
+        <p>Delete a website and all of its sessions and events.</p>
+        <pre class="shell"><code>curl -X DELETE https://analytics.example.com/api/websites/3f2a1b4c-... \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+        <p><code>204 No Content</code> on success, <code>404</code> if there is no such website.</p>
+      </div>
+    </details>
+
+    <h2>Statistics</h2>
+    <p>
+      All statistics endpoints take the same query parameters and return the same
+      breakdown shape.
+    </p>
+
+    <h3>Query parameters</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Type</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>startAt</code></td><td>unix milliseconds</td><td>Start of the window, inclusive. Defaults to 7 days ago.</td></tr>
+          <tr><td><code>endAt</code></td><td>unix milliseconds</td><td>End of the window, exclusive. Defaults to now.</td></tr>
+          <tr><td><code>url</code>, <code>referrer</code>, <code>browser</code>, <code>os</code>, <code>device</code>, <code>country</code></td><td>string</td><td>Dimension filters. An empty value is ignored.</td></tr>
+          <tr><td><code>limit</code></td><td>integer</td><td>Maximum rows for breakdown and list endpoints. Default 50, capped at 1000.</td></tr>
+          <tr><td><code>offset</code></td><td>integer</td><td>Rows to skip, for pagination.</td></tr>
+          <tr><td><code>event</code></td><td>string</td><td>Filter by event name. Accepted by the events breakdown and the events list.</td></tr>
+          <tr><td><code>query</code></td><td>string</td><td>Substring filter on the event data. Accepted by the events list only.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Reads only see data that has been committed, which happens every
+      <code>SUMAMI_FLUSH_INTERVAL_SECS</code> seconds (two by default). A page view that was
+      just collected may therefore take a couple of seconds to show up.
+    </p>
+
+    <h3>Metric meanings</h3>
+    <dl class="terms">
+      <dt>pageviews</dt>
+      <dd>Total page views.</dd>
+      <dt>visitors</dt>
+      <dd>Unique visitors, counted with a daily-rotating, non-reversible id. "Unique" means unique per day, not unique forever.</dd>
+      <dt>views</dt>
+      <dd>The number of sessions (visits).</dd>
+      <dt>bounces</dt>
+      <dd>Sessions with exactly one page view.</dd>
+      <dt>visitDuration</dt>
+      <dd>Average session duration, in seconds.</dd>
+    </dl>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/stats</span></summary>
+      <div class="endpoint-body">
+        <p>The summary metrics, each with the change against the previous window of the same length.</p>
+        <pre class="shell"><code>curl -s 'https://analytics.example.com/api/websites/3f2a1b4c-.../stats?startAt=1767225600000&amp;endAt=1767830400000' \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+        <pre class="shell"><code>{
+  "pageviews":    { "value": 1523, "change": 12.4 },
+  "visitors":     { "value":  842, "change":  8.1 },
+  "views":        { "value":  611, "change":  4.9 },
+  "bounces":      { "value":  233, "change": -2.3 },
+  "visitDuration":{ "value":   84, "change":  1.2 }
+}</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/stats/metrics</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The same metrics as <code>/stats</code>, with the period-over-period change reported
+          as zero. The response shape is identical: every metric is a
+          <code>{value, change}</code> object.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/stats/timeseries</span></summary>
+      <div class="endpoint-body">
+        <p>Page views over time, bucketed by hour for windows of two days or less and by day
+        for longer ones.</p>
+        <pre class="shell"><code>[
+  { "name": "2026-01-15T00:00:00Z", "value": 41, "date": "2026-01-15T00:00:00Z" },
+  { "name": "2026-01-15T01:00:00Z", "value": 38, "date": "2026-01-15T01:00:00Z" }
+]</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/stats/{dimension}</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The breakdown endpoints are
+          <code>pages</code>, <code>referrers</code>, <code>browsers</code>, <code>os</code>,
+          <code>devices</code>, <code>countries</code>, <code>languages</code>,
+          <code>screens</code>, <code>events</code> and <code>urls</code>.
+        </p>
+        <pre class="shell"><code>curl -s 'https://analytics.example.com/api/websites/3f2a1b4c-.../stats/pages?limit=5' \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+        <pre class="shell"><code>[
+  { "name": "/posts/hello", "value": 312, "url": "/posts/hello" },
+  { "name": "/posts/world", "value": 254, "url": "/posts/world" }
+]</code></pre>
+        <p>
+          The <code>pages</code> breakdown also returns the URL in a <code>url</code> field; the
+          <code>timeseries</code> breakdown also returns the bucket start in a
+          <code>date</code> field. Other breakdowns return <code>name</code> and
+          <code>value</code> only.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/sessions</span></summary>
+      <div class="endpoint-body">
+        <p>The session log, newest first.</p>
+        <pre class="shell"><code>curl -s 'https://analytics.example.com/api/websites/3f2a1b4c-.../sessions?limit=2' \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+        <pre class="shell"><code>[
+  {
+    "id": "9f8e7d6c-...",
+    "websiteId": "3f2a1b4c-...",
+    "createdAt": "2026-01-15T03:30:00",
+    "updatedAt": "2026-01-15T03:42:10",
+    "hostname": "blog.example.com",
+    "url": "/posts/hello",
+    "title": "Hello",
+    "referrer": "https://news.example.com/",
+    "entryUrl": "/posts/hello",
+    "browser": "Chrome",
+    "os": "Linux",
+    "device": "Desktop",
+    "country": "DE",
+    "region": null,
+    "city": null,
+    "language": "en-GB",
+    "screen": "1920x1080",
+    "views": 3,
+    "duration": 730
+  }
+]</code></pre>
+        <p>
+          A session row holds the <em>latest</em> view of a session and is updated in place;
+          events are append-only. There is no IP address field, because no IP address is
+          stored.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/events</span></summary>
+      <div class="endpoint-body">
+        <p>The custom event log, newest first.</p>
+        <pre class="shell"><code>[
+  {
+    "id": "c1d2e3f4-...",
+    "websiteId": "3f2a1b4c-...",
+    "sessionId": "9f8e7d6c-...",
+    "createdAt": "2026-01-15T03:35:00",
+    "name": "signup",
+    "url": "/pricing",
+    "hostname": "blog.example.com",
+    "data": "{\"plan\":\"free\"}"
+  }
+]</code></pre>
+        <p>
+          <code>data</code> is the free-form object you sent. It is stored exactly as supplied,
+          so it must not contain personal data.
+        </p>
+      </div>
+    </details>
+
+    <h2>Static files</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Path</th><th>What it serves</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>GET /</code></td><td>The dashboard shell — a small HTML document that loads the frontend JavaScript.</td></tr>
+          <tr><td><code>GET /sumami.js</code></td><td>The tracker.</td></tr>
+          <tr><td><code>GET /app/{path}</code></td><td>The dashboard frontend files, from <code>SUMAMI_JS_DIR</code>.</td></tr>
+          <tr><td><code>GET /docs</code></td><td>This documentation site, from <code>SUMAMI_DOCS_DIR</code>.</td></tr>
+          <tr><td><code>GET /docs/{path}</code></td><td>The individual pages of the documentation site.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>A complete example</h2>
+    <p>
+      Log in, create a website, send a hit and read the statistics back — end to end:
+    </p>
+    <pre class="shell"><code><span class="cmt"># 1. log in</span>
+TOKEN=$(curl -s -X POST http://127.0.0.1:3999/api/login \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","password":"a-long-passphrase"}' \
+  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+
+<span class="cmt"># 2. create a website</span>
+SITE=$(curl -s -X POST http://127.0.0.1:3999/api/websites \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $TOKEN" \
+  -d '{"name":"My Blog","domain":"blog.example.com"}' \
+  | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+
+<span class="cmt"># 3. send a page view</span>
+curl -s -X POST http://127.0.0.1:3999/api/send \
+  -H 'content-type: application/json' \
+  -d "{\"type\":\"event\",\"website\":\"$SITE\",\"payload\":{\"url\":\"/hello\"}}"
+
+<span class="cmt"># 4. read the numbers</span>
+sleep 3
+curl -s "http://127.0.0.1:3999/api/websites/$SITE/stats" \
+  -H "authorization: Bearer $TOKEN"</code></pre>
+
+    <p class="footnote">
+      Sumami is an independent open-source project, an open-source alternative to Umami that
+      implements the Umami v2 HTTP API. MIT licensed.
+    </p>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="footer-mark">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      Sumami 数猫咪
+    </p>
+    <p>MIT licensed. Self-hosted, cookieless, no telemetry.</p>
+    <ul>
+      <li><a href="install.html">Install</a></li>
+      <li><a href="self-host.html">Self-host</a></li>
+      <li><a href="tracker.html">Tracker</a></li>
+      <li><a href="api.html">API</a></li>
+      <li><a href="cli.html">CLI</a></li>
+      <li><a href="privacy.html">Privacy</a></li>
+      <li><a href="faq.html">FAQ</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>

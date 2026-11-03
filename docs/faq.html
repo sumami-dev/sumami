@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ — Sumami</title>
+<meta name="description" content="Frequently asked questions about Sumami: compatibility with Umami, system requirements, DuckDB, the libduckdb.so error, missing page views, dropped events, TLS, backups and privacy questions.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      <span>Sumami</span>
+      <span class="brand-cn">数猫咪</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="install.html">Install</a></li>
+        <li><a href="self-host.html">Self-host</a></li>
+        <li><a href="tracker.html">Tracker</a></li>
+        <li><a href="api.html">API</a></li>
+        <li><a href="cli.html">CLI</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="faq.html" aria-current="page">FAQ</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+
+    <h1 class="page-title">FAQ</h1>
+    <p class="page-lede">
+      Common questions about running Sumami. If yours is not here, the
+      <a href="https://github.com/sumami-dev/sumami/issues">issue tracker</a> is the place to
+      ask.
+    </p>
+
+    <h2>General</h2>
+
+    <h3>How is this different from Umami?</h3>
+    <p>
+      Sumami is an independent open-source project that implements the Umami v2 HTTP API. It is
+      an open-source alternative to Umami: the official Umami dashboard and the Umami tracker
+      work against it unchanged. What differs is the packaging — Sumami ships as a
+      self-contained service with a single DuckDB file and no external database, no PostgreSQL
+      and no ClickHouse — and the privacy defaults, which are cookieless by construction.
+    </p>
+    <p>
+      Sumami is not affiliated with, endorsed by or sponsored by the Umami project, and no
+      Umami assets — logo, artwork, code or copy — are used.
+    </p>
+
+    <h3>Do I need a domain?</h3>
+    <p>
+      No. You can run it on <code>http://localhost:3999</code> and collect data from a local
+      site. A domain and TLS are only needed if you want to serve it publicly, which in turn
+      is needed if the sites you measure are not on <code>localhost</code> — a browser will
+      refuse a mixed-content request to an insecure origin.
+    </p>
+
+    <h3>What are the system requirements?</h3>
+    <p>
+      A 64-bit Linux box (or macOS), 1 vCPU, 512 MB of RAM and about 30 MB of disk for the
+      program. The database grows with your traffic but stays small: a page view is a few dozen
+      bytes. DuckDB runs with an explicit 256 MB memory limit by default so a 512 MB box
+      survives.
+    </p>
+
+    <h3>Why DuckDB and not SQLite or PostgreSQL?</h3>
+    <p>
+      DuckDB is an analytical database: it is fast at the aggregations analytics is made of
+      (grouping and counting over time ranges), it has first-class JSON, and it writes to a
+      single file with no server to run. SQLite would be fine for many workloads but is weaker
+      at the aggregate queries the statistics endpoints issue. PostgreSQL would need a second
+      process to operate, which is exactly what this design is trying to avoid.
+    </p>
+
+    <h3>Can I use the official Umami dashboard?</h3>
+    <p>
+      Yes — that is the point of the compatible API. Point the Umami dashboard at your Sumami
+      host and log in with the admin account. Alternatively, Sumami serves its own small
+      dashboard shell at <code>/</code>, loading the frontend from <code>js/</code> or from a
+      CDN if you set <code>SUMAMI_APP_URL</code>.
+    </p>
+
+    <h3>Does it support multiple websites?</h3>
+    <p>
+      Yes, without any extra configuration. Create one website per site in the dashboard and
+      give each its own tracker snippet. Each website has its own retention window and its own
+      country-header setting.
+    </p>
+
+    <h2>Installation</h2>
+
+    <h3>What is <code>libduckdb.so</code> and why is it missing?</h3>
+    <p>
+      DuckDB is linked dynamically, which is what keeps the executables at a few megabytes each
+      instead of tens. The shared library comes from the
+      <a href="https://github.com/duckdb/duckdb/releases">DuckDB releases page</a> and is
+      included in the Sumami release archive. If you get an error like
+      <code>error while loading shared libraries: libduckdb.so</code>, the library is not where
+      the loader expects it.
+    </p>
+    <p>Either install it on the loader path:</p>
+    <pre class="shell"><code>sudo install -m 0755 libduckdb.so /usr/local/lib/
+sudo ldconfig
+ldconfig -p | grep duckdb</code></pre>
+    <p>
+      Or keep the three files together and tell the loader where to look:
+    </p>
+    <pre class="shell"><code>export LD_LIBRARY_PATH=/opt/sumami</code></pre>
+    <p>
+      On macOS the file is named <code>libduckdb.dylib</code> and the variable is
+      <code>DYLD_LIBRARY_PATH</code>.
+    </p>
+
+    <h3>Can I move the database file to another machine?</h3>
+    <p>
+      Yes. Stop the service, copy the <code>.duckdb</code> file (and the
+      <code>.jwt-secret</code> file next to it, if you want existing tokens to keep working),
+      and start the service on the new box. Because the visitor identifier is derived from the
+      server secret, changing the secret means visitor identifiers change — which is a
+      privacy feature, not a bug.
+    </p>
+
+    <h3>Where did my admin password go?</h3>
+    <p>
+      On the very first start on an empty database, the server creates the admin user. If
+      <code>SUMAMI_ADMIN_PASSWORD</code> was not set, the generated password is printed to the
+      log <strong>once</strong> and never again.
+    </p>
+    <pre class="shell"><code>sudo journalctl -u sumami | grep 'password:'</code></pre>
+    <p>
+      If you have lost it, set a new one:
+    </p>
+    <pre class="shell"><code>sumami-server admin --db /var/lib/sumami/sumami.duckdb \
+  --username admin --password 'a-new-long-passphrase'</code></pre>
+
+    <h3>How do I change the port?</h3>
+    <p>
+      The <code>--port</code> flag or the <code>SUMAMI_PORT</code> environment variable, or
+      <code>sudo systemctl edit sumami</code> for a systemd deployment. The default is
+      <code>3000</code>.
+    </p>
+
+    <h2>Operating</h2>
+
+    <h3>My page views are not showing up. Where do I start?</h3>
+    <p>Work through these in order:</p>
+    <ol>
+      <li>
+        <strong>Is the request being made?</strong> Open the developer tools on your site, go to
+        the Network tab and look for <code>POST /api/send</code>. No request means the tracker
+        script did not load, or the visitor's browser has DNT or GPC enabled and the tracker
+        correctly sent nothing.
+      </li>
+      <li>
+        <strong>Does it return an error?</strong> A <code>400 unknown website: …</code> response
+        means the website id or domain does not match anything the server knows.
+      </li>
+      <li>
+        <strong>Is the data committed?</strong> Reads only see data that has been flushed, which
+        happens every <code>SUMAMI_FLUSH_INTERVAL_SECS</code> seconds — two by default. Wait a
+        moment and reload.
+      </li>
+      <li>
+        <strong>Are you looking at the right window?</strong> The statistics endpoints default
+        to the last seven days.
+      </li>
+      <li>
+        <strong>Is the proxy in the way?</strong> Check the server log for
+        <code>/api/send</code> requests. If there are none, the request is not reaching the
+        server — a Content Security Policy that blocks your analytics domain is the usual
+        culprit.
+      </li>
+    </ol>
+
+    <h3>What does "the 33rd kitty was too cute to count" mean?</h3>
+    <p>
+      It is the log line for the queue overflow handler. If more events arrive than the write
+      buffer can hold — <code>SUMAMI_MAX_QUEUE</code>, 100000 by default — the server drops the
+      <em>oldest</em> buffered events instead of growing until the OOM killer arrives.
+      Statistics do not need to be perfect; the server staying up matters more. The number of
+      dropped events is in <code>/api/heartbeat</code> as <code>dropped</code>.
+    </p>
+    <p>
+      If you see this regularly, raise <code>SUMAMI_MAX_QUEUE</code> and the DuckDB memory
+      limit, or check that the disk is not full.
+    </p>
+
+    <h3>Can I run two instances against the same database?</h3>
+    <p>
+      Do not. DuckDB takes an exclusive lock on the file. One server writes; the CLI may read
+      it when the server is stopped. Use <code>sumami prune --url …</code> and
+      <code>sumami erase --url …</code> to make changes through a running server instead of
+      touching its file.
+    </p>
+
+    <h3>Does it need HTTPS?</h3>
+    <p>
+      Not technically, but practically yes for anything public: a browser will not send an
+      insecure request to an insecure API from an HTTPS page, and you should not run an
+      analytics endpoint over plain HTTP in public. There are two ways to get it. Put a
+      reverse proxy in front — Caddy or nginx — and it will obtain and renew a Let's Encrypt
+      certificate over ACME for you. Or let Sumami manage the certificate itself with
+      <code>--ssl example.com</code>: it obtains and renews the certificate over ACME in the
+      background, with no certbot and no cron job. The <a href="self-host.html">self-hosting
+      guide</a> has the configuration for both.
+    </p>
+    <p>
+      With a reverse proxy, the proxy terminates TLS and the server sees plain HTTP on
+      loopback. With <code>--ssl</code>, the server terminates TLS itself and port 443 has to
+      reach it directly.
+    </p>
+
+    <h3>How do I get a certificate?</h3>
+    <p>
+      Either through the reverse proxy or from the server itself.
+    </p>
+    <p>
+      Through the reverse proxy: Caddy does it with three lines of configuration; nginx does it
+      with certbot. Both renew automatically. You need port 80 reachable from the internet and
+      the domain's DNS record pointing at the server — a DNS record that has not propagated yet
+      is the most common cause of a failed first issuance. If port 80 is closed, use the
+      DNS-01 challenge instead.
+    </p>
+    <p>
+      From the server itself: <code>sumami-server serve --ssl example.com --ssl-email
+      you@example.com</code>. The certificate is issued by Let's Encrypt over ACME and renewed
+      in the background. The challenge is TLS-ALPN-01, so port 443 must reach the Sumami
+      process directly — no proxy in front of it. Port 80 does not need to be open. Back up the
+      cache directory (by default an <code>acme</code> directory next to the database, e.g. <code>/var/lib/sumami/acme</code>): it holds the ACME account and the
+      certificates, and losing it means re-issuing.
+    </p>
+
+    <h3>How do I back it up?</h3>
+    <p>
+      One file. Stop the service, copy <code>sumami.duckdb</code> somewhere safe, start the
+      service again. The <a href="self-host.html">self-hosting guide</a> has a ready-made
+      script and a cron entry. Copy the <code>.jwt-secret</code> file too if you want issued
+      tokens to survive the move.
+    </p>
+
+    <h3>How do I move to a new version?</h3>
+    <p>
+      Stop the service, install the new binaries over the old ones, start the service. Schema
+      changes are additive and need no migration step. Take a backup first anyway.
+    </p>
+
+    <h3>Where are the logs?</h3>
+    <p>
+      In the standard output, which systemd captures:
+    </p>
+    <pre class="shell"><code>sudo journalctl -u sumami -f</code></pre>
+    <p>
+      Access logs record the method, the path, the status and the duration. Query strings are
+      stripped from logged paths and request bodies are never logged.
+    </p>
+
+    <h2>Privacy</h2>
+
+    <h3>Does Sumami store IP addresses?</h3>
+    <p>
+      No. Not in the database, not in the logs, and not hashed into a stable identifier. The
+      server uses a coarse IP prefix to derive a rotating, non-reversible id, and then
+      discards the address. The full details are on the
+      <a href="privacy.html">privacy page</a>.
+    </p>
+
+    <h3>Does the tracker set cookies?</h3>
+    <p>
+      No cookies, and no <code>localStorage</code> either. The collection request is sent with
+      <code>credentials: 'omit'</code> so no cookie is attached to it. Nothing about a visit
+      persists in the visitor's browser.
+    </p>
+
+    <h3>Why is there no country data?</h3>
+    <p>
+      Because Sumami has no geo-IP database and never looks one up. A country is recorded only
+      if a proxy in front of the server sets a header containing it — <code>CF-IPCountry</code>,
+      for example — and you name that header in <code>SUMAMI_COUNTRY_HEADER</code>. Without
+      that, no geography is recorded at all.
+    </p>
+
+    <h3>What happens if I put an email address in a custom event?</h3>
+    <p>
+      It is stored verbatim, and your installation becomes a system that processes personal
+      data. The privacy guarantees do not apply to it any more, and you take on the
+      obligations that come with that. Use coarse values such as <code>plan: 'free'</code>
+      instead. The <a href="privacy.html">privacy page</a> says more.
+    </p>
+
+    <h3>Is there any telemetry in Sumami itself?</h3>
+    <p>
+      No. The server makes no outbound requests of any kind — no analytics, no crash
+      reporting, no update checks. The dashboard pages make no requests to third parties
+      either: no fonts, no scripts and no images are loaded from anywhere else. You can run
+      the whole thing with the outbound network cut off.
+    </p>
+
+    <h2>The CLI</h2>
+
+    <h3>Can I read the database without running the server?</h3>
+    <p>
+      Yes, that is what the CLI is for. Copy the <code>.duckdb</code> file to your laptop and
+      run <code>sumami websites --db ./sumami.duckdb</code>. The file is opened read-only.
+    </p>
+
+    <h3>Why does the CLI need credentials in HTTP mode?</h3>
+    <p>
+      Because in HTTP mode it is a client of the API, and the API is default-deny. It logs in
+      with <code>POST /api/login</code> and caches the token in
+      <code>~/.config/sumami/credentials.json</code> with mode <code>0600</code>. Pass
+      <code>--token</code> to skip the cache.
+    </p>
+
+    <h3>Does the CLI write to my database? Does it modify anything?</h3>
+    <p>
+      Not unless you ask it to. The file is opened read-only, with two exceptions:
+      <code>prune</code> enforces the retention window and <code>erase</code> deletes a
+      website's data. Both ask for confirmation. Neither ever touches a database file that the
+      server currently has open.
+    </p>
+
+    <h2>Still stuck?</h2>
+    <p>
+      Open an issue at
+      <a href="https://github.com/sumami-dev/sumami/issues">github.com/sumami-dev/sumami/issues</a>.
+      If your problem is a privacy or security issue, please describe it privately to the
+      maintainer instead of opening a public issue with a working exploit or a real leaked
+      value in it.
+    </p>
+
+    <p class="footnote">
+      Sumami is an independent open-source project, an open-source alternative to Umami that
+      implements the Umami v2 HTTP API. MIT licensed.
+    </p>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="footer-mark">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      Sumami 数猫咪
+    </p>
+    <p>MIT licensed. Self-hosted, cookieless, no telemetry.</p>
+    <ul>
+      <li><a href="install.html">Install</a></li>
+      <li><a href="self-host.html">Self-host</a></li>
+      <li><a href="tracker.html">Tracker</a></li>
+      <li><a href="api.html">API</a></li>
+      <li><a href="cli.html">CLI</a></li>
+      <li><a href="privacy.html">Privacy</a></li>
+      <li><a href="faq.html">FAQ</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>

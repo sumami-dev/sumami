@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install — Sumami</title>
+<meta name="description" content="Install Sumami: download the release archive, unpack sumami-server, the sumami CLI and libduckdb.so, start the server, create a website and install the tracker.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      <span>Sumami</span>
+      <span class="brand-cn">数猫咪</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="install.html" aria-current="page">Install</a></li>
+        <li><a href="self-host.html">Self-host</a></li>
+        <li><a href="tracker.html">Tracker</a></li>
+        <li><a href="api.html">API</a></li>
+        <li><a href="cli.html">CLI</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="faq.html">FAQ</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+
+    <h1 class="page-title">Install</h1>
+    <p class="page-lede">
+      From an empty machine to a running analytics server in about five minutes. You need a
+      64-bit Linux box (or macOS), about 30 MB of disk, and nothing else — no database server,
+      no container runtime, no Node.
+    </p>
+
+    <h2>1. Get the release archive</h2>
+    <p>
+      Every release publishes an archive containing three files:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>File</th><th>What it is</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>sumami-server</code></td><td>The analytics server: collection API, statistics API, authentication, the dashboard shell and the tracker.</td></tr>
+          <tr><td><code>sumami</code></td><td>The command line analyser. Reads a <code>.duckdb</code> file directly, or talks to a running server over HTTP.</td></tr>
+          <tr><td><code>libduckdb.so</code></td><td>The DuckDB 2.0.0 shared library, taken from the <a href="https://github.com/duckdb/duckdb/releases">DuckDB releases page</a>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      DuckDB is linked <strong>dynamically</strong> rather than statically, which is what keeps
+      the two executables down to a few megabytes each instead of tens of them. The library is
+      loaded from next to the binary, so keep the three files together — copying only
+      <code>sumami-server</code> somewhere else will not work.
+    </p>
+
+    <h3>Linux (x86-64)</h3>
+    <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
+ls -l</code></pre>
+    <p>You should now see <code>sumami-server</code>, <code>sumami</code> and <code>libduckdb.so</code>.</p>
+
+    <h3>macOS (Apple silicon)</h3>
+    <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-macos-arm64.tar.gz | tar xz</code></pre>
+    <p>
+      On macOS the DuckDB library is named <code>libduckdb.dylib</code> instead of
+      <code>libduckdb.so</code>. The same rule applies: it belongs next to the binaries.
+    </p>
+
+    <h3>Windows</h3>
+    <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-windows-amd64.zip -o sumami.zip
+Expand-Archive sumami.zip</code></pre>
+
+    <h3>Build from source</h3>
+    <p>
+      If you would rather compile it — to match an unusual architecture, for example — you need a
+      Rust toolchain. The first build compiles DuckDB from source and takes a while; afterwards
+      it is quick.
+    </p>
+    <pre class="shell"><code>git clone https://github.com/sumami-dev/sumami.git
+cd sumami
+cargo build --release
+<span class="cmt"># the binaries land in target/release/</span></code></pre>
+
+    <h2>2. Install the files</h2>
+    <pre class="shell"><code><span class="cmt"># executables</span>
+sudo install -m 0755 sumami-server sumami /usr/local/bin/
+
+<span class="cmt"># the DuckDB shared library, so the loader finds it</span>
+sudo install -m 0755 libduckdb.so /usr/local/lib/
+sudo ldconfig</code></pre>
+    <p>
+      If you would rather keep everything together in one directory (and see the three files
+      side by side), install them into <code>/opt/sumami</code> and set
+      <code>LD_LIBRARY_PATH=/opt/sumami</code> in the service's environment file instead.
+    </p>
+
+    <h2>3. Create the admin account</h2>
+    <p>
+      The server has one user: the administrator. Create it before the first run so the password
+      is one you chose.
+    </p>
+    <pre class="shell"><code>sumami-server admin --db /var/lib/sumami/sumami.duckdb \
+  --username admin --password 'a-long-passphrase'</code></pre>
+    <p>
+      If you leave <code>--password</code> out, a strong password is generated and printed
+      <strong>once</strong>:
+    </p>
+    <pre class="shell"><code>$ sumami-server admin --db ./sumami.duckdb --username admin
+admin user 'admin' ready
+password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
+(store it now — it is not shown again)</code></pre>
+    <div class="callout">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v.01M12 13.5c0-1.5 2-2 2-3.5a2 2 0 1 0-4 0"/></svg>
+        If you skip this
+      </p>
+      <p>
+        The first <code>serve</code> on an empty database creates the admin user anyway, using
+        <code>SUMAMI_ADMIN_USER</code> (default <code>admin</code>) and
+        <code>SUMAMI_ADMIN_PASSWORD</code>. If the password is unset, one is generated and
+        printed to the service log exactly once. It is never stored in plaintext.
+      </p>
+    </div>
+
+    <h2>4. Run the server</h2>
+    <pre class="shell"><code>sumami-server serve --db /var/lib/sumami/sumami.duckdb --host 127.0.0.1 --port 3999</code></pre>
+    <p>
+      To serve HTTPS directly — without a reverse proxy in front — add
+      <code>--ssl</code>:
+    </p>
+    <pre class="shell"><code>sumami-server serve --db /var/lib/sumami/sumami.duckdb \
+  --ssl example.com --ssl-email you@example.com</code></pre>
+    <p>
+      <code>--ssl-domain</code> is still accepted as an alias for <code>--ssl</code>.
+    </p>
+    <p>
+      The flags you will use most:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Flag</th><th>Environment variable</th><th>Default</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>--db &lt;path&gt;</code></td><td><code>SUMAMI_DB</code></td><td><code>sumami.duckdb</code></td><td>Path of the DuckDB database file.</td></tr>
+          <tr><td><code>--host &lt;addr&gt;</code></td><td><code>SUMAMI_HOST</code></td><td><code>0.0.0.0</code></td><td>Address to bind to.</td></tr>
+          <tr><td><code>--port &lt;port&gt;</code></td><td><code>SUMAMI_PORT</code></td><td><code>3000</code></td><td>Port to listen on.</td></tr>
+          <tr><td><code>--jwt-secret &lt;secret&gt;</code></td><td><code>SUMAMI_JWT_SECRET</code></td><td>generated</td><td>Secret used to sign tokens. A random one is generated and stored next to the database on first run if unset.</td></tr>
+          <tr><td><code>--retention-days &lt;n&gt;</code></td><td><code>SUMAMI_RETENTION_DAYS</code></td><td><code>0</code></td><td>Default retention window in days. <code>0</code> means keep forever.</td></tr>
+          <tr><td><code>--country-header &lt;name&gt;</code></td><td><code>SUMAMI_COUNTRY_HEADER</code></td><td>none</td><td>Header carrying the country code, e.g. <code>CF-IPCountry</code>.</td></tr>
+          <tr><td><code>--js-dir &lt;path&gt;</code></td><td><code>SUMAMI_JS_DIR</code></td><td><code>js</code></td><td>Directory holding the dashboard frontend files.</td></tr>
+          <tr><td><code>--docs-dir &lt;path&gt;</code></td><td><code>SUMAMI_DOCS_DIR</code></td><td><code>docs</code></td><td>Directory holding the documentation site served at <code>/docs</code>.</td></tr>
+          <tr><td><code>--ssl &lt;domain&gt;</code></td><td><code>SUMAMI_SSL_DOMAIN</code></td><td>none</td><td>Serve HTTPS with a certificate obtained and renewed automatically over ACME. <code>--ssl-domain</code> is accepted as an alias. See <a href="self-host.html#lets-sumami-manage-tls-itself">Let Sumami manage TLS itself</a>.</td></tr>
+          <tr><td><code>--ssl-email &lt;address&gt;</code></td><td><code>SUMAMI_SSL_EMAIL</code></td><td>none</td><td>Contact address registered with the ACME provider. Let's Encrypt sends expiry notices there.</td></tr>
+          <tr><td><code>--ssl-cache-dir &lt;path&gt;</code></td><td><code>SUMAMI_SSL_CACHE_DIR</code></td><td><code>&lt;directory of the database&gt;/acme</code></td><td>Directory holding the ACME account and the certificates. Back it up.</td></tr>
+          <tr><td><code>--ssl-port &lt;port&gt;</code></td><td><code>SUMAMI_SSL_PORT</code></td><td><code>443</code></td><td>Port used for HTTPS when <code>--ssl</code> is set.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Two more settings have no flag — they are environment-only because they are per-site
+      policy rather than per-server:
+    </p>
+    <ul>
+      <li><code>SUMAMI_KEEP_QUERY</code> — set to <code>1</code>, <code>true</code> or
+        <code>yes</code> to keep the query string of collected URLs. It is off by default,
+        because query strings routinely carry session tokens and other personal data.</li>
+      <li><code>SUMAMI_APP_URL</code> — base URL of the dashboard frontend, if you serve it from
+        a CDN. The backend then only ships a tiny HTML shell.</li>
+    </ul>
+    <p>
+      A few more environment variables tune the process rather than the data:
+    </p>
+    <ul>
+      <li><code>SUMAMI_DUCKDB_MEMORY_LIMIT</code> (default <code>256MB</code>) — DuckDB's
+        memory limit, in bytes.</li>
+      <li><code>SUMAMI_MAX_QUEUE</code> (default <code>100000</code>) — how many events may be
+        buffered in memory before the oldest are dropped.</li>
+      <li><code>SUMAMI_FLUSH_INTERVAL_SECS</code> (default <code>2</code>) — how often the
+        writer commits a batch to disk.</li>
+      <li><code>SUMAMI_JWT_SECRET_FILE</code> — path of a file holding the token secret, if you
+        would rather keep it out of the environment.</li>
+    </ul>
+    <p>
+      The <code>admin</code> subcommand has its own flags — <code>--username</code>
+      (<code>SUMAMI_ADMIN_USER</code>, default <code>admin</code>),
+      <code>--password</code> (<code>SUMAMI_ADMIN_PASSWORD</code>) and <code>--db</code>
+      (<code>SUMAMI_DB</code>). A third subcommand, <code>config</code>, prints the resolved
+      configuration and exits.
+    </p>
+    <div class="callout tip">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+        HTTPS without a reverse proxy
+      </p>
+      <p>
+        With <code>--ssl example.com</code> the server obtains a Let's Encrypt certificate on
+        its own over ACME and renews it in the background. There is no certbot and no cron
+        job, and no reverse proxy is needed just to serve TLS. The challenge used is
+        TLS-ALPN-01, so port 443 has to reach the Sumami process directly — behind a proxy
+        that terminates TLS, use the proxy's own ACME support instead.
+      </p>
+    </div>
+
+    <h2>5. Create a website</h2>
+    <p>
+      Log in and create the website you want to measure. The website id is what the tracker
+      needs.
+    </p>
+    <pre class="shell"><code><span class="cmt"># log in</span>
+curl -s -X POST http://127.0.0.1:3999/api/login \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","password":"a-long-passphrase"}'
+<span class="cmt"># {"token":"eyJ...","user":{"id":"...","username":"admin","role":"admin",...}}</span>
+
+<span class="cmt"># create a website</span>
+curl -s -X POST http://127.0.0.1:3999/api/websites \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $TOKEN" \
+  -d '{"name":"My Blog","domain":"blog.example.com"}'
+<span class="cmt"># {"id":"3f2a...","websiteId":"3f2a...","name":"My Blog",...}</span></code></pre>
+    <p>
+      The <code>domain</code> field is optional but useful: when set, the tracker can be
+      configured with the domain instead of the id, and the server can reject hits that arrive
+      for a website it does not know.
+    </p>
+
+    <h2>6. Install the tracker</h2>
+    <p>
+      The server serves the tracker itself at <code>/sumami.js</code>. Put this in the
+      <code>&lt;head&gt;</code> of every page you want to measure:
+    </p>
+    <pre class="shell"><code>&lt;script defer
+  src="https://your-sumami-host/sumami.js"
+  data-website-id="3f2a..."&gt;&lt;/script&gt;</code></pre>
+    <p>
+      That is the whole integration. A page view is sent automatically on load. There are more
+      ways to install it — self-hosted, on a CDN, for several sites at once — and they are all
+      in the <a href="tracker.html">tracker guide</a>.
+    </p>
+
+    <h2>7. Look at the numbers</h2>
+    <p>
+      Open <code>http://127.0.0.1:3999/</code> and log in with the admin account. The dashboard
+      is a small HTML shell that loads the frontend JavaScript; the backend serves it from
+      <code>js/</code> by default, and you can point <code>SUMAMI_APP_URL</code> at a CDN if you
+      prefer.
+    </p>
+    <p>
+      You can also read the same numbers straight from the database file:
+    </p>
+    <pre class="shell"><code>sumami websites --db /var/lib/sumami/sumami.duckdb
+sumami summary --db /var/lib/sumami/sumami.duckdb 3f2a...
+sumami pages   --db /var/lib/sumami/sumami.duckdb 3f2a... --limit 10</code></pre>
+    <p>
+      The <a href="cli.html">CLI reference</a> lists every subcommand and every flag.
+    </p>
+
+    <h2>Next steps</h2>
+    <ul>
+      <li><a href="self-host.html">Self-host on a cheap VPS</a> — systemd, reverse proxy, TLS and backups.</li>
+      <li><a href="tracker.html">Tracker options</a> — custom events, self-hosting, CDN, multiple sites.</li>
+      <li><a href="privacy.html">Privacy and data protection</a> — what is stored, what is refused, how to erase it.</li>
+      <li><a href="faq.html">FAQ</a> — common problems and how to solve them.</li>
+    </ul>
+
+    <p class="footnote">
+      Sumami is an independent open-source project, an open-source alternative to Umami that
+      implements the Umami v2 HTTP API. MIT licensed.
+    </p>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="footer-mark">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      Sumami 数猫咪
+    </p>
+    <p>MIT licensed. Self-hosted, cookieless, no telemetry.</p>
+    <ul>
+      <li><a href="install.html">Install</a></li>
+      <li><a href="self-host.html">Self-host</a></li>
+      <li><a href="tracker.html">Tracker</a></li>
+      <li><a href="api.html">API</a></li>
+      <li><a href="cli.html">CLI</a></li>
+      <li><a href="privacy.html">Privacy</a></li>
+      <li><a href="faq.html">FAQ</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>

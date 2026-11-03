@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracker — Sumami</title>
+<meta name="description" content="Install the Sumami tracker on your website: the script tag, the data attributes, self-hosting, putting it on a CDN, tracking custom events, and managing several sites.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      <span>Sumami</span>
+      <span class="brand-cn">数猫咪</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="install.html">Install</a></li>
+        <li><a href="self-host.html">Self-host</a></li>
+        <li><a href="tracker.html" aria-current="page">Tracker</a></li>
+        <li><a href="api.html">API</a></li>
+        <li><a href="cli.html">CLI</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="faq.html">FAQ</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+
+    <h1 class="page-title">Tracker</h1>
+    <p class="page-lede">
+      The Sumami tracker is a single dependency-free JavaScript file. It has no build step, no
+      npm package and no bundler; the file in the repository is byte-for-byte the file that gets
+      served. It sets no cookies, uses no <code>localStorage</code>, does no fingerprinting, and
+      honours Do Not Track and Global Privacy Control.
+    </p>
+
+    <h2>The script tag</h2>
+    <p>This is all you need:</p>
+    <pre class="shell"><code>&lt;script defer
+  src="https://your-sumami-host/sumami.js"
+  data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
+    <p>
+      Put it in the <code>&lt;head&gt;</code> of every page you want to count. A page view is sent
+      automatically when the page finishes loading. The <code>defer</code> attribute means it
+      never blocks rendering, and the tracker never throws into your page: every network call
+      is wrapped so a failure is silent.
+    </p>
+    <p>
+      The server serves the tracker from its own origin at <code>/sumami.js</code>, so by
+      default the tracker and the API are the same host and no CORS configuration is needed.
+    </p>
+
+    <h2>Attributes</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Attribute</th><th>Required</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>data-website-id</code></td>
+            <td>yes, unless <code>data-website</code> is used</td>
+            <td>The website id (a UUID) that the page view belongs to. Shown when you create a website in the dashboard.</td>
+          </tr>
+          <tr>
+            <td><code>data-website</code></td>
+            <td>alternative to the id</td>
+            <td>The website <em>domain</em> instead of its id. Useful when you want one snippet across several sites with different domains.</td>
+          </tr>
+          <tr>
+            <td><code>data-api-url</code></td>
+            <td>no</td>
+            <td>Base URL of the API, when the tracker file itself is hosted somewhere else. Defaults to the origin the script was loaded from.</td>
+          </tr>
+          <tr>
+            <td><code>data-allow-query</code></td>
+            <td>no</td>
+            <td>Set to <code>"true"</code> to include the query string in the collected URL. Off by default — see the <a href="privacy.html">privacy page</a>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Deployment options</h2>
+
+    <h3>1. Served by your own Sumami host (recommended)</h3>
+    <p>
+      The default and the simplest. The server serves the tracker at
+      <code>/sumami.js</code> from the same origin as the API, so there is no cross-origin
+      request at all.
+    </p>
+    <pre class="shell"><code>&lt;script defer src="https://analytics.example.com/sumami.js"
+        data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
+
+    <h3>2. Self-hosted on your own site</h3>
+    <p>
+      If you would rather not make a request to another origin at all — because of a strict
+      Content Security Policy, a firewall, or a preference for keeping the tracker on the same
+      domain — copy <code>sumami.js</code> into your own site and point
+      <code>data-api-url</code> at the Sumami server.
+    </p>
+    <pre class="shell"><code><span class="cmt"># copy it next to your other static assets</span>
+cp sumami.js /var/www/html/assets/sumami.js</code></pre>
+    <pre class="shell"><code>&lt;script defer src="/assets/sumami.js"
+        data-api-url="https://analytics.example.com"
+        data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
+    <p>
+      The file is self-contained and has no dependencies, so serving it from anywhere static
+      works. <code>data-api-url</code> must include the scheme and host but no trailing slash.
+    </p>
+
+    <h3>3. On a CDN</h3>
+    <p>
+      A CDN gives the tracker a stable URL close to your visitors. Upload the file to your CDN
+      as-is and point <code>data-api-url</code> back at your server.
+    </p>
+    <pre class="shell"><code>&lt;script defer src="https://cdn.example.com/sumami.js"
+        data-api-url="https://analytics.example.com"
+        data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
+    <p>
+      The same trick applies to the dashboard frontend: set <code>SUMAMI_APP_URL</code> and the
+      backend serves only a tiny HTML shell.
+    </p>
+
+    <h3>4. Several websites, one snippet</h3>
+    <p>
+      Give each site a <code>domain</code> in the dashboard and use
+      <code>data-website</code> instead of <code>data-website-id</code>. The same snippet then
+      works on all of them:
+    </p>
+    <pre class="shell"><code>&lt;script defer src="https://analytics.example.com/sumami.js"
+        data-website="blog.example.com"&gt;&lt;/script&gt;</code></pre>
+    <p>
+      Keep in mind that <code>data-website</code> is public in the page source, so it is not a
+      secret. The same is true of <code>data-website-id</code> — they are identifiers, not
+      credentials, and the collection endpoints are public by design.
+    </p>
+
+    <h2>Custom events</h2>
+    <p>
+      The tracker exposes a small global API, <code>window.sumami</code>. (It also aliases
+      itself as <code>window.umami</code> so existing snippets keep working.)
+    </p>
+    <pre class="shell"><code><span class="cmt">// a page view is sent automatically; this is for the rest</span>
+sumami.track('signup', { plan: 'free' });
+sumami.identify({ plan: 'free' });
+sumami.pageview();</code></pre>
+    <div class="callout warn">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5"/><path d="M12 17.5v.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        Do not put personal data in event properties
+      </p>
+      <p>
+        Custom event properties are <strong>free-form data you supply</strong>, and they are
+        stored verbatim. If you send an email address, a user id or a phone number, you have
+        created personal data in your database and every privacy guarantee Sumami makes stops
+        applying to it. The tracker never attaches anything sensitive on its own — keep it
+        that way. Prefer a coarse flag (<code>{ "plan": "free" }</code>) over an identifier.
+      </p>
+    </div>
+    <p>
+      <code>sumami.identify()</code> attaches data to the current session only. It is not a
+      cross-session identifier, and the session id it belongs to rotates — see the
+      <a href="privacy.html">privacy page</a>.
+    </p>
+
+    <h2>How a hit is sent</h2>
+    <ul>
+      <li>One request per event, to <code>POST /api/send</code>.</li>
+      <li><code>navigator.sendBeacon</code> is used first, with <code>fetch</code> and
+        <code>keepalive</code> as the fallback, so a hit survives the visitor navigating
+        away.</li>
+      <li>The request body is JSON: <code>{"type":"event","payload":{…}}</code>.</li>
+      <li>Credentials are omitted (<code>credentials: 'omit'</code>), so no cookie is ever
+        attached to the request either.</li>
+      <li>A failure is swallowed. Your page keeps working whether or not analytics does.</li>
+    </ul>
+
+    <h2>What the tracker sends</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Example</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>website</code></td><td><code>3f2a…</code></td><td>The id or domain you configured.</td></tr>
+          <tr><td><code>url</code></td><td><code>/posts/hello</code></td><td>The path. The query string and fragment are stripped unless <code>data-allow-query</code> is set.</td></tr>
+          <tr><td><code>hostname</code></td><td><code>blog.example.com</code></td><td>The visitor's host.</td></tr>
+          <tr><td><code>title</code></td><td><code>Hello</code></td><td>The document title.</td></tr>
+          <tr><td><code>referrer</code></td><td><code>https://news.example.com/</code></td><td>Cleaned the same way as the URL. Same-origin referrers are reduced to their path.</td></tr>
+          <tr><td><code>language</code></td><td><code>en-GB</code></td><td><code>navigator.language</code>.</td></tr>
+          <tr><td><code>screen</code></td><td><code>1920x1080</code></td><td>Screen dimensions, not the viewport.</td></tr>
+          <tr><td><code>name</code></td><td><code>signup</code></td><td>Only for custom events.</td></tr>
+          <tr><td><code>data</code></td><td><code>{"plan":"free"}</code></td><td>Only for custom events and <code>identify</code>. User-supplied — see the warning above.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The browser family, browser version, operating system, OS version and device class are
+      derived <strong>server-side</strong> from the <code>User-Agent</code> header. Nothing is
+      fingerprinted in the browser: no canvas, no audio, no font list, no hardware probing.
+    </p>
+
+    <h2>Privacy behaviour you can rely on</h2>
+    <ul>
+      <li><strong>No cookies.</strong> The tracker never sets one, and the collection request is
+        sent with <code>credentials: 'omit'</code>.</li>
+      <li><strong>No localStorage.</strong> Nothing is written to the visitor's storage, so
+        nothing survives between visits on the same browser.</li>
+      <li><strong>DNT and GPC are honoured.</strong> If
+        <code>navigator.doNotTrack</code> is <code>"1"</code> or <code>"yes"</code>, or
+        <code>navigator.globalPrivacyControl</code> is <code>true</code>, the tracker sends
+        nothing at all and does not even load the API.</li>
+      <li><strong>No IP address.</strong> The tracker does not send one, and the server does not
+        store one. A rotating, non-reversible id derived from a coarse IP prefix is used
+        instead.</li>
+      <li><strong>No query strings</strong> unless you explicitly opt in.</li>
+    </ul>
+    <p>
+      Full details, including what the server does with what it receives, are on the
+      <a href="privacy.html">privacy and data-protection page</a>.
+    </p>
+
+    <h2>Verifying the installation</h2>
+    <ol>
+      <li>Open your site in a private window with the developer tools open.</li>
+      <li>Look at the <strong>Network</strong> tab and filter for <code>/api/send</code>. There
+        should be one <code>POST</code> per page view.</li>
+      <li>Check the <strong>Application</strong> tab: <em>Cookies</em> and <em>Local
+        Storage</em> should both be empty.</li>
+      <li>Reload your dashboard — the page view should be there within a couple of seconds.</li>
+    </ol>
+    <p>
+      If nothing arrives, check that the website id is correct and that the domain matches. The
+      server rejects hits for websites it does not know with a
+      <code>400 unknown website: …</code> response.
+    </p>
+
+    <h2>Existing Umami snippets</h2>
+    <p>
+      The API is Umami v2 compatible, so the standard Umami tracker and the official Umami
+      dashboard work against Sumami unchanged. Sumami is an independent project that implements
+      the Umami v2 HTTP API; it uses no Umami assets.
+    </p>
+
+    <p class="footnote">
+      The tracker file is original work, MIT licensed together with the rest of Sumami. All
+      licences are recorded in <code>assets/CREDITS.md</code>.
+    </p>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="footer-mark">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      Sumami 数猫咪
+    </p>
+    <p>MIT licensed. Self-hosted, cookieless, no telemetry.</p>
+    <ul>
+      <li><a href="install.html">Install</a></li>
+      <li><a href="self-host.html">Self-host</a></li>
+      <li><a href="tracker.html">Tracker</a></li>
+      <li><a href="api.html">API</a></li>
+      <li><a href="cli.html">CLI</a></li>
+      <li><a href="privacy.html">Privacy</a></li>
+      <li><a href="faq.html">FAQ</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>

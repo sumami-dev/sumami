@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sumami — self-hosted web analytics in one small binary</title>
+<meta name="description" content="Sumami (数猫咪) is a self-hosted, single-binary web analytics service built with Rust, Axum and embedded DuckDB. Cookieless, no raw IP storage, Umami v2 compatible API.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      <span>Sumami</span>
+      <span class="brand-cn">数猫咪</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <ul>
+        <li><a href="index.html" aria-current="page">Home</a></li>
+        <li><a href="install.html">Install</a></li>
+        <li><a href="self-host.html">Self-host</a></li>
+        <li><a href="tracker.html">Tracker</a></li>
+        <li><a href="api.html">API</a></li>
+        <li><a href="cli.html">CLI</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="faq.html">FAQ</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <h1>Sumami</h1>
+          <p class="tagline">Count kitties who visit my websites.</p>
+          <p class="tagline-cn">由猫开发 — a self-hosted web analytics service that fits on a cheap VPS.</p>
+          <p class="lede">
+            Sumami is a single-binary analytics server written in Rust. It stores everything in
+            one embedded DuckDB file, serves its own dashboard and tracker, and makes no outbound
+            network calls at all. Nothing to sign up for, nothing to pay for, nothing that phones home.
+          </p>
+          <ul class="badges">
+            <li><strong>Rust</strong> + Axum + Tokio</li>
+            <li><strong>DuckDB 2.0.0</strong> embedded</li>
+            <li>One binary, one file</li>
+            <li>1 vCPU / 512 MB RAM</li>
+            <li><strong>MIT</strong> licence</li>
+          </ul>
+          <div class="actions">
+            <a class="button button-primary" href="install.html">Install it</a>
+            <a class="button button-secondary" href="privacy.html">Read the privacy promise</a>
+            <a class="button button-secondary" href="api.html">API reference</a>
+          </div>
+        </div>
+        <div class="hero-art">
+          <svg viewBox="0 0 160 150" role="img" aria-label="A cat sitting beside a chart of rising page views">
+            <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.55">
+              <path d="M14 128h132"/>
+              <path d="M14 128V34"/>
+            </g>
+            <g fill="currentColor" opacity="0.35">
+              <rect x="30" y="96" width="16" height="24" rx="3"/>
+              <rect x="56" y="80" width="16" height="40" rx="3"/>
+              <rect x="82" y="64" width="16" height="56" rx="3"/>
+              <rect x="108" y="44" width="16" height="76" rx="3"/>
+            </g>
+            <g fill="currentColor">
+              <path d="M96 122c-9 0-16-7-16-16v-8c0-6 4-11 10-13l14-5a9 9 0 0 1 11 9v6c0 6-4 10-9 12l-4 1v6c0 4-3 8-6 8z"/>
+              <path d="M92 118c-4 0-6-3-6-7v-5c0-3 2-6 5-7l12-4c3-1 5 1 5 4v4c0 3-2 5-5 6l-3 1v4c0 3-3 4-8 4z" opacity="0.55"/>
+              <path d="M104 92l-3-12 9 6 9-6-3 12z"/>
+              <path d="M100 100c-2 3-6 3-8 0 1-4 6-5 8 0zM112 100c2 3 6 3 8 0-1-4-6-5-8 0z"/>
+              <ellipse cx="106" cy="112" rx="3" ry="2"/>
+            </g>
+            <g fill="currentColor" opacity="0.5">
+              <ellipse cx="70" cy="26" rx="2.6" ry="3.4" transform="rotate(-18 70 26)"/>
+              <ellipse cx="76" cy="22" rx="2.4" ry="3.2" transform="rotate(-6 76 22)"/>
+              <ellipse cx="83" cy="22" rx="2.4" ry="3.2" transform="rotate(6 83 22)"/>
+              <ellipse cx="89" cy="26" rx="2.6" ry="3.4" transform="rotate(18 89 26)"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <h2>What it is</h2>
+    <p>
+      Sumami collects page views from your own websites and serves them back to you as
+      statistics. The whole thing is one executable file plus one database file. There is no
+      queue, no cache to operate, no object storage, no Kubernetes, no managed cloud service in
+      the middle. You copy two files to a box, run one systemd unit, and you are done.
+    </p>
+    <p>
+      The HTTP API is <strong>Umami v2 compatible</strong>, so the official Umami dashboard — and
+      the existing Umami tracker snippets — work against it unchanged. Sumami is an independent
+      open-source project; it implements the Umami v2 HTTP API and uses no Umami assets.
+    </p>
+
+    <ul class="card-grid">
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+          <h3>One file of data</h3>
+        </div>
+        <p>Everything lives in a single <code>.duckdb</code> file you can copy, back up or delete. No database server to install, secure or upgrade.</p>
+      </li>
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l7 4v5c0 4.4-3 8.4-7 9-4-.6-7-4.6-7-9V7l7-4z"/><path d="M9 12l2 2 4-4"/></svg>
+          <h3>Nothing to phone home to</h3>
+        </div>
+        <p>No telemetry, no crash reporting, no update checks, no outbound requests of any kind. The server never talks to anything but its visitors and you.</p>
+      </li>
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <h3>Reads at a glance</h3>
+        </div>
+        <p>Page views, visitors, referrers, browsers, operating systems, devices, countries, languages and screens — over any time window, filterable by dimension.</p>
+      </li>
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          <h3>An offline analyser</h3>
+        </div>
+        <p>The <code>sumami</code> CLI reads the same DuckDB file directly, so you can query your traffic on a laptop with no server running at all.</p>
+      </li>
+    </ul>
+
+    <h2>Quick start</h2>
+    <p>Five lines, on any Linux box with a spare gigabyte of disk:</p>
+    <pre class="shell"><code><span class="cmt"># 1. download the release archive and unpack it</span>
+curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
+
+<span class="cmt"># 2. install the server, the CLI and the DuckDB library</span>
+sudo install -m 0755 sumami-server sumami /usr/local/bin/
+sudo install -m 0755 libduckdb.so /usr/local/lib/
+
+<span class="cmt"># 3. run it</span>
+sumami-server serve --db /var/lib/sumami/sumami.duckdb --port 3999
+
+<span class="cmt"># 4. drop the tracker into your website</span>
+<span class="cmt">#    &lt;script defer src="https://your-host/sumami.js" data-website-id="&lt;uuid&gt;"&gt;&lt;/script&gt;</span>
+
+<span class="cmt"># 5. look at the dashboard at https://your-host/</span></code></pre>
+    <p>
+      The release archive contains three files: <code>sumami-server</code> (the server),
+      <code>sumami</code> (the offline CLI) and <code>libduckdb.so</code> (the DuckDB 2.0.0
+      shared library). DuckDB is linked dynamically, which keeps the executables at a few
+      megabytes each; the library is found next to the binary, so keep the three together.
+      The <a href="install.html">install guide</a> has the full walkthrough, including Windows,
+      macOS, the admin password and the systemd unit.
+    </p>
+
+    <h2>The privacy promise</h2>
+    <p>
+      Analytics software handles data that identifies people, so Sumami treats the exclusions
+      as acceptance criteria rather than options. The <a href="privacy.html">privacy page</a>
+      states them in full; the short version:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Behaviour</th><th>Sumami</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Cookies</td><td><span class="pill no">never set</span></td></tr>
+          <tr><td><code>localStorage</code> identifiers</td><td><span class="pill no">never used</span></td></tr>
+          <tr><td>Fingerprinting (canvas, fonts, audio, hardware)</td><td><span class="pill no">never attempted</span></td></tr>
+          <tr><td>Raw IP addresses</td><td><span class="pill no">never stored, never logged</span></td></tr>
+          <tr><td>Visitor identifier</td><td>rotating, non-reversible HMAC over a coarse IP prefix</td></tr>
+          <tr><td>URL query strings</td><td>stripped by default (opt in per site)</td></tr>
+          <tr><td>Do Not Track / Global Privacy Control</td><td><span class="pill yes">honoured — nothing is sent</span></td></tr>
+          <tr><td>Geolocation</td><td>only from an edge header you configure; never from a geo-IP database</td></tr>
+          <tr><td>Outbound calls from the server</td><td><span class="pill no">none, ever</span></td></tr>
+          <tr><td>Retention</td><td>configurable window, enforced by <code>sumami prune</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5"/><path d="M12 17.5v.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        One thing you have to take care of
+      </p>
+      <p>
+        Custom event properties are <strong>free-form data you supply</strong>. If you put an
+        email address, a phone number or a user id in there, you have put personal data in your
+        database, and every privacy guarantee on this page stops applying to it. The tracker
+        never attaches anything sensitive on its own.
+      </p>
+    </div>
+
+    <h2>Why another analytics tool?</h2>
+    <p>
+      Most analytics services ask you to accept a privacy policy, hand your visitors' data to a
+      third party, and then charge by the number of page views. Sumami is the opposite: the
+      software is MIT licensed, the data stays on a machine you control, and the cost of running
+      it is one small VPS you already have.
+    </p>
+    <p>
+      The <a href="self-host.html">self-hosting guide</a> walks through a complete deployment on
+      a 1 vCPU / 512 MB box: systemd, a reverse proxy, TLS via ACME, and backups you can
+      actually restore from.
+    </p>
+
+    <h2>Documentation</h2>
+    <ul class="card-grid">
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+          <h3><a href="install.html">Install</a></h3>
+        </div>
+        <p>Download, unpack, run, create your first website, install the tracker.</p>
+      </li>
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5v.01M7 16.5v.01"/></svg>
+          <h3><a href="self-host.html">Self-host</a></h3>
+        </div>
+        <p>systemd, reverse proxy, TLS certificates, backups and upgrades on a cheap VPS.</p>
+      </li>
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
+          <h3><a href="tracker.html">Tracker</a></h3>
+        </div>
+        <p>Every way to put <code>sumami.js</code> on a site: plain script, self-hosting, CDN, multi-site.</p>
+      </li>
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+          <h3><a href="api.html">HTTP API</a></h3>
+        </div>
+        <p>Every endpoint, with the request bodies, response shapes and auth rules.</p>
+      </li>
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>
+          <h3><a href="cli.html">CLI</a></h3>
+        </div>
+        <p>The offline analyser: read the database file directly, or talk to a running server.</p>
+      </li>
+      <li>
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l7 4v5c0 4.4-3 8.4-7 9-4-.6-7-4.6-7-9V7l7-4z"/></svg>
+          <h3><a href="privacy.html">Privacy</a></h3>
+        </div>
+        <p>Exactly what is collected, what is refused, and how to erase it.</p>
+      </li>
+    </ul>
+
+    <p class="footnote">
+      Sumami / 数猫咪 is an independent open-source project. It is an open-source alternative to
+      Umami and implements the Umami v2 HTTP API; no Umami assets are used. Licensed under the
+      MIT licence. Third-party names are referenced nominatively.
+    </p>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="footer-mark">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      Sumami 数猫咪
+    </p>
+    <p>MIT licensed. Self-hosted, cookieless, no telemetry.</p>
+    <ul>
+      <li><a href="install.html">Install</a></li>
+      <li><a href="self-host.html">Self-host</a></li>
+      <li><a href="tracker.html">Tracker</a></li>
+      <li><a href="api.html">API</a></li>
+      <li><a href="cli.html">CLI</a></li>
+      <li><a href="privacy.html">Privacy</a></li>
+      <li><a href="faq.html">FAQ</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>

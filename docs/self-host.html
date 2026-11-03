@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-host on a cheap VPS — Sumami</title>
+<meta name="description" content="Run Sumami on a 1 vCPU / 512 MB VPS: install the binaries, write a systemd unit, get a Let's Encrypt certificate — with a reverse proxy or with Sumami's own --ssl flag — and back up the DuckDB file.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      <span>Sumami</span>
+      <span class="brand-cn">数猫咪</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="install.html">Install</a></li>
+        <li><a href="self-host.html" aria-current="page">Self-host</a></li>
+        <li><a href="tracker.html">Tracker</a></li>
+        <li><a href="api.html">API</a></li>
+        <li><a href="cli.html">CLI</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="faq.html">FAQ</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+
+    <h1 class="page-title">Self-host on a cheap VPS</h1>
+    <p class="page-lede">
+      A complete deployment of Sumami on a 1 vCPU / 512 MB machine: a dedicated user, a
+      systemd unit, a real certificate, and backups you can restore from. Nothing here needs
+      more than a few megabytes of RAM. TLS can come from a reverse proxy or from Sumami
+      itself — the guide covers both.
+    </p>
+
+    <h2>What the box needs</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Resource</th><th>Amount</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>vCPU</td><td>1</td><td>Plenty. The server is idle between flushes.</td></tr>
+          <tr><td>RAM</td><td>512 MB</td><td>DuckDB is capped at 256 MB by default so the OOM killer stays away.</td></tr>
+          <tr><td>Disk</td><td>10 GB</td><td>The database is small; page views are a few dozen bytes each.</td></tr>
+          <tr><td>OS</td><td>Debian 12 / Ubuntu 22.04+</td><td>Any systemd Linux works. Alpine needs <code>libstdc++</code> and <code>libgcc</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      DuckDB's memory limit is what makes 512 MB viable. Set it explicitly if you want to be
+      sure:
+    </p>
+    <pre class="shell"><code>SUMAMI_DUCKDB_MEMORY_LIMIT=256MB</code></pre>
+    <p>
+      Other knobs worth knowing about on a small box:
+    </p>
+    <ul>
+      <li><code>SUMAMI_MAX_QUEUE</code> (default <code>100000</code>) — how many events may be
+        buffered in memory before the oldest are dropped. Under overload the server drops data
+        rather than dying; the counter shows up in <code>/api/heartbeat</code>.</li>
+      <li><code>SUMAMI_FLUSH_INTERVAL_SECS</code> (default <code>2</code>) — how often the writer
+        thread commits a batch. Two seconds keeps disk I/O low and means the dashboard lags by
+        at most that.</li>
+    </ul>
+
+    <h2>1. Create the user and the directories</h2>
+    <p>
+      Run the server as its own unprivileged user. It never needs root and it never needs to
+      write anywhere except its data directory.
+    </p>
+    <pre class="shell"><code>sudo useradd --system --home /var/lib/sumami --shell /usr/sbin/nologin sumami
+sudo mkdir -p /var/lib/sumami
+sudo chown sumami:sumami /var/lib/sumami
+sudo chmod 0750 /var/lib/sumami</code></pre>
+
+    <h2>2. Install the three files</h2>
+    <pre class="shell"><code><span class="cmt"># download and unpack the release archive</span>
+cd /tmp
+curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
+
+<span class="cmt"># install the executables</span>
+sudo install -m 0755 sumami-server sumami /usr/local/bin/
+
+<span class="cmt"># install the DuckDB 2.0.0 shared library</span>
+sudo install -m 0755 libduckdb.so /usr/local/lib/
+sudo ldconfig
+ldconfig -p | grep duckdb</code></pre>
+    <div class="callout tip">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+        Keeping the three files together
+      </p>
+      <p>
+        DuckDB is linked dynamically, and the loader looks for the library next to the binary.
+        If you install into <code>/usr/local/bin</code>, <code>libduckdb.so</code> must be on the
+        loader path — <code>/usr/local/lib</code> plus <code>ldconfig</code> does that. If you
+        would rather keep everything in one directory that is trivially backed up and versioned,
+        install all three into <code>/opt/sumami</code> and add
+        <code>LD_LIBRARY_PATH=/opt/sumami</code> to the unit's environment file.
+      </p>
+    </div>
+
+    <h2>3. Write the environment file</h2>
+    <p>
+      Secrets do not belong in a unit file or in the repository. Put them in a file only the
+      service user can read.
+    </p>
+    <pre class="shell"><code>sudo install -d -m 0750 /etc/sumami
+sudo tee /etc/sumami/sumami.env &gt;/dev/null &lt;&lt;'EOF'
+SUMAMI_DB=/var/lib/sumami/sumami.duckdb
+SUMAMI_HOST=127.0.0.1
+SUMAMI_PORT=3999
+
+<span class="cmt"># a long random string; mint one with: openssl rand -hex 32</span>
+SUMAMI_JWT_SECRET=replace-me-with-64-hex-characters
+
+SUMAMI_ADMIN_USER=admin
+SUMAMI_ADMIN_PASSWORD=replace-me-with-a-long-passphrase
+
+<span class="cmt"># keep events for a year, then prune</span>
+SUMAMI_RETENTION_DAYS=365
+
+<span class="cmt"># stay inside a 512 MB box</span>
+SUMAMI_DUCKDB_MEMORY_LIMIT=256MB
+SUMAMI_MAX_QUEUE=100000
+SUMAMI_FLUSH_INTERVAL_SECS=2
+
+<span class="cmt"># directory holding the dashboard frontend and this docs site</span>
+SUMAMI_JS_DIR=/opt/sumami/js
+SUMAMI_DOCS_DIR=/opt/sumami/docs
+
+<span class="cmt"># only if Sumami should manage TLS itself (see section 5, option B)</span>
+# SUMAMI_SSL_DOMAIN=example.com
+# SUMAMI_SSL_EMAIL=you@example.com
+EOF
+
+sudo chown root:sumami /etc/sumami/sumami.env
+sudo chmod 0640 /etc/sumami/sumami.env</code></pre>
+    <p>
+      If you leave <code>SUMAMI_JWT_SECRET</code> unset, the server generates a random secret
+      on first run and writes it next to the database
+      (<code>/var/lib/sumami/sumami.duckdb.jwt-secret</code>, mode <code>0600</code>). That is
+      fine, but setting it explicitly means the secret survives a move to another machine.
+    </p>
+    <h2>4. Write the systemd unit</h2>
+    <pre class="shell"><code>sudo tee /etc/systemd/system/sumami.service >/dev/null <<'EOF'
+[Unit]
+Description=Sumami web analytics
+Documentation=https://sumami.dev/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sumami
+Group=sumami
+EnvironmentFile=/etc/sumami/sumami.env
+ExecStart=/usr/local/bin/sumami-server serve
+Restart=on-failure
+RestartSec=5
+
+<span class="cmt"># hardening: the service only ever needs to write its own data directory</span>
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/sumami
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now sumami
+sudo systemctl status sumami</code></pre>
+    <p>
+      The command line is intentionally empty of flags: everything comes from the environment
+      file, so <code>sudo systemctl edit sumami</code> is enough to change a setting on a live
+      box.
+    </p>
+    <pre class="shell"><code>sudo journalctl -u sumami -f</code></pre>
+    <p>
+      On the very first start the server creates the admin user. If
+      <code>SUMAMI_ADMIN_PASSWORD</code> was not set, the generated password is printed to the
+      log exactly once:
+    </p>
+    <pre class="shell"><code>[sumami] created the admin user 'admin'
+[sumami] password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
+[sumami] store it now — it is not shown again</code></pre>
+
+    <h2>5. TLS</h2>
+    <p>
+      There are two ways to put this box behind HTTPS, and they are alternatives — pick one.
+      A reverse proxy in front is the traditional setup and works with any proxy you like.
+      Or you can let Sumami manage the certificate itself, with no proxy at all.
+    </p>
+
+    <h3>Option A: put a reverse proxy in front</h3>
+    <p>
+      The server binds to <code>127.0.0.1</code>, so nothing on the internet can reach it
+      directly. A proxy terminates TLS and forwards plain HTTP to port 3999.
+    </p>
+
+    <h3>Caddy</h3>
+    <p>
+      Caddy obtains and renews a Let's Encrypt certificate on its own — no cron, no certbot.
+      This is the shortest correct configuration.
+    </p>
+    <pre class="shell"><code>sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
+analytics.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3999
+}
+EOF
+
+sudo systemctl reload caddy</code></pre>
+
+    <h3>nginx</h3>
+    <pre class="shell"><code>sudo tee /etc/nginx/sites-available/sumami >/dev/null <<'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name analytics.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name analytics.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/analytics.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/analytics.example.com/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:3999;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    <span class="cmt"># the tracker is a static file; let it cache briefly</span>
+    location = /sumami.js {
+        proxy_pass http://127.0.0.1:3999;
+        proxy_set_header Host $host;
+        add_header Cache-Control "public, max-age=300";
+    }
+}
+EOF
+
+sudo ln -sf /etc/nginx/sites-available/sumami /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx</code></pre>
+    <p>
+      With nginx, get the certificate with certbot:
+    </p>
+    <pre class="shell"><code>sudo certbot --nginx -d analytics.example.com</code></pre>
+    <p>
+      certbot installs a timer that renews the certificate twice a day and reloads nginx.
+    </p>
+
+    <h3>ACME in general</h3>
+    <p>
+      Either way the certificate comes from Let's Encrypt over ACME, and renewal is automatic.
+      Two things are required for it to work: port 80 must be reachable from the internet, and
+      the domain must already point at your server's IP address. A DNS record that has not
+      propagated yet is the most common reason for a failed first issuance — check with
+      <code>dig +short analytics.example.com</code>.
+    </p>
+    <p>
+      If port 80 is closed, use the DNS-01 challenge instead (certbot with a DNS plugin, or
+      <code>acme.sh --dns</code>). That works with any DNS provider and needs no inbound port.
+    </p>
+
+    <h3 id="lets-sumami-manage-tls-itself">Option B: let Sumami manage TLS itself</h3>
+    <p>
+      If there is no other service on the box that needs port 443, you can skip the reverse
+      proxy entirely. Sumami can obtain a Let's Encrypt certificate on its own over ACME and
+      renew it in the background — no certbot, no cron job, no proxy just to serve TLS.
+    </p>
+    <p>
+      Pass the domain and a contact address to the server:
+    </p>
+    <pre class="shell"><code>sumami-server serve --ssl example.com --ssl-email you@example.com</code></pre>
+    <p>
+      In the systemd unit that means adding the flags to <code>ExecStart</code>:
+    </p>
+    <pre class="shell"><code>sudo tee /etc/systemd/system/sumami.service >/dev/null <<'EOF'
+[Unit]
+Description=Sumami web analytics
+Documentation=https://sumami.dev/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sumami
+Group=sumami
+EnvironmentFile=/etc/sumami/sumami.env
+ExecStart=/usr/local/bin/sumami-server serve --ssl example.com --ssl-email you@example.com
+Restart=on-failure
+RestartSec=5
+
+<span class="cmt"># hardening: the service only ever needs to write its own data directory</span>
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/sumami
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl restart sumami</code></pre>
+    <p>
+      The same four settings are available as environment variables, so you can keep the unit
+      file free of flags if you prefer:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Flag</th><th>Environment variable</th><th>Default</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>--ssl <domain></code></td><td><code>SUMAMI_SSL_DOMAIN</code></td><td>none</td><td>The domain to serve HTTPS for. Without it the server speaks plain HTTP. <code>--ssl-domain</code> is accepted as an alias.</td></tr>
+          <tr><td><code>--ssl-email <address></code></td><td><code>SUMAMI_SSL_EMAIL</code></td><td>none</td><td>Contact address registered with the ACME provider. Let's Encrypt sends expiry notices there.</td></tr>
+          <tr><td><code>--ssl-cache-dir <path></code></td><td><code>SUMAMI_SSL_CACHE_DIR</code></td><td><code><directory of the database>/acme</code></td><td>Directory holding the ACME account and the certificates.</td></tr>
+          <tr><td><code>--ssl-port <port></code></td><td><code>SUMAMI_SSL_PORT</code></td><td><code>443</code></td><td>The port to listen on for HTTPS.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+        Where the ACME cache lives by default
+      </p>
+      <p>
+        By default the cache directory is derived from the database path: it is an
+        <code>acme</code> directory next to the database file. With
+        <code>SUMAMI_DB=/var/lib/sumami/sumami.duckdb</code> the cache is
+        <code>/var/lib/sumami/acme</code>. That is an absolute path, so it does not depend on
+        the working directory of the service, and it lands inside the data directory the
+        hardening above already allows writes to. You do not need to set anything for this
+        to work.
+      </p>
+      <p>
+        Override it with <code>SUMAMI_SSL_CACHE_DIR</code> if you would rather keep the cache
+        somewhere else:
+      </p>
+      <pre class="shell"><code><span class="cmt"># in /etc/sumami/sumami.env</span>
+SUMAMI_SSL_CACHE_DIR=/var/lib/sumami/acme</code></pre>
+    </div>
+    <div class="callout warn">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        Port 443 has to reach Sumami directly
+      </p>
+      <p>
+        The challenge used is TLS-ALPN-01: the ACME server connects to port 443 and negotiates
+        a special certificate over the TLS handshake itself. That means nothing may sit in
+        front of Sumami on port 443 — no proxy, no load balancer, no port-forward to another
+        machine. If a reverse proxy terminates TLS in front of the server, use the proxy's own
+        ACME support instead (Caddy, or nginx with certbot) and leave <code>--ssl</code>
+        unset.
+      </p>
+      <p>
+        Port 80 does not need to be open: the certificate is validated over port 443 alone.
+        The domain's DNS record must already point at this server's IP address, or the first
+        issuance will fail.
+      </p>
+    </div>
+    <div class="callout warn">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        Back up the ACME cache
+      </p>
+      <p>
+        <code>/var/lib/sumami/acme</code> — the <code>acme</code> directory next to the
+        database, or whatever you set <code>SUMAMI_SSL_CACHE_DIR</code> to — holds the ACME
+        account and the issued certificates. It is small, but lose it and the server has to
+        register a new ACME account and re-issue the certificate — and Let's Encrypt
+        rate-limits repeated issuance for the same domain. Add it to the backup script next to
+        the database.
+      </p>
+    </div>
+
+    <h2>6. Firewall</h2>
+    <p>
+      Only the proxy needs to be reachable. Everything else stays closed.
+    </p>
+    <pre class="shell"><code>sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+sudo ufw status</code></pre>
+    <p>
+      Port 3999 is deliberately not opened: the server is bound to loopback and is only
+      reachable through the proxy.
+    </p>
+    <p>
+      If you took Option B and let Sumami manage TLS itself, port 443 has to reach the
+      Sumami process directly, so bind the server to a public address and open the port:
+    </p>
+    <pre class="shell"><code><span class="cmt"># in /etc/sumami/sumami.env</span>
+SUMAMI_HOST=0.0.0.0
+
+<span class="cmt"># and open it</span>
+sudo ufw allow 443/tcp</code></pre>
+    <p>
+      Port 80 stays closed — the ACME challenge runs over port 443.
+    </p>
+
+    <h2>7. Backups</h2>
+    <p>
+      Your entire dataset is one file, so a backup is one file copy. Stop the service first so
+      the copy is consistent — DuckDB's write-ahead log means a live copy can otherwise be
+      incomplete.
+    </p>
+    <pre class="shell"><code><span class="cmt"># a nightly snapshot</span>
+sudo tee /usr/local/bin/sumami-backup &gt;/dev/null &lt;&lt;'EOF'
+#!/bin/sh
+set -eu
+DEST=/var/backups/sumami
+mkdir -p "$DEST"
+systemctl stop sumami
+cp -a /var/lib/sumami/sumami.duckdb "$DEST/sumami-$(date -u +%Y%m%dT%H%M%SZ).duckdb"
+cp -a /var/lib/sumami/sumami.duckdb.jwt-secret "$DEST/" 2>/dev/null || true
+<span class="cmt"># the ACME account and certificates, if Sumami manages TLS itself</span>
+cp -a /var/lib/sumami/acme "$DEST/" 2>/dev/null || true
+systemctl start sumami
+find "$DEST" -name 'sumami-*.duckdb' -mtime +30 -delete
+EOF
+sudo chmod 0755 /usr/local/bin/sumami-backup</code></pre>
+    <pre class="shell"><code>sudo tee /etc/cron.d/sumami-backup &gt;/dev/null &lt;&lt;'EOF'
+30 3 * * * root /usr/local/bin/sumami-backup
+EOF
+sudo chmod 0644 /etc/cron.d/sumami-backup</code></pre>
+    <p>
+      Keep the copies off the box as well — <code>rsync</code> to another machine, or
+      <code>restic</code> to object storage you control. A backup that lives on the same disk
+      is not a backup.
+    </p>
+    <h3>Restoring</h3>
+    <pre class="shell"><code>sudo systemctl stop sumami
+sudo cp -a /var/backups/sumami/sumami-20260115T033000Z.duckdb /var/lib/sumami/sumami.duckdb
+sudo chown sumami:sumami /var/lib/sumami/sumami.duckdb
+sudo systemctl start sumami
+curl -s http://127.0.0.1:3999/api/heartbeat</code></pre>
+
+    <h2>8. Retention</h2>
+    <p>
+      Set <code>SUMAMI_RETENTION_DAYS</code> to a number of days and prune regularly. The
+      retention window is a first-class setting: it is stored per website, returned by
+      <code>GET /api/websites/:id</code>, and honoured by the CLI.
+    </p>
+    <pre class="shell"><code><span class="cmt"># local file: prune the database in place</span>
+sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...
+
+<span class="cmt"># or through the running server</span>
+sumami prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...</code></pre>
+    <p>
+      Schedule it in the same cron file as the backup. Pruning before the backup keeps the
+      backup small.
+    </p>
+
+    <h2>9. Upgrades</h2>
+    <pre class="shell"><code>sudo systemctl stop sumami
+sudo install -m 0755 sumami-server sumami /usr/local/bin/
+sudo systemctl start sumami
+sudo journalctl -u sumami -n 20</code></pre>
+    <p>
+      Schema changes are additive and need no migration step, so upgrading in place is safe.
+      Take a backup first anyway.
+    </p>
+
+    <h2>Serving the dashboard from a CDN</h2>
+    <p>
+      The backend serves a deliberately tiny HTML shell at <code>/</code> that loads the frontend
+      JavaScript. If you would rather serve that frontend from a CDN, point
+      <code>SUMAMI_APP_URL</code> at the CDN base URL:
+    </p>
+    <pre class="shell"><code>SUMAMI_APP_URL=https://cdn.example.com/sumami-app</code></pre>
+    <p>
+      The shell then references <code>https://cdn.example.com/sumami-app/sumami-app.js</code>
+      and <code>.../sumami.css</code> instead of the local files, and the backend ships no
+      frontend code at all. This is optional — the default works fine on one box.
+    </p>
+
+    <h2>A note on Cloudflare</h2>
+    <p>
+      You do not need Cloudflare, and Sumami is designed to work without it. If you happen to
+      put your site behind Cloudflare, the proxy can supply a country code header, which is
+      the only way Sumami learns anything about geography:
+    </p>
+    <pre class="shell"><code>SUMAMI_COUNTRY_HEADER=CF-IPCountry</code></pre>
+    <p>
+      Without such a header, no geographic information is recorded at all — not even a
+      country. See the <a href="privacy.html">privacy page</a>.
+    </p>
+
+    <h2>Checklist</h2>
+    <ul>
+      <li>Binaries and <code>libduckdb.so</code> installed, loader finds the library.</li>
+      <li>Environment file at <code>/etc/sumami/sumami.env</code>, mode <code>0640</code>.</li>
+      <li>Data directory owned by the <code>sumami</code> user, mode <code>0750</code>.</li>
+      <li>systemd unit enabled and restarting on failure.</li>
+      <li>Proxy in front on 443, server bound to loopback only.</li>
+      <li>Certificate issued and auto-renewing (check the renewal log).</li>
+      <li>Backup running, and you have tested a restore.</li>
+      <li>If Sumami manages TLS itself: port 443 reaches the Sumami process directly, and
+        the ACME cache directory is included in the backups.</li>
+      <li>Retention window set, prune scheduled.</li>
+    </ul>
+
+    <p class="footnote">
+      Sumami is an independent open-source project, an open-source alternative to Umami that
+      implements the Umami v2 HTTP API. MIT licensed.
+    </p>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="footer-mark">
+      <svg viewBox="0 0 32 32" role="img" aria-label="A cat paw print">
+        <g fill="currentColor">
+          <ellipse cx="16" cy="21" rx="6.5" ry="5"/>
+          <ellipse cx="7.5" cy="13" rx="3" ry="4" transform="rotate(-18 7.5 13)"/>
+          <ellipse cx="13" cy="9" rx="2.8" ry="3.8" transform="rotate(-6 13 9)"/>
+          <ellipse cx="19" cy="9" rx="2.8" ry="3.8" transform="rotate(6 19 9)"/>
+          <ellipse cx="24.5" cy="13" rx="3" ry="4" transform="rotate(18 24.5 13)"/>
+        </g>
+      </svg>
+      Sumami 数猫咪
+    </p>
+    <p>MIT licensed. Self-hosted, cookieless, no telemetry.</p>
+    <ul>
+      <li><a href="install.html">Install</a></li>
+      <li><a href="self-host.html">Self-host</a></li>
+      <li><a href="tracker.html">Tracker</a></li>
+      <li><a href="api.html">API</a></li>
+      <li><a href="cli.html">CLI</a></li>
+      <li><a href="privacy.html">Privacy</a></li>
+      <li><a href="faq.html">FAQ</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>
