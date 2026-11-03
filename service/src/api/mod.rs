@@ -20,7 +20,7 @@ use axum::Router;
 
 use crate::config::Config;
 use crate::error::ApiError;
-use crate::pool::Db;
+use crate::storage::Storage;
 use crate::writer::Writer;
 
 /// Metadata we need on the hot path (collection).
@@ -35,8 +35,8 @@ pub struct WebsiteMeta {
 /// Shared application state.
 #[derive(Clone)]
 pub struct AppState {
-    /// The database handle (one writer, pooled readers).
-    pub db: Arc<Db>,
+    /// The storage backend (DuckDB, SQLite or PostgreSQL).
+    pub storage: Arc<dyn Storage>,
     /// The single writer.
     pub writer: Writer,
     /// Runtime configuration.
@@ -54,13 +54,13 @@ pub struct AppState {
 impl AppState {
     /// Build the state.
     pub fn new(
-        db: Arc<Db>,
+        storage: Arc<dyn Storage>,
         writer: Writer,
         config: Arc<Config>,
         jwt_secret: Arc<String>,
     ) -> Self {
         Self {
-            db,
+            storage,
             writer,
             config,
             jwt_secret,
@@ -103,24 +103,17 @@ impl AppState {
     /// Reload the website cache.
     fn refresh_website_cache(&self) {
         let websites = self
-            .db
-            .with_read(|conn| {
-                let mut stmt = conn.prepare(
-                    "SELECT id, domain, retention_days, country_header FROM website",
-                )?;
-                let mut rows = stmt.query([])?;
-                let mut out = Vec::new();
-                while let Some(row) = rows.next()? {
-                    out.push(WebsiteMeta {
-                        id: row.get(0)?,
-                        domain: row.get(1)?,
-                        retention_days: row.get(2)?,
-                        country_header: row.get(3)?,
-                    });
-                }
-                Ok(out)
+            .storage
+            .websites()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|website| WebsiteMeta {
+                id: website.id,
+                domain: website.domain,
+                retention_days: website.retention_days,
+                country_header: website.country_header,
             })
-            .unwrap_or_default();
+            .collect::<Vec<_>>();
 
         let mut cache = self.website_cache.write().unwrap_or_else(|e| e.into_inner());
         cache.clear();

@@ -13,46 +13,32 @@ pub async fn login(
     State(state): State<AppState>,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ApiError> {
-    let user = state
-        .db
-        .with_read(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, username, password_hash, role, created_at FROM \"user\" WHERE username = ?",
-            )?;
-            let mut rows = stmt.query([request.username.as_str()])?;
-            match rows.next()? {
-                Some(row) => Ok(Some((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, chrono::NaiveDateTime>(4)?,
-                ))),
-                None => Ok(None),
-            }
-        })
-        .map_err(ApiError::internal)?;
+    let user = state.storage.user(&request.username)?;
 
-    let (id, username, hash, role, created_at) =
-        user.ok_or_else(|| ApiError::BadRequest("invalid username or password".into()))?;
+    let Some(user) = user else {
+        // The same message as a wrong password, so the endpoint does not leak which
+        // usernames exist.
+        return Err(ApiError::BadRequest(
+            "invalid username or password".into(),
+        ));
+    };
 
-    if !crate::auth::verify_password(&request.password, &hash) {
-        // Same message as "unknown user" so the endpoint does not leak which usernames exist.
+    if !crate::auth::verify_password(&request.password, &user.password_hash) {
         return Err(ApiError::BadRequest(
             "invalid username or password".into(),
         ));
     }
 
-    let token = crate::auth::issue_token(&state.jwt_secret, &id, &username, &role)
-        .map_err(ApiError::internal)?;
+    let token = crate::auth::issue_token(&state.jwt_secret, &user.id, &user.username, &user.role)?;
+    let _ = &state;
 
     Ok(Json(LoginResponse {
         token,
         user: User {
-            id,
-            username,
-            role,
-            created_at,
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            created_at: user.created_at,
         },
     }))
 }
@@ -62,20 +48,13 @@ pub async fn refresh(
     State(state): State<AppState>,
     user: AuthUser,
 ) -> Result<Json<LoginResponse>, ApiError> {
-    let token = crate::auth::issue_token(&state.jwt_secret, &user.id, &user.username, &user.role)
-        .map_err(ApiError::internal)?;
+    let token = crate::auth::issue_token(&state.jwt_secret, &user.id, &user.username, &user.role)?;
 
     let created_at = state
-        .db
-        .with_read(|conn| {
-            let mut stmt = conn.prepare("SELECT created_at FROM \"user\" WHERE id = ?")?;
-            let mut rows = stmt.query([user.id.as_str()])?;
-            match rows.next()? {
-                Some(row) => Ok(row.get::<_, chrono::NaiveDateTime>(0)?),
-                None => Ok(chrono::Utc::now().naive_utc()),
-            }
-        })
-        .map_err(ApiError::internal)?;
+        .storage
+        .user(&user.username)?
+        .map(|u| u.created_at)
+        .unwrap_or_else(crate::db::now);
 
     Ok(Json(LoginResponse {
         token,

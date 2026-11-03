@@ -14,6 +14,7 @@ pub mod models;
 pub mod pool;
 pub mod reports;
 pub mod server;
+pub mod storage;
 pub mod static_files;
 #[cfg(feature = "tls")]
 pub mod tls;

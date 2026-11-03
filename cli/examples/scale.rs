@@ -10,7 +10,8 @@
 use std::time::Instant;
 
 use duckdb::Connection;
-use sumami_service::reports::{self, ReportQuery, TimeRange};
+use sumami_service::pool::Db;
+use sumami_service::storage::{ReportQuery, Storage, TimeRange};
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -103,6 +104,8 @@ FROM generate_series(1, {rows}) t(i);
 "#
     ))?;
     conn.execute_batch("CHECKPOINT")?;
+    // The report layer works on the backend, not on the raw connection.
+    let backend = Db::from_connection(&path, conn);
     println!("  built in {:.1}s", start.elapsed().as_secs_f64());
 
     let file = std::fs::metadata(&path)?.len();
@@ -134,27 +137,27 @@ FROM generate_series(1, {rows}) t(i);
     };
 
     timed("summary", &|| {
-        let m = reports::summary(&conn, &query)?;
+        let m = backend.summary(&query)?;
         Ok(format!("{} 次浏览 / {} 访客", m.pageviews, m.visitors))
     });
     timed("timeseries", &|| {
-        let rows = reports::timeseries(&conn, &query)?;
+        let rows = backend.timeseries(&query)?;
         Ok(format!("{} 个数据点", rows.len()))
     });
     timed("pages (top 50)", &|| {
-        let rows = reports::breakdown(&conn, &query, reports::Dimension::Url)?;
+        let rows = backend.breakdown(&query, sumami_service::storage::Dimension::Url)?;
         Ok(format!("{} 行", rows.len()))
     });
     timed("referrers", &|| {
-        let rows = reports::breakdown(&conn, &query, reports::Dimension::Referrer)?;
+        let rows = backend.breakdown(&query, sumami_service::storage::Dimension::Referrer)?;
         Ok(format!("{} 行", rows.len()))
     });
     timed("browsers", &|| {
-        let rows = reports::breakdown(&conn, &query, reports::Dimension::Browser)?;
+        let rows = backend.breakdown(&query, sumami_service::storage::Dimension::Browser)?;
         Ok(format!("{} 行", rows.len()))
     });
     timed("sessions (50)", &|| {
-        let rows = reports::sessions(&conn, &query)?;
+        let rows = backend.sessions(&query)?;
         Ok(format!("{} 行", rows.len()))
     });
 

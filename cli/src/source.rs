@@ -1,10 +1,14 @@
-//! Where the CLI gets its data: a local DuckDB file, or a running Sumami server.
+//! Where the CLI gets its data: a local database, a Parquet archive, or a running server.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use duckdb::{AccessMode, Config, Connection};
 use serde_json::{json, Value};
+
+use sumami_service::pool::Db;
+use sumami_service::storage::{Dimension, ReportQuery, Storage};
 
 /// A time window.
 #[derive(Debug, Clone, Copy)]
@@ -27,16 +31,14 @@ impl Range {
 
     /// Unix milliseconds, for the HTTP API.
     pub fn as_millis(&self) -> (i64, i64) {
-        let to_ms = |t: chrono::NaiveDateTime| {
-            t.and_utc().timestamp_millis()
-        };
+        let to_ms = |t: chrono::NaiveDateTime| t.and_utc().timestamp_millis();
         (to_ms(self.start), to_ms(self.end))
     }
 }
 
 /// Parse a time expression.
 ///
-/// Accepts `7d`, `24h`, `30m`, a date (`2026-01-01`) or an RFC 3339 timestamp.
+/// Accepts `7d`, `24h`, `30m`, `now`, a date (`2026-01-01`) or an RFC 3339 timestamp.
 pub fn parse_time(value: &str) -> Result<chrono::NaiveDateTime> {
     let value = value.trim();
     let now = chrono::Utc::now().naive_utc();
@@ -104,10 +106,10 @@ pub enum Report {
 
 /// Where the data comes from.
 pub enum Source {
-    /// A local DuckDB file.
+    /// A local database or Parquet archive, read through the storage backend.
     Local {
-        /// The connection.
-        conn: Connection,
+        /// The backend.
+        storage: Arc<dyn Storage>,
         /// The path, for messages.
         path: PathBuf,
     },
@@ -117,13 +119,6 @@ pub enum Source {
         base: String,
         /// The bearer token.
         token: String,
-    },
-    /// A Parquet archive (the cold tier).
-    Parquet {
-        /// The connection reading the archive.
-        conn: Connection,
-        /// Where the archive lives (for messages).
-        pattern: String,
     },
 }
 
@@ -135,39 +130,49 @@ impl Source {
     /// is exactly what an offline analysis wants.
     pub fn local(path: &Path) -> Result<Self> {
         match Self::open_local(path, AccessMode::ReadOnly) {
-            Ok(conn) => Ok(Source::Local {
-                conn,
+            Ok(storage) => Ok(Source::Local {
+                storage: Arc::new(storage),
                 path: path.to_path_buf(),
             }),
             Err(err) => {
                 let snapshot = Self::snapshot(path)?;
-                let conn = Self::open_local(&snapshot, AccessMode::ReadOnly)?;
+                let storage = Self::open_local(&snapshot, AccessMode::ReadOnly)?;
                 eprintln!(
                     "[sumami] the database is in use by a running server ({err}); \
                      analysing a snapshot copy instead"
                 );
                 Ok(Source::Local {
-                    conn,
+                    storage: Arc::new(storage),
                     path: snapshot,
                 })
             }
         }
     }
 
+    /// Open a Parquet archive as a source (read-only, queried in place).
+    pub fn parquet(pattern: &str) -> Result<Self> {
+        let storage = Db::open_archive(pattern)?;
+        Ok(Source::Local {
+            storage: Arc::new(storage),
+            path: PathBuf::from(pattern),
+        })
+    }
+
     /// Open a local database file for writing.
     pub fn local_writable(path: &Path) -> Result<Self> {
-        let conn = Self::open_local(path, AccessMode::ReadWrite)?;
+        let storage = Self::open_local(path, AccessMode::ReadWrite)?;
         Ok(Source::Local {
-            conn,
+            storage: Arc::new(storage),
             path: path.to_path_buf(),
         })
     }
 
-    /// Open a connection with the given access mode.
-    fn open_local(path: &Path, mode: AccessMode) -> Result<Connection> {
+    /// Open a backend with the given access mode.
+    fn open_local(path: &Path, mode: AccessMode) -> Result<Db> {
         let config = Config::default().access_mode(mode)?;
-        Connection::open_with_flags(path, config)
-            .with_context(|| format!("opening {}", path.display()))
+        let conn = Connection::open_with_flags(path, config)
+            .with_context(|| format!("opening {}", path.display()))?;
+        Ok(Db::from_connection(path, conn))
     }
 
     /// Copy the database (and its WAL) to a temporary directory.
@@ -184,17 +189,6 @@ impl Source {
             let _ = std::fs::copy(&wal, target.with_extension("duckdb.wal"));
         }
         Ok(target)
-    }
-
-    /// Open a Parquet archive as a source.
-    ///
-    /// The archive is queried in place — it is never imported into the hot database.
-    pub fn parquet(pattern: &str) -> Result<Self> {
-        let conn = crate::backup::open_archive(pattern)?;
-        Ok(Source::Parquet {
-            conn,
-            pattern: pattern.to_string(),
-        })
     }
 
     /// Log in to a remote server and return a source.
@@ -234,78 +228,42 @@ impl Source {
     }
 
     /// Run a report and return the result as JSON.
-    pub fn report(&self, report: Report, website: Option<&str>, range: Range, limit: i64) -> Result<Value> {
+    pub fn report(
+        &self,
+        report: Report,
+        website: Option<&str>,
+        range: Range,
+        limit: i64,
+    ) -> Result<Value> {
         match self {
-            Source::Local { conn, .. } => local_report(conn, report, website, range, limit),
+            Source::Local { storage, .. } => {
+                local_report(storage.as_ref(), report, website, range, limit)
+            }
             Source::Remote { base, token } => {
                 remote_report(base, token, report, website, range, limit)
             }
-            Source::Parquet { conn, .. } => local_report(conn, report, website, range, limit),
         }
     }
 
     /// Delete data that is older than the retention window of its website.
-    ///
-    /// Websites with `retention_days = 0` keep their data forever and are skipped.
     pub fn prune(&self, website: Option<&str>) -> Result<(u64, u64)> {
         match self {
-            Source::Local { conn, .. } => {
-                let mut sessions = 0u64;
-                let mut events = 0u64;
-                let now = chrono::Utc::now().naive_utc();
-
-                // Collect the (website, cutoff) pairs first: the deletion itself must not
-                // run while the cursor is open on the same table.
-                let mut cutoffs: Vec<(String, chrono::NaiveDateTime)> = Vec::new();
-                {
-                    let mut stmt = conn.prepare(
-                        "SELECT id, retention_days FROM website WHERE (? IS NULL OR id = ?)",
-                    )?;
-                    let mut rows = stmt.query(duckdb::params![website, website])?;
-                    while let Some(row) = rows.next()? {
-                        let id: String = row.get(0)?;
-                        let days: i32 = row.get(1)?;
-                        if days > 0 {
-                            cutoffs.push((id, now - chrono::Duration::days(days as i64)));
-                        }
-                    }
-                }
-
-                for (id, cutoff) in &cutoffs {
-                    sessions += conn.execute(
-                        "DELETE FROM session WHERE website_id = ? AND created_at < ?",
-                        duckdb::params![id, *cutoff],
-                    )? as u64;
-                    events += conn.execute(
-                        "DELETE FROM event WHERE website_id = ? AND created_at < ?",
-                        duckdb::params![id, *cutoff],
-                    )? as u64;
-                }
-
-                Ok((sessions, events))
-            }
+            Source::Local { storage, .. } => storage.prune(website),
             Source::Remote { .. } => Err(anyhow!(
                 "pruning over HTTP is not supported in this version; \
                  stop the server and run `sumami prune --db <path>`"
             )),
-            Source::Parquet { .. } => Err(anyhow!("a Parquet archive is read-only")),
         }
     }
 
     /// Erase a website and all of its data.
     pub fn erase(&self, website: &str) -> Result<u64> {
         match self {
-            Source::Local { conn, .. } => {
-                let events = conn.execute("DELETE FROM event WHERE website_id = ?", [website])?;
-                let sessions = conn.execute("DELETE FROM session WHERE website_id = ?", [website])?;
-                let websites = conn.execute("DELETE FROM website WHERE id = ?", [website])?;
-                Ok((events + sessions + websites) as u64)
-            }
+            Source::Local { storage, .. } => storage.erase(website),
             Source::Remote { .. } => Err(anyhow!(
                 "erasing over HTTP is not supported in this version; \
                  run `sumami erase --db <path> <website> against a stopped server"
             )),
-            Source::Parquet { .. } => Err(anyhow!("a Parquet archive is read-only")),
         }
     }
 }
@@ -419,20 +377,17 @@ fn remote_report(
         .map_err(|e| anyhow!("reading the response: {e}"))
 }
 
-/// Run a report against a local database.
+/// Run a report against a local backend.
 ///
-/// This calls the **same** functions the HTTP API calls
-/// (`sumami_service::reports`), so the local mode and the API can never disagree.
+/// This calls the **same** functions the HTTP API calls, so the local mode and the API
+/// can never disagree.
 fn local_report(
-    conn: &Connection,
+    storage: &dyn Storage,
     report: Report,
     website: Option<&str>,
     range: Range,
     limit: i64,
 ) -> Result<Value> {
-    use sumami_service::reports::{self, Dimension, ReportQuery};
-
-    // Only the reports about one website need its id.
     let website_id = if report == Report::Websites {
         String::new()
     } else {
@@ -441,21 +396,19 @@ fn local_report(
             .ok_or_else(|| anyhow!("this report needs a website id"))?
     };
 
-    let mut query = ReportQuery::new(&website_id, reports::TimeRange {
+    let mut query = ReportQuery::new(&website_id, sumami_service::storage::TimeRange {
         start: range.start,
         end: range.end,
     });
     query.limit = limit.clamp(1, 1000);
 
     let value = match report {
-        Report::Websites => serde_json::to_value(reports::websites(conn)?)?,
-        Report::Summary => serde_json::to_value(reports::summary_with_change(conn, &query)?)?,
-        Report::Timeseries => serde_json::to_value(reports::timeseries(conn, &query)?)?,
-        Report::Pages => {
-            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Url)?)?
-        }
+        Report::Websites => serde_json::to_value(storage.websites()?)?,
+        Report::Summary => serde_json::to_value(storage.summary_with_change(&query)?)?,
+        Report::Timeseries => serde_json::to_value(storage.timeseries(&query)?)?,
+        Report::Pages => serde_json::to_value(storage.breakdown(&query, Dimension::Url)?)?,
         Report::Referrers => {
-            let mut rows = reports::breakdown(conn, &query, Dimension::Referrer)?;
+            let mut rows = storage.breakdown(&query, Dimension::Referrer)?;
             for row in &mut rows {
                 if row.name == "unknown" {
                     row.name = "(direct)".to_string();
@@ -463,24 +416,16 @@ fn local_report(
             }
             serde_json::to_value(rows)?
         }
-        Report::Browsers => {
-            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Browser)?)?
-        }
-        Report::Os => serde_json::to_value(reports::breakdown(conn, &query, Dimension::Os)?)?,
-        Report::Devices => {
-            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Device)?)?
-        }
-        Report::Countries => {
-            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Country)?)?
-        }
+        Report::Browsers => serde_json::to_value(storage.breakdown(&query, Dimension::Browser)?)?,
+        Report::Os => serde_json::to_value(storage.breakdown(&query, Dimension::Os)?)?,
+        Report::Devices => serde_json::to_value(storage.breakdown(&query, Dimension::Device)?)?,
+        Report::Countries => serde_json::to_value(storage.breakdown(&query, Dimension::Country)?)?,
         Report::Languages => {
-            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Language)?)?
+            serde_json::to_value(storage.breakdown(&query, Dimension::Language)?)?
         }
-        Report::Screens => {
-            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Screen)?)?
-        }
-        Report::Events => serde_json::to_value(reports::events(conn, &query)?)?,
-        Report::Sessions => serde_json::to_value(reports::sessions(conn, &query)?)?,
+        Report::Screens => serde_json::to_value(storage.breakdown(&query, Dimension::Screen)?)?,
+        Report::Events => serde_json::to_value(storage.events(&query)?)?,
+        Report::Sessions => serde_json::to_value(storage.sessions(&query)?)?,
     };
 
     Ok(value)

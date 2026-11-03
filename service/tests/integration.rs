@@ -147,7 +147,7 @@ async fn api_matches_the_shared_report_layer() {
     use sumami_service::api::{self, AppState};
     use sumami_service::config::Config;
     use sumami_service::pool::Db;
-    use sumami_service::reports::{self, ReportQuery, TimeRange};
+    use sumami_service::storage::{ReportQuery, Storage, TimeRange};
     use tower::ServiceExt;
 
     let path = temp_db("api");
@@ -218,7 +218,7 @@ async fn api_matches_the_shared_report_layer() {
     };
     let query = ReportQuery::new(website_id, range);
     let shared = db
-        .with_read(|conn| reports::summary_with_change(conn, &query))
+        .summary_with_change(&query)
         .unwrap();
 
     // The Umami-compatible shape.

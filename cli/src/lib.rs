@@ -356,9 +356,6 @@ pub fn run() -> Result<()> {
                 Source::Remote { base, .. } => {
                     eprintln!("[sumami] source: {base}");
                 }
-                Source::Parquet { pattern, .. } => {
-                    eprintln!("[sumami] source: {pattern} (parquet archive)");
-                }
             }
             let (report, website, range, limit) = match &cli.command {
                 Command::Websites => (Report::Websites, None, Range::default_window(), 50),

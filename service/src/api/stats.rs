@@ -15,7 +15,7 @@ use axum::Json;
 use crate::api::AppState;
 use crate::error::ApiError;
 use crate::models::{BreakdownRow, MetricsSummary, MetricValue, StatsQuery};
-use crate::reports::{self, Dimension, ReportQuery, TimeRange};
+use crate::storage::{Dimension, ReportQuery, TimeRange};
 
 /// Resolve the requested window (Umami sends unix milliseconds).
 pub(crate) fn resolve_range(query: &StatsQuery) -> TimeRange {
@@ -37,7 +37,7 @@ pub(crate) fn resolve_range(query: &StatsQuery) -> TimeRange {
 /// Build the shared report query from the request parameters.
 pub(crate) fn report_query(id: &str, query: &StatsQuery) -> ReportQuery {
     let mut report = ReportQuery::new(id, resolve_range(query));
-    report.dimensions = crate::reports::Dimensions {
+    report.dimensions = crate::storage::Dimensions {
         url: query.url.clone(),
         referrer: query.referrer.clone(),
         browser: query.browser.clone(),
@@ -50,13 +50,7 @@ pub(crate) fn report_query(id: &str, query: &StatsQuery) -> ReportQuery {
     report
 }
 
-/// Run a report on the shared query layer.
-fn run<T>(
-    state: &AppState,
-    f: impl FnOnce(&duckdb::Connection) -> anyhow::Result<T>,
-) -> Result<T, ApiError> {
-    state.db.with_read(f).map_err(ApiError::internal)
-}
+
 
 /// `GET /api/websites/{id}/stats` — the summary metrics.
 pub async fn summary(
@@ -65,10 +59,7 @@ pub async fn summary(
     Query(query): Query<StatsQuery>,
 ) -> Result<Json<MetricsSummary>, ApiError> {
     let report = report_query(&id, &query);
-    let metrics = run(&state, |conn| {
-        reports::summary_with_change(conn, &report)
-    })?;
-    Ok(Json(metrics))
+    Ok(Json(state.storage.summary_with_change(&report)?))
 }
 
 /// `GET /api/websites/{id}/stats/metrics` — the same metrics, without the change.
@@ -78,7 +69,7 @@ pub async fn metrics(
     Query(query): Query<StatsQuery>,
 ) -> Result<Json<MetricsSummary>, ApiError> {
     let report = report_query(&id, &query);
-    let metrics = run(&state, |conn| reports::summary(conn, &report))?;
+    let metrics = state.storage.summary(&report)?;
     Ok(Json(MetricsSummary {
         pageviews: MetricValue { value: metrics.pageviews, change: 0.0 },
         visitors: MetricValue { value: metrics.visitors, change: 0.0 },
@@ -95,8 +86,7 @@ pub async fn timeseries(
     Query(query): Query<StatsQuery>,
 ) -> Result<Json<Vec<BreakdownRow>>, ApiError> {
     let report = report_query(&id, &query);
-    let rows = run(&state, |conn| reports::timeseries(conn, &report))?;
-    Ok(Json(rows))
+    Ok(Json(state.storage.timeseries(&report)?))
 }
 
 /// `GET /api/websites/{id}/stats/pages` — top pages.
@@ -189,8 +179,7 @@ pub async fn events(
     Query(query): Query<StatsQuery>,
 ) -> Result<Json<Vec<BreakdownRow>>, ApiError> {
     let report = report_query(&id, &query);
-    let rows = run(&state, |conn| reports::events(conn, &report))?;
-    Ok(Json(rows))
+    Ok(Json(state.storage.events(&report)?))
 }
 
 /// `GET /api/websites/{id}/stats/urls` — the number of distinct URLs visited.
@@ -200,10 +189,7 @@ pub async fn urls(
     Query(query): Query<StatsQuery>,
 ) -> Result<Json<Vec<BreakdownRow>>, ApiError> {
     let report = report_query(&id, &query);
-    let rows = run(&state, |conn| {
-        reports::breakdown(conn, &report, Dimension::Url)
-    })?;
-    Ok(Json(rows))
+    Ok(Json(state.storage.breakdown(&report, Dimension::Url)?))
 }
 
 /// Shared breakdown handler.
@@ -214,8 +200,5 @@ async fn breakdown(
     dimension: Dimension,
 ) -> Result<Json<Vec<BreakdownRow>>, ApiError> {
     let report = report_query(&id, &query);
-    let rows = run(&state, |conn| {
-        reports::breakdown(conn, &report, dimension)
-    })?;
-    Ok(Json(rows))
+    Ok(Json(state.storage.breakdown(&report, dimension)?))
 }

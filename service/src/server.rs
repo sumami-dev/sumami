@@ -13,9 +13,9 @@ use tracing_subscriber::EnvFilter;
 use crate::api::{self, AppState};
 use crate::auth;
 use crate::config;
-use crate::db;
 use crate::config::Config;
 use crate::pool::Db;
+use crate::storage::Storage;
 use crate::writer::Writer;
 
 /// The Sumami analytics service.
@@ -116,6 +116,21 @@ pub async fn serve_on_runtime(args: ServeArgs) -> Result<()> {
     serve(args).await
 }
 
+/// Open the storage backend the configuration asks for.
+///
+/// The open-source build only has DuckDB. The private `sumami-pro` build adds SQLite
+/// and PostgreSQL; see `pro/backend.rs`.
+fn open_storage(config: &Config) -> Result<Arc<dyn Storage>> {
+    let storage: Arc<dyn Storage> = Arc::new(Db::open_with(
+        &config.db_path,
+        &config.duckdb_memory_limit,
+        &config.duckdb_flush_threshold,
+        &config.duckdb_temp_limit,
+        config.duckdb_threads,
+    )?);
+    Ok(storage)
+}
+
 /// Build the configuration from the serve arguments.
 fn config_from(args: &ServeArgs) -> Result<Config> {
     Config::from_env_and_flags(
@@ -141,13 +156,7 @@ fn admin(args: AdminArgs) -> Result<()> {
         None,
     )?;
 
-    let db = Db::open_with(
-        &config.db_path,
-        &config.duckdb_memory_limit,
-        &config.duckdb_flush_threshold,
-        &config.duckdb_temp_limit,
-        config.duckdb_threads,
-    )?;
+    let storage = open_storage(&config)?;
     let password = args
         .password
         .clone()
@@ -155,7 +164,7 @@ fn admin(args: AdminArgs) -> Result<()> {
         .unwrap_or_else(config::random_secret);
     let generated = args.password.is_none() && config.admin_password.is_none();
 
-    db.with_write(|conn| upsert_admin(conn, &args.username, &password))?;
+    storage.set_user_password(&args.username, &auth::hash_password(&password)?)?;
 
     println!("admin user '{}' ready", args.username);
     if generated {
@@ -166,44 +175,13 @@ fn admin(args: AdminArgs) -> Result<()> {
     Ok(())
 }
 
-/// Insert or update the admin user.
-fn upsert_admin(conn: &duckdb::Connection, username: &str, password: &str) -> Result<()> {
-    let hash = auth::hash_password(password)?;
-    let id = uuid::Uuid::new_v4().to_string();
-    let now = db::now();
 
-    let existing: i64 = {
-        let mut stmt = conn.prepare("SELECT count(*) FROM \"user\" WHERE username = ?")?;
-        let mut rows = stmt.query([username])?;
-        match rows.next()? {
-            Some(row) => row.get(0)?,
-            None => 0,
-        }
-    };
-
-    if existing > 0 {
-        conn.execute(
-            "UPDATE \"user\" SET password_hash = ? WHERE username = ?",
-            duckdb::params![hash, username],
-        )?;
-    } else {
-        conn.execute(
-            "INSERT INTO \"user\" (id, username, password_hash, created_at, role)
-             VALUES (?, ?, ?, ?, 'admin')",
-            duckdb::params![id, username, hash, now],
-        )?;
-    }
-
-    Ok(())
-}
-
-/// Run the HTTP server.
-async fn serve(args: ServeArgs) -> Result<()> {
+/// Run the HTTP server with the default (DuckDB) backend.
+pub async fn serve(args: ServeArgs) -> Result<()> {
     let mut config = config_from(&args)?;
     if let Some(js_dir) = args.js_dir.clone() {
         config.js_dir = js_dir;
     }
-
     if let Some(domain) = args.ssl_domain.clone() {
         config.ssl_domain = Some(domain);
     }
@@ -215,27 +193,29 @@ async fn serve(args: ServeArgs) -> Result<()> {
     }
     config.ssl_port = args.ssl_port;
 
+    let storage = open_storage(&config)?;
+    serve_with(Arc::new(config), storage).await
+}
+
+/// Run the HTTP server with a given storage backend.
+///
+/// The open-source build only has DuckDB; the private `sumami-pro` build passes a
+/// SQLite or PostgreSQL backend here.
+pub async fn serve_with(config: Arc<Config>, storage: Arc<dyn Storage>) -> Result<()> {
     let jwt_secret = config::resolve_jwt_secret(&config.jwt_secret, &config.db_path)?;
     let jwt_secret = Arc::new(jwt_secret);
 
-    let db = Arc::new(Db::open_with(
-        &config.db_path,
-        &config.duckdb_memory_limit,
-        &config.duckdb_flush_threshold,
-        &config.duckdb_temp_limit,
-        config.duckdb_threads,
-    )?);
     config::restrict_permissions(&config.db_path);
 
     // Make sure there is always an admin account to log in with.
-    let has_admin = db.with_write(admin_exists)?;
+    let has_admin = storage.user(&config.admin_user)?.is_some();
     if !has_admin {
         let password = config
             .admin_password
             .clone()
             .unwrap_or_else(config::random_secret);
         let generated = config.admin_password.is_none();
-        db.with_write(|conn| upsert_admin(conn, &config.admin_user, &password))?;
+        storage.set_user_password(&config.admin_user, &auth::hash_password(&password)?)?;
         println!("[sumami] created the admin user '{}'", config.admin_user);
         if generated {
             println!("[sumami] password: {password}");
@@ -244,12 +224,12 @@ async fn serve(args: ServeArgs) -> Result<()> {
     }
 
     let (writer, _writer_handle) = Writer::spawn(
-        db.clone(),
+        storage.clone(),
         std::time::Duration::from_secs(config.flush_interval_secs),
         config.max_queue,
     );
 
-    let state = AppState::new(db, writer.clone(), Arc::new(config.clone()), jwt_secret);
+    let state = AppState::new(storage, writer.clone(), config.clone(), jwt_secret);
     let app = api::router(state.clone());
 
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
@@ -303,15 +283,6 @@ async fn serve(args: ServeArgs) -> Result<()> {
     Ok(())
 }
 
-/// Is there at least one user?
-fn admin_exists(conn: &duckdb::Connection) -> Result<bool> {
-    let mut stmt = conn.prepare("SELECT count(*) FROM \"user\"")?;
-    let mut rows = stmt.query([])?;
-    match rows.next()? {
-        Some(row) => Ok(row.get::<_, i64>(0)? > 0),
-        None => Ok(false),
-    }
-}
 
 /// Wait for Ctrl-C (or SIGTERM) and shut down gracefully.
 async fn shutdown_signal() {

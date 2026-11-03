@@ -30,6 +30,15 @@ pub struct Db {
 }
 
 impl Db {
+    /// Wrap an existing connection (used by the CLI, which opens the file itself).
+    pub fn from_connection(path: &Path, conn: Connection) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            memory_limit: "0B".to_string(),
+            conn: Mutex::new(conn),
+        }
+    }
+
     /// Open the database (creating it if needed) and make sure the schema exists.
     pub fn open(path: &Path, memory_limit: &str) -> Result<Self> {
         Self::open_with(path, memory_limit, "32MB", "2GB", 0)
@@ -95,6 +104,53 @@ impl Db {
         &self.memory_limit
     }
 
+    /// Open a Parquet archive as an in-memory database.
+    ///
+    /// The archive is queried in place through `read_parquet()`; it is never imported.
+    /// The views carry the same names as the tables, so the DuckDB backend's SQL runs
+    /// over an archive unchanged.
+    pub fn open_archive(pattern: &str) -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        let escape = |value: &str| value.replace('\'', "''");
+        let root = pattern.trim_end_matches("/*").trim_end_matches('/');
+
+        for (table, sub) in [("session", "sessions"), ("event", "events")] {
+            let directory = format!("{root}/{sub}");
+            if !has_parquet_files(std::path::Path::new(&directory)) {
+                continue;
+            }
+            let glob = format!("{directory}/**/*.parquet");
+            conn.execute_batch(&format!(
+                "CREATE VIEW {table} AS SELECT * FROM read_parquet('{}')",
+                escape(&glob)
+            ))?;
+        }
+
+        let websites = format!("{root}/websites.parquet");
+        let _ = conn.execute_batch(&format!(
+            "CREATE VIEW website AS SELECT * FROM read_parquet('{}')",
+            escape(&websites)
+        ));
+
+        Ok(Self {
+            path: PathBuf::from(pattern),
+            memory_limit: "0B".to_string(),
+            conn: Mutex::new(conn),
+        })
+    }
+
+    /// Run `f` with the database connection.
+    ///
+    /// The archival job uses this: DuckDB connections cannot be shared between
+    /// threads, and the database file is locked by this process anyway.
+    pub fn with_connection<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> Result<T>,
+    ) -> Result<T> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        f(&conn)
+    }
+
     /// Run `f` with the database connection.
     pub fn with_read<T>(&self, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
@@ -106,4 +162,22 @@ impl Db {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         f(&conn)
     }
+}
+
+/// Does a directory (recursively) hold any parquet file?
+fn has_parquet_files(directory: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return false;
+    };
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            if has_parquet_files(&path) {
+                return true;
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("parquet") {
+            return true;
+        }
+    }
+    false
 }

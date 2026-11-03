@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use sumami_cli::backup;
 use sumami_service::pool::Db;
-use sumami_service::reports::{self, ReportQuery, TimeRange};
+use sumami_service::storage::{ReportQuery, Storage, TimeRange};
 
 fn temp_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("sumami-archive-{name}-{}", std::process::id()));
@@ -72,7 +72,7 @@ FROM generate_series(1, 50000) t(i);
     query.limit = 50;
 
     let hot = db
-        .with_read(|conn| reports::summary(conn, &query))
+        .summary(&query)
         .unwrap();
 
     // Archive it.
@@ -94,7 +94,7 @@ FROM generate_series(1, 50000) t(i);
 
     // Read it back and ask the same question.
     let cold_conn = backup::open_archive(&format!("{}/", archive.display())).unwrap();
-    let cold = reports::summary(&cold_conn, &query).unwrap();
+    let cold = cold_conn.summary(&query).unwrap();
 
     assert_eq!(hot.pageviews, cold.pageviews, "pageviews differ");
     assert_eq!(hot.visitors, cold.visitors, "visitors differ");

@@ -213,7 +213,7 @@ fn range_of(
 ///
 /// The archive is read through `read_parquet()` — it is never imported into the hot
 /// database, so analysing ten years of history costs nothing but the query itself.
-pub fn open_archive(pattern: &str) -> Result<Connection> {
+pub fn open_archive(pattern: &str) -> Result<sumami_service::pool::Db> {
     let conn = Connection::open_in_memory()?;
 
     let escape = |value: &str| value.replace('\'', "''");
@@ -244,5 +244,8 @@ pub fn open_archive(pattern: &str) -> Result<Connection> {
     // A website table is optional in an archive.
     let _ = conn.execute_batch(&sql);
 
-    Ok(conn)
+    Ok(sumami_service::pool::Db::from_connection(
+        std::path::Path::new(pattern),
+        conn,
+    ))
 }

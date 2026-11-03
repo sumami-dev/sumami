@@ -271,6 +271,24 @@ functions. Two consequences:
 
 Never write a second SQL query for a report that already exists here.
 
+### 4.1c The storage trait (`service/src/storage.rs`)
+
+Every report and every write goes through one trait, `Storage`. The open-source build
+implements it once — for DuckDB, in `service/src/reports.rs`.
+
+The trait defines the **semantics**, not the SQL: timestamps, date bucketing, distinct
+counting and upsert syntax differ between engines, so each backend writes its own
+dialect against the same contract. The private `sumami-pro` repository adds SQLite and
+PostgreSQL backends against this trait; the open-source build ships **only DuckDB**.
+
+Consequences for this repository:
+
+* the API handlers, the CLI and the writer all talk to `Arc<dyn Storage>` — never to
+  `duckdb::Connection` directly;
+* a report has exactly one implementation, so the dashboard and the CLI cannot disagree;
+* the batch grouping (`storage::aggregate_batch`) is backend-agnostic — the backends only
+  differ in how they write the result.
+
 ### 4.2 Umami v2 API compatibility (the contract)
 
 Implemented in v1 (target for the `sumami-dev/sumami` client used by the dashboard):
