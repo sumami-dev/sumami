@@ -146,6 +146,7 @@ fn admin(args: AdminArgs) -> Result<()> {
         &config.duckdb_memory_limit,
         &config.duckdb_flush_threshold,
         &config.duckdb_temp_limit,
+        config.duckdb_threads,
     )?;
     let password = args
         .password
@@ -222,6 +223,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         &config.duckdb_memory_limit,
         &config.duckdb_flush_threshold,
         &config.duckdb_temp_limit,
+        config.duckdb_threads,
     )?);
     config::restrict_permissions(&config.db_path);
 

@@ -41,6 +41,7 @@ The defaults are chosen for the deployment target, not for a workstation:
 | `SUMAMI_DUCKDB_MEMORY_LIMIT` | **min(128 MB, RAM / 4)** | DuckDB's own default is 80% of RAM — 410 MB on a 512 MB box, which would leave nothing for the OS. The limit caps the *buffer*, not the data: queries stream and spill to disk. |
 | `SUMAMI_DUCKDB_FLUSH_THRESHOLD` | 32 MB | DuckDB's default (128 MB) keeps that much freed memory before returning it to the OS. |
 | `SUMAMI_DUCKDB_TEMP_LIMIT` | 2 GB | A query that spills must not fill the disk. |
+| `SUMAMI_DUCKDB_THREADS` | auto (one per 64 MB of budget) | A parallel `COUNT(DISTINCT …)` builds **one hash table per thread**, so a query's memory scales with the thread count: at 10 threads a 5M-row summary query runs out of a 128 MB limit, at 2 threads it takes 154 ms. |
 | `SUMAMI_STORE_TITLES` | off | The page title is roughly half of the stored bytes and almost nobody looks at it. |
 | `SUMAMI_STORE_FULL_REFERRER` | off | The referrer breakdown groups by host (that is what Umami shows too), and the full URL is the largest field we would store. |
 
@@ -55,6 +56,16 @@ Measured on 10M and 100M row tables (`cli/examples/scale.rs`):
 
 All of it inside a **128 MB** DuckDB limit. The limit bounds RAM, not history:
 DuckDB reads what it needs, aggregates it and spills the rest.
+
+The thread count matters as much as the limit — see `SUMAMI_DUCKDB_THREADS` above.
+Measured on the same 5M-row table, the summary query:
+
+| threads | time | note |
+| ---: | ---: | --- |
+| 1 | 291 ms | what a 1-vCPU box gets |
+| 2 | 154 ms | the default for a 128 MB budget |
+| 4 | 80 ms | |
+| 10 | 1 713 ms | and it can run out of the 128 MB limit |
 
 The declared limit is a **ceiling, not an allocation**: DuckDB's buffer manager held
 0.5–1.8 MB while serving traffic. The RSS growth after a burst is the C allocator

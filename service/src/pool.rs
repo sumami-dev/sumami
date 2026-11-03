@@ -32,7 +32,7 @@ pub struct Db {
 impl Db {
     /// Open the database (creating it if needed) and make sure the schema exists.
     pub fn open(path: &Path, memory_limit: &str) -> Result<Self> {
-        Self::open_with(path, memory_limit, "32MB", "2GB")
+        Self::open_with(path, memory_limit, "32MB", "2GB", 0)
     }
 
     /// Open the database and apply the full set of DuckDB settings.
@@ -41,6 +41,7 @@ impl Db {
         memory_limit: &str,
         flush_threshold: &str,
         temp_limit: &str,
+        threads: usize,
     ) -> Result<Self> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -62,6 +63,18 @@ impl Db {
         conn.execute_batch(&format!("SET max_temp_directory_size='{temp_limit}'"))?;
         // A small WAL keeps a crash from losing the last flush, without huge files.
         conn.execute_batch("SET checkpoint_threshold='16MB'")?;
+
+        // Threads are derived from the memory budget: a parallel DISTINCT aggregate
+        // needs one hash table per thread.
+        let threads = if threads > 0 {
+            threads
+        } else {
+            crate::config::threads_for(
+                memory_limit,
+                std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+            )
+        };
+        conn.execute_batch(&format!("SET threads={threads}"))?;
 
         crate::db::init_schema(&conn)?;
 

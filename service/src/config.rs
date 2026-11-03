@@ -36,6 +36,13 @@ pub struct Config {
     pub duckdb_flush_threshold: String,
     /// DuckDB `max_temp_directory_size`: how much disk a query may spill.
     pub duckdb_temp_limit: String,
+    /// DuckDB `threads`. `0` = derive it from the memory limit.
+    ///
+    /// This is not a performance knob only: a parallel `COUNT(DISTINCT …)` builds one
+    /// hash table **per thread**, so the memory a query needs scales with the thread
+    /// count. With 10 threads and a 128 MB limit, a five-million-row summary query
+    /// runs out of memory — with 2 threads it takes 154 ms.
+    pub duckdb_threads: usize,
     /// Maximum number of events buffered in memory before the oldest are dropped.
     pub max_queue: usize,
     /// Seconds between writer flushes.
@@ -127,6 +134,12 @@ impl Config {
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| "2GB".to_string());
 
+        // 0 = derive from the memory limit.
+        let duckdb_threads = std::env::var("SUMAMI_DUCKDB_THREADS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
         let max_queue = std::env::var("SUMAMI_MAX_QUEUE")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -190,6 +203,7 @@ impl Config {
             duckdb_memory_limit,
             duckdb_flush_threshold,
             duckdb_temp_limit,
+            duckdb_threads,
             max_queue,
             flush_interval_secs,
             retention_days,
@@ -213,6 +227,35 @@ pub fn default_memory_limit() -> String {
     let ram = total_ram_bytes().unwrap_or(512 * 1024 * 1024);
     let limit = (ram / 4).min(128 * 1024 * 1024);
     format!("{}MB", limit / (1024 * 1024))
+}
+
+/// How many threads DuckDB should use for a given memory limit.
+///
+/// A parallel hash aggregate builds one hash table per thread, so the memory a query
+/// needs grows with the thread count. We give DuckDB one thread per 64 MB of budget,
+/// never more than the machine has cores.
+pub fn threads_for(memory_limit: &str, cores: usize) -> usize {
+    let budget = parse_size(memory_limit).unwrap_or(128 * 1024 * 1024);
+    let by_budget = (budget / (64 * 1024 * 1024)).max(1) as usize;
+    by_budget.min(cores.max(1))
+}
+
+/// Parse a size like `128MB` into bytes.
+pub fn parse_size(value: &str) -> Option<u64> {
+    let value = value.trim().to_ascii_uppercase();
+    let (number, unit) = match value.find(|c: char| c.is_alphabetic()) {
+        Some(index) => (&value[..index], &value[index..]),
+        None => (value.as_str(), "B"),
+    };
+    let number: f64 = number.trim().parse().ok()?;
+    let multiplier: f64 = match unit {
+        "B" => 1.0,
+        "KB" | "K" => 1024.0,
+        "MB" | "M" => 1024.0 * 1024.0,
+        "GB" | "G" => 1024.0 * 1024.0 * 1024.0,
+        _ => return None,
+    };
+    Some((number * multiplier) as u64)
 }
 
 /// The machine's total RAM, if we can find it out.
