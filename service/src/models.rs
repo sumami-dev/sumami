@@ -254,6 +254,12 @@ pub struct Heartbeat {
     pub queued: u64,
     pub dropped: u64,
     pub websites: i64,
+    /// What DuckDB's buffer manager currently holds in memory.
+    pub duckdb_memory_bytes: i64,
+    /// The configured DuckDB memory limit (e.g. `256MB`).
+    pub duckdb_memory_limit: String,
+    /// The size of the database file on disk.
+    pub database_size_bytes: i64,
 }
 
 /// Query parameters shared by the stats endpoints (Umami-compatible names).

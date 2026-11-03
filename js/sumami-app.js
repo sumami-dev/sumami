@@ -326,43 +326,19 @@
   // --- branding ------------------------------------------------------------
 
   /**
-   * The Sumami paw logo, drawn by hand as inline SVG.
-   * @returns {SVGElement}
+   * The Sumami paw logo.
+   *
+   * The geometry is defined once, in `docs/assets/logo.svg`; the documentation site and
+   * this dashboard must show the same paw. A test (service/tests/logo.rs) checks that
+   * every copy in the repository still matches the canonical file.
    */
+  var LOGO_SVG = '<svg class="logo" viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>';
+
+  /** @returns {SVGElement} */
   function pawLogo() {
-    var ns = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 32 32');
-    svg.setAttribute('width', '28');
-    svg.setAttribute('height', '28');
-    svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', 'Sumami');
-    svg.setAttribute('class', 'logo');
-
-    // Four toes.
-    [
-      { cx: 8.4, cy: 11.5, rx: 3.1, ry: 3.9 },
-      { cx: 14.0, cy: 8.2, rx: 3.0, ry: 4.2 },
-      { cx: 20.4, cy: 9.0, rx: 3.0, ry: 4.0 },
-      { cx: 25.0, cy: 13.6, rx: 2.8, ry: 3.5 }
-    ].forEach(function (toe) {
-      var pad = document.createElementNS(ns, 'ellipse');
-      pad.setAttribute('cx', String(toe.cx));
-      pad.setAttribute('cy', String(toe.cy));
-      pad.setAttribute('rx', String(toe.rx));
-      pad.setAttribute('ry', String(toe.ry));
-      svg.appendChild(pad);
-    });
-
-    // The pad itself.
-    var pad = document.createElementNS(ns, 'path');
-    pad.setAttribute(
-      'd',
-      'M16 15.4c4.6 0 8.3 3.3 8.3 7.1 0 3.1-2.5 4.9-5.5 4.9-1 0-1.9-.3-2.8-.3s-1.8.3-2.8.3c-3 0-5.5-1.8-5.5-4.9 0-3.8 3.7-7.1 8.3-7.1z'
-    );
-    svg.appendChild(pad);
-
-    return svg;
+    var holder = document.createElement('span');
+    holder.innerHTML = LOGO_SVG;
+    return holder.firstChild;
   }
 
   // --- views ---------------------------------------------------------------

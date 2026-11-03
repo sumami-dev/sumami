@@ -114,6 +114,16 @@ p {
 .logo {
   flex: none;
   fill: var(--brand);
+  width: 28px;
+  height: 28px;
+}
+
+/* Any SVG in the brand block is the paw — colour and size it even without the class. */
+.brand svg {
+  flex: none;
+  fill: var(--brand);
+  width: 28px;
+  height: 28px;
 }
 
 .brand-name {

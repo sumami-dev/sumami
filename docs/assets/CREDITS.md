@@ -20,6 +20,7 @@ completely offline.
 | File | What it is | Licence |
 | ---- | ---------- | ------- |
 | `style.css` | The single shared stylesheet for every documentation page. Hand-written; light and dark themes via `prefers-color-scheme`; responsive layout. | MIT (original work) |
+| `logo.svg` | The Sumami paw logo — the canonical source of the brand mark. Four toes and a pad, drawn by hand; no strokes, no gradients, no filters. Every other copy in the repository (the documentation pages, the dashboard frontend, the favicon) is inlined from this file and kept in sync by `service/tests/logo.rs`. | MIT (original work) |
 | `CREDITS.md` | This file. | MIT (original work) |
 
 The HTML pages live one directory up, in `docs/` itself:
