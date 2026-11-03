@@ -112,7 +112,7 @@ impl Config {
         let duckdb_memory_limit = std::env::var("SUMAMI_DUCKDB_MEMORY_LIMIT")
             .ok()
             .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| default_memory_limit());
+            .unwrap_or_else(default_memory_limit);
 
         // DuckDB's default flush threshold is 128 MB: it would keep that much
         // freed memory before giving it back. On a small box, hand it back sooner.

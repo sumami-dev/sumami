@@ -127,7 +127,7 @@ FROM generate_series(1, {rows}) t(i);
     query.limit = 50;
 
     println!("\n=== 仪表盘查询耗时（30 天窗口，{} 行全表）===", rows);
-    let mut timed = |label: &str, f: &dyn Fn() -> anyhow::Result<String>| {
+    let timed = |label: &str, f: &dyn Fn() -> anyhow::Result<String>| {
         let start = Instant::now();
         let out = f().unwrap_or_else(|e| format!("<{e}>"));
         println!("  {label:22} {:>7.1} ms   {out}", start.elapsed().as_secs_f64() * 1000.0);
