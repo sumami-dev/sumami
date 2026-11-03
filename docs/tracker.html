@@ -137,8 +137,12 @@ cp sumami.js /var/www/html/assets/sumami.js</code></pre>
         data-api-url="https://analytics.example.com"
         data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
     <p>
-      The same trick applies to the dashboard frontend: set <code>SUMAMI_APP_URL</code> and the
-      backend serves only a tiny HTML shell.
+      The dashboard frontend works the same way, but in the other direction: it is loaded by
+      your own browser, and by default it comes from a CDN
+      (<code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code>) — the backend serves
+      only a tiny HTML shell and ships no frontend code. Set <code>SUMAMI_APP_URL=/app</code> to
+      have the backend serve it from its own <code>js/</code> directory instead. Either way, the
+      <em>tracker</em> above is always served by your own server.
     </p>
 
     <h3>4. Several websites, one snippet</h3>

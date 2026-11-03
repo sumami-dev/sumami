@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CLI — Sumami</title>
-<meta name="description" content="The sumami command line analyser: websites, summary, pages, referrers, browsers, events, sessions, timeseries, export, prune and erase — reading a DuckDB file or a running server.">
+<meta name="description" content="The sumami-client command line analyser: websites, summary, pages, referrers, browsers, events, sessions, timeseries, export, prune and erase — reading a DuckDB file or a running server.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
@@ -45,13 +45,33 @@
 <main id="main">
   <div class="wrap">
 
-    <h1 class="page-title">The <code>sumami</code> CLI</h1>
+    <h1 class="page-title">The <code>sumami-client</code> CLI</h1>
     <p class="page-lede">
-      The <code>sumami</code> command is the offline analyser that ships in the same release
-      archive as the server. It answers the same questions whether it reads a
-      <code>.duckdb</code> file directly or talks to a running server over HTTP — so the same
-      command works on your laptop with the file copied over, and on the box itself.
+      The <code>sumami-client</code> command is the offline analyser that ships in the same
+      release archive as the server. Like the server it is a single self-contained executable,
+      with DuckDB compiled in — so there is no shared library to install alongside it. It
+      answers the same questions whether it reads a <code>.duckdb</code> file directly or talks
+      to a running server over HTTP — so the same command works on your laptop with the file
+      copied over, and on the box itself.
     </p>
+
+    <div class="callout tip">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+        The three executables
+      </p>
+      <p>
+        The release ships three self-contained binaries: <code>sumami-server</code> (the server
+        only), <code>sumami-client</code> (this analyser) and <code>sumami</code> — the
+        two-in-one, where <code>sumami serve …</code> runs the server and every other
+        subcommand is the analyser.
+      </p>
+      <p>
+        Everything on this page uses <code>sumami-client</code>. If you installed the
+        two-in-one instead, replace <code>sumami-client</code> with <code>sumami</code> and
+        the commands behave identically.
+      </p>
+    </div>
 
     <h2>Two sources, one interface</h2>
     <p>
@@ -77,13 +97,13 @@
       </table>
     </div>
     <pre class="shell"><code><span class="cmt"># read a database file</span>
-sumami summary --db /var/lib/sumami/sumami.duckdb 3f2a...
+sumami-client summary --db /var/lib/sumami/sumami.duckdb 3f2a...
 
 <span class="cmt"># or talk to a running server</span>
-sumami summary --url http://127.0.0.1:3999 --username admin --password '...'
+sumami-client summary --url http://127.0.0.1:3999 --username admin --password '...'
 
 <span class="cmt"># with a token you already have</span>
-sumami summary --url http://127.0.0.1:3999 --token eyJhbGciOi...</code></pre>
+sumami-client summary --url http://127.0.0.1:3999 --token eyJhbGciOi...</code></pre>
 
     <h2>Common flags</h2>
     <div class="table-wrap">
@@ -106,7 +126,7 @@ sumami summary --url http://127.0.0.1:3999 --token eyJhbGciOi...</code></pre>
     </div>
     <p>
       The website id is a positional argument, not a flag:
-      <code>sumami pages 3f2a...</code>. <code>--from</code>, <code>--to</code> and
+      <code>sumami-client pages 3f2a...</code>. <code>--from</code>, <code>--to</code> and
       <code>--limit</code> come after it. <code>summary</code> takes the website id and the
       window but no <code>--limit</code>; <code>websites</code> takes no arguments at all.
     </p>
@@ -120,7 +140,7 @@ sumami summary --url http://127.0.0.1:3999 --token eyJhbGciOi...</code></pre>
 
     <h3><code>websites</code></h3>
     <p>List the websites in the database or known to the server.</p>
-    <pre class="shell"><code>sumami websites --db ./sumami.duckdb</code></pre>
+    <pre class="shell"><code>sumami-client websites --db ./sumami.duckdb</code></pre>
     <pre class="shell"><code>ID                                 NAME       DOMAIN              CREATED
 3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071  My Blog    blog.example.com   2026-01-12
 7c8d9e0f-1a2b-3c4d-5e6f-708192a3b4c5  My Shop    shop.example.com   2026-02-03</code></pre>
@@ -130,7 +150,7 @@ sumami summary --url http://127.0.0.1:3999 --token eyJhbGciOi...</code></pre>
       The headline numbers for a window: page views, visitors, visits, bounces and average
       visit duration.
     </p>
-    <pre class="shell"><code>sumami summary --db ./sumami.duckdb 3f2a... --from 7d</code></pre>
+    <pre class="shell"><code>sumami-client summary --db ./sumami.duckdb 3f2a... --from 7d</code></pre>
     <pre class="shell"><code>METRIC          VALUE
 pageviews       1523
 visitors         842
@@ -140,7 +160,7 @@ visit duration     84s</code></pre>
 
     <h3><code>pages</code></h3>
     <p>The most visited paths.</p>
-    <pre class="shell"><code>sumami pages --db ./sumami.duckdb 3f2a... --limit 5</code></pre>
+    <pre class="shell"><code>sumami-client pages --db ./sumami.duckdb 3f2a... --limit 5</code></pre>
     <pre class="shell"><code>VIEWS  URL
   312  /posts/hello
   254  /posts/world
@@ -148,7 +168,7 @@ visit duration     84s</code></pre>
 
     <h3><code>referrers</code></h3>
     <p>Where the traffic came from.</p>
-    <pre class="shell"><code>sumami referrers --db ./sumami.duckdb 3f2a...</code></pre>
+    <pre class="shell"><code>sumami-client referrers --db ./sumami.duckdb 3f2a...</code></pre>
 
     <h3><code>browsers</code></h3>
     <p>
@@ -157,14 +177,14 @@ visit duration     84s</code></pre>
       <code>countries</code>, <code>languages</code> and <code>screens</code>. They take the
       same arguments and print the same shape of table.
     </p>
-    <pre class="shell"><code>sumami browsers  --db ./sumami.duckdb 3f2a...
-sumami os       --db ./sumami.duckdb 3f2a...
-sumami devices  --db ./sumami.duckdb 3f2a...
-sumami countries --db ./sumami.duckdb 3f2a...</code></pre>
+    <pre class="shell"><code>sumami-client browsers  --db ./sumami.duckdb 3f2a...
+sumami-client os       --db ./sumami.duckdb 3f2a...
+sumami-client devices  --db ./sumami.duckdb 3f2a...
+sumami-client countries --db ./sumami.duckdb 3f2a...</code></pre>
 
     <h3><code>events</code></h3>
     <p>The custom events, with their properties.</p>
-    <pre class="shell"><code>sumami events --db ./sumami.duckdb 3f2a...</code></pre>
+    <pre class="shell"><code>sumami-client events --db ./sumami.duckdb 3f2a...</code></pre>
     <div class="callout warn">
       <p class="callout-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5"/><path d="M12 17.5v.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
@@ -179,11 +199,11 @@ sumami countries --db ./sumami.duckdb 3f2a...</code></pre>
 
     <h3><code>sessions</code></h3>
     <p>The session log, newest first.</p>
-    <pre class="shell"><code>sumami sessions --db ./sumami.duckdb 3f2a... --limit 3</code></pre>
+    <pre class="shell"><code>sumami-client sessions --db ./sumami.duckdb 3f2a... --limit 3</code></pre>
 
     <h3><code>timeseries</code></h3>
     <p>Page views over time, hourly or daily depending on the window.</p>
-    <pre class="shell"><code>sumami timeseries --db ./sumami.duckdb 3f2a... --from 30d</code></pre>
+    <pre class="shell"><code>sumami-client timeseries --db ./sumami.duckdb 3f2a... --from 30d</code></pre>
     <pre class="shell"><code>DATE          VIEWS
 2026-01-01      412
 2026-01-02      388
@@ -191,8 +211,8 @@ sumami countries --db ./sumami.duckdb 3f2a...</code></pre>
 
     <h3><code>export</code></h3>
     <p>Export the data of one website as JSON or CSV.</p>
-    <pre class="shell"><code>sumami export --db ./sumami.duckdb 3f2a... pages --format csv > traffic.csv
-sumami export --db ./sumami.duckdb 3f2a... summary --format json > traffic.json</code></pre>
+    <pre class="shell"><code>sumami-client export --db ./sumami.duckdb 3f2a... pages --format csv > traffic.csv
+sumami-client export --db ./sumami.duckdb 3f2a... summary --format json > traffic.json</code></pre>
     <p>
       The report comes after the website id and names what to export: <code>summary</code>,
       <code>pages</code>, <code>referrers</code>, <code>browsers</code>, <code>events</code>,
@@ -211,10 +231,10 @@ sumami export --db ./sumami.duckdb 3f2a... summary --format json > traffic.json<
       number of days. <code>0</code> days means keep everything, so nothing is deleted.
     </p>
     <pre class="shell"><code><span class="cmt"># local file — opened read-write for this command only</span>
-sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...
+sumami-client prune --db /var/lib/sumami/sumami.duckdb 3f2a...
 
 <span class="cmt"># through a running server — goes through the authenticated API</span>
-sumami prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...</code></pre>
+sumami-client prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...</code></pre>
     <p>
       Prune the server's own copy through the API while the service is running — never point
       the CLI at a database file the server currently has open.
@@ -225,7 +245,7 @@ sumami prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a.
       Delete a website and all of its data. This is the "right to be forgotten" button:
       <code>erase</code> removes the website, its sessions and its events.
     </p>
-    <pre class="shell"><code>sumami erase --db /var/lib/sumami/sumami.duckdb 3f2a...</code></pre>
+    <pre class="shell"><code>sumami-client erase --db /var/lib/sumami/sumami.duckdb 3f2a...</code></pre>
     <p>
       It asks for confirmation unless <code>--yes</code> is given. In HTTP mode it calls
       <code>DELETE /api/websites/:id</code>.
@@ -235,7 +255,7 @@ sumami prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a.
     <p>
       Every command accepts <code>--json</code>, which is what you want in a script:
     </p>
-    <pre class="shell"><code>sumami pages --db ./sumami.duckdb 3f2a... --json | jq '.[0].url'</code></pre>
+    <pre class="shell"><code>sumami-client pages --db ./sumami.duckdb 3f2a... --json | jq '.[0].url'</code></pre>
     <pre class="shell"><code>[
   { "name": "/posts/hello", "value": 312, "url": "/posts/hello" },
   { "name": "/posts/world", "value": 254, "url": "/posts/world" }
@@ -248,13 +268,13 @@ sumami prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a.
       so later commands can be run without repeating the password. Pass <code>--token</code> to
       bypass the cache entirely.
     </p>
-    <pre class="shell"><code>sumami summary --url http://127.0.0.1:3999 --username admin --password '...'
-sumami summary --url http://127.0.0.1:3999          <span class="cmt"># uses the cached token</span></code></pre>
+    <pre class="shell"><code>sumami-client summary --url http://127.0.0.1:3999 --username admin --password '...'
+sumami-client summary --url http://127.0.0.1:3999          <span class="cmt"># uses the cached token</span></code></pre>
     <p>
       The <code>login</code> subcommand does the same thing up front: it checks the
       credentials against the server and stores them.
     </p>
-    <pre class="shell"><code>sumami login http://127.0.0.1:3999 --username admin
+    <pre class="shell"><code>sumami-client login http://127.0.0.1:3999 --username admin
 <span class="cmt"># the password is asked for interactively when --password is omitted</span>
 credentials saved to /home/you/.config/sumami/credentials.json
 logged in to http://127.0.0.1:3999</code></pre>
@@ -273,21 +293,21 @@ logged in to http://127.0.0.1:3999</code></pre>
 
     <h2>Examples</h2>
     <h3>Yesterday's top pages</h3>
-    <pre class="shell"><code>sumami pages --db ./sumami.duckdb 3f2a... --from yesterday --to today</code></pre>
+    <pre class="shell"><code>sumami-client pages --db ./sumami.duckdb 3f2a... --from yesterday --to today</code></pre>
 
     <h3>A weekly report as CSV</h3>
-    <pre class="shell"><code>sumami export --db ./sumami.duckdb 3f2a... pages --format csv --from 30d > last-30-days.csv</code></pre>
+    <pre class="shell"><code>sumami-client export --db ./sumami.duckdb 3f2a... pages --format csv --from 30d > last-30-days.csv</code></pre>
 
     <h3>Counting unique visitors per day</h3>
-    <pre class="shell"><code>sumami timeseries --db ./sumami.duckdb 3f2a... --from 7d --json | jq 'map(.value)'</code></pre>
+    <pre class="shell"><code>sumami-client timeseries --db ./sumami.duckdb 3f2a... --from 7d --json | jq 'map(.value)'</code></pre>
 
     <h3>Auditing a running server</h3>
-    <pre class="shell"><code>sumami websites --url http://127.0.0.1:3999 --username admin --password '...'
-sumami summary --url http://127.0.0.1:3999 --username admin --password '...' --from 30d</code></pre>
+    <pre class="shell"><code>sumami-client websites --url http://127.0.0.1:3999 --username admin --password '...'
+sumami-client summary --url http://127.0.0.1:3999 --username admin --password '...' --from 30d</code></pre>
 
     <p class="footnote">
-      The <code>sumami</code> CLI is original work, MIT licensed together with the rest of
-      Sumami. All licences are recorded in <code>assets/CREDITS.md</code>.
+      The <code>sumami-client</code> CLI is original work, MIT licensed together with the rest
+      of Sumami. All licences are recorded in <code>assets/CREDITS.md</code>.
     </p>
 
   </div>

@@ -18,14 +18,23 @@ One binary + one DuckDB file = the whole system.
 
 ```
                     ┌───────────────────────────────┐
-   browser ───────▶ │  sumami (single binary)       │
+   browser ───────▶ │  sumami-server (one binary)    │
    (tracker.js)    │  ├─ /sumami.js   tracker       │
                     │  ├─ /api/send    collect       │
                     │  ├─ /api/*       umami compat  │
-                    │  ├─ /            docs site     │
+                    │  ├─ /            app shell ────┼──▶ CDN (frontend JS)
+                    │  ├─ /docs/*      docs site     │
                     │  └─ ./sumami.duckdb  (data)   │
                     └───────────────────────────────┘
 ```
+
+**Three release artifacts:**
+
+| Artifact        | What it is                                                                |
+| --------------- | ------------------------------------------------------------------------- |
+| `sumami-server` | the server only                                                            |
+| `sumami-client` | the analysis CLI only                                                      |
+| `sumami`        | **the two-in-one** — `sumami serve …` is the server, `sumami summary …` is the client |
 
 Brand: **Sumami / 数猫咪** — "Sum" + "Umami", and phonetically *"Tsunami speed"*.
 Slogan: *Count kitties who visit my websites. — 由猫开发*.
@@ -40,7 +49,7 @@ This repository (`sumami-dev/sumami`, **public**) is a workspace of four compone
 | ---------- | -------------- | -------------------------------------------------------------------------- |
 | `service/` | Rust           | The server: collection API, stats API, auth, DuckDB writer, static hosting. |
 | `cli/`     | Rust           | Offline reader/analyzer for a `.duckdb` file. Reads data the service wrote. |
-| `js/`      | JavaScript     | The tracker (`sumami.js`) + deployment recipes for putting it on a website. |
+| `js/`      | JavaScript     | The tracker (`sumami.js`) + the dashboard frontend (`sumami-app.js`). Published on a CDN. |
 | `docs/`    | HTML/Markdown  | The website & documentation served by the service binary.                  |
 
 The Rust crates `service/` and `cli/` are members of one Cargo workspace (root `Cargo.toml`).
@@ -147,11 +156,13 @@ Say so in the issue; do not implement it quietly.
 * **Storage:** DuckDB 2.0.0, embedded, one file. `duckdb` crate `1.20000.x`
   (the crate encodes the DuckDB version as `1.MAJOR_MINOR_PATCH.x`, so `20000` = **2.0.0**).
   DuckDB runs with an explicit `memory_limit` (default 256 MB) so a 512 MB VPS survives.
-* **Dynamic linking on purpose:** the crate is built *without* the `bundled` feature, so the
-  prebuilt `libduckdb` is downloaded at build time and linked dynamically. The executables
-  stay a few MB instead of ~70 MB, and the library ships next to them
-  (`RPATH = $ORIGIN` on Linux, `@loader_path` on macOS — see `.cargo/config.toml`).
-  Enable `duckdb/bundled` for a single self-contained file when that matters more.
+* **Static, single-file build:** DuckDB is compiled into the executable (`bundled`
+  feature, the default). The release is **one self-contained binary** — copy it, run it,
+  done: no shared library to ship, no `LD_LIBRARY_PATH`, no rpath, no runtime surprises.
+  This is the deployment that matters: *"one file on a cheap VPS"*.
+  Building with `--no-default-features` produces a much smaller executable that links
+  the prebuilt `libduckdb` dynamically (then `libduckdb.so` has to ship next to it) —
+  useful when the executable size matters more than the single-file property.
 * **One connection, one writer:** HTTP handlers never touch the database. They push parsed
   hits into an in-memory buffer; a dedicated writer thread drains the buffer and writes one
   transaction every **2 seconds**.
@@ -174,8 +185,11 @@ Say so in the issue; do not implement it quietly.
   Port 443 must reach the process directly; behind a TLS-terminating proxy, let the proxy
   manage the certificate instead.
 * **Static hosting:** the binary serves `js/sumami.js` (embedded at compile time via
-  `include_str!`), the dashboard frontend from `js/` (`/app/*`), and the docs site from
-  `docs/` (`/docs`).
+  `include_str!`, ~7 KB) and the docs site from `docs/` (`/docs`).
+  The **dashboard frontend is not in the binary**: the shell at `/` points at a CDN
+  (`SUMAMI_APP_URL`, default `https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js`),
+  which serves this public repository directly. Set `SUMAMI_APP_URL=/app` to serve it
+  from the backend instead (air-gapped installs).
 
 ### 4.2 Umami v2 API compatibility (the contract)
 
@@ -243,8 +257,8 @@ identifier. Neither can be reversed into an IP address.
 
 ### 4.4 cli/ — the analyzer (two sources, one UX)
 
-The CLI works against **either** a local database file **or** a running service, and the
-subcommands are identical in both modes:
+The CLI (`sumami-client`, or `sumami` in its client mode) works against **either** a local
+database file **or** a running service, and the subcommands are identical in both modes:
 
 ```
 sumami websites                     # list websites
@@ -357,11 +371,12 @@ frontend is never embedded in it.
 
 ```bash
 make build            # debug build
-make release          # release build + libduckdb next to the binaries
+make release          # release build (static DuckDB: self-contained binaries)
 make test             # unit + integration tests
 make lint             # clippy -- -D warnings
 make run              # serve on :3000 with ./dev.duckdb
-make package          # release archive: binaries + libduckdb + js/ + docs/
+make package          # release artifacts: sumami-server, sumami-client, sumami (tarball)
+make build-small      # optional: dynamically linked DuckDB (smaller, needs libduckdb)
 ```
 
 Plain cargo works too:
@@ -373,7 +388,8 @@ cargo run -p sumami-service -- serve --db ./dev.duckdb --port 3000
 cargo run -p sumami-cli -- --db ./dev.duckdb summary <website-id>
 ```
 
-The first build downloads `libduckdb` (set `CARGO_HTTP_TIMEOUT=600` on a slow link).
+The first build compiles DuckDB from source — that is the slow part (set
+`CARGO_HTTP_TIMEOUT=600` on a slow link).
 
 Local smoke test:
 
@@ -389,10 +405,10 @@ carries a `name`. The server treats a nameless event as a pageview.
 Deployment (cheap VPS, Debian/Ubuntu):
 
 ```bash
+# The release is a single self-contained binary — nothing else to install.
 sudo install -m 0755 target/release/sumami-server /usr/local/bin/
-sudo install -m 0755 target/release/sumami /usr/local/bin/
-sudo install -m 0644 target/release/libduckdb.so /usr/local/lib/
-sudo ldconfig
+sudo install -m 0755 target/release/sumami-client /usr/local/bin/   # optional
+sudo install -m 0755 target/release/sumami /usr/local/bin/          # optional (two-in-one)
 sudo systemctl enable --now sumami
 ```
 

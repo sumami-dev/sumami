@@ -32,8 +32,13 @@ const APP_SHELL: &str = r#"<!doctype html>
 
 /// `GET /` — the dashboard shell.
 pub async fn index(State(state): State<AppState>) -> Response {
-    // The frontend lives under `/app` unless a CDN (or another origin) is configured.
-    let base = state.config.app_url.clone().unwrap_or_else(|| "/app".to_string());
+    // The frontend is served from a CDN by default; `SUMAMI_APP_URL=/app` serves it
+    // from the backend itself (air-gapped installs).
+    let base = state
+        .config
+        .app_url
+        .clone()
+        .unwrap_or_else(|| crate::config::CDN_APP_URL.to_string());
     let html = APP_SHELL.replace("{base}", &base);
 
     (

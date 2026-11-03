@@ -5,7 +5,7 @@
 Sumami is a **self-hosted web analytics service** that fits on a cheap VPS: one small
 binary, one DuckDB file, no external database, no cloud account, no telemetry.
 
-- **Rust + Axum + Tokio** — a few MB of machine code, ~50 MB of RAM at rest.
+- **Rust + Axum + Tokio** — one self-contained binary, ~50 MB of RAM at rest.
 - **DuckDB 2.0.0** embedded — columnar analytics in a single file you can copy around.
 - **Umami v2 compatible API** — the existing trackers and dashboards work unchanged.
 - **Privacy first** — no cookies, no fingerprinting, **raw IP addresses are never stored**,
@@ -35,16 +35,18 @@ cd sumami
 cargo build --release          # the first build compiles DuckDB: be patient
 ```
 
-DuckDB is linked dynamically so the binaries stay small; the library goes next to them:
+The result is three executables in `target/release/`: `sumami-server` (the server),
+`sumami-client` (the CLI) and `sumami` (the two-in-one).
+
+DuckDB is compiled into the executable, so the result is a **single file** — no shared
+library to install, no `LD_LIBRARY_PATH`, no runtime surprises:
 
 ```bash
-# Linux
-curl -sL https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb-shared-libs-linux-amd64.tar.gz \
-  | tar xz -C /tmp
-cp /tmp/duckdb-shared-libs-linux-amd64/libduckdb.so target/release/
-
 ./target/release/sumami-server serve --db ./sumami.duckdb --port 3000
 ```
+
+(Prefer a smaller executable over a single file? `make build-small` links the prebuilt
+`libduckdb` dynamically instead — then `libduckdb.so` has to sit next to the binary.)
 
 The first run creates the admin account and prints its password **once**. Then:
 
@@ -96,9 +98,23 @@ The same commands work against a local `.duckdb` file and against a running serv
 cargo test                                  # unit + integration tests
 cargo clippy --all-targets -- -D warnings
 cargo run -p sumami-service -- serve --db ./dev.duckdb --port 3000
+cargo run -p sumami-cli -- --db ./dev.duckdb summary <website-id>
 ```
 
 `AGENTS.md` §7 lists the whole workflow.
+
+## What is in the release
+
+```
+sumami-server      the server (collection + stats + auth + TLS)
+sumami-client      the analysis CLI
+sumami             the two-in-one: `sumami serve …` is the server, `sumami summary …` is the CLI
+js/                the tracker and the dashboard frontend (published on a CDN)
+docs/              the documentation site
+```
+
+Each executable is self-contained (DuckDB is compiled in) — copy one file, run it.
+The dashboard frontend is served from a CDN by default, so the backend never ships it.
 
 ## Licence
 

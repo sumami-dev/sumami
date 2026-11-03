@@ -18,3 +18,7 @@
 .idea/
 .vscode/
 *.swp
+
+# Release artefacts
+/dist
+/sumami-*.tar.gz

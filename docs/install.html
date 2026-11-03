@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Install — Sumami</title>
-<meta name="description" content="Install Sumami: download the release archive, unpack sumami-server, the sumami CLI and libduckdb.so, start the server, create a website and install the tracker.">
+<meta name="description" content="Install Sumami: download the release archive, unpack the self-contained sumami-server, sumami-client and sumami executables, start the server, create a website and install the tracker.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
@@ -48,13 +48,13 @@
     <h1 class="page-title">Install</h1>
     <p class="page-lede">
       From an empty machine to a running analytics server in about five minutes. You need a
-      64-bit Linux box (or macOS), about 30 MB of disk, and nothing else — no database server,
-      no container runtime, no Node.
+      64-bit Linux box (or macOS), some disk for the programs and the database, and nothing
+      else — no database server, no container runtime, no Node, no shared library to install.
     </p>
 
     <h2>1. Get the release archive</h2>
     <p>
-      Every release publishes an archive containing three files:
+      Every release publishes an archive containing:
     </p>
     <div class="table-wrap">
       <table>
@@ -62,29 +62,72 @@
           <tr><th>File</th><th>What it is</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>sumami-server</code></td><td>The analytics server: collection API, statistics API, authentication, the dashboard shell and the tracker.</td></tr>
-          <tr><td><code>sumami</code></td><td>The command line analyser. Reads a <code>.duckdb</code> file directly, or talks to a running server over HTTP.</td></tr>
-          <tr><td><code>libduckdb.so</code></td><td>The DuckDB 2.0.0 shared library, taken from the <a href="https://github.com/duckdb/duckdb/releases">DuckDB releases page</a>.</td></tr>
+          <tr><td><code>sumami-server</code></td><td>The analytics server: collection API, statistics API, authentication, the dashboard shell and the tracker. A self-contained executable — DuckDB is compiled into it.</td></tr>
+          <tr><td><code>sumami-client</code></td><td>The analysis CLI. Reads a <code>.duckdb</code> file directly, or talks to a running server over HTTP. Also self-contained.</td></tr>
+          <tr><td><code>sumami</code></td><td>The two-in-one: <code>sumami serve --db … --port 3000</code> is the server, <code>sumami summary &lt;website-id&gt;</code> is the CLI. Also self-contained.</td></tr>
+          <tr><td><code>js/</code></td><td>The dashboard frontend files (<code>sumami-app.js</code>, <code>sumami.css</code>) and a copy of the tracker. The frontend is served from a CDN by default, and from here when you set <code>SUMAMI_APP_URL=/app</code>; the tracker itself is compiled into the server binary and always served by the backend.</td></tr>
+          <tr><td><code>docs/</code></td><td>This documentation site, served by the server at <code>/docs</code>.</td></tr>
         </tbody>
       </table>
     </div>
     <p>
-      DuckDB is linked <strong>dynamically</strong> rather than statically, which is what keeps
-      the two executables down to a few megabytes each instead of tens of them. The library is
-      loaded from next to the binary, so keep the three files together — copying only
-      <code>sumami-server</code> somewhere else will not work.
+      DuckDB is linked <strong>statically</strong>: its engine is compiled into the executables.
+      Each binary is self-contained — there is no <code>libduckdb.so</code> to ship, no
+      <code>LD_LIBRARY_PATH</code> to set, no rpath to fix and no <code>ldconfig</code> step.
+      Copy one file and run it.
     </p>
+
+    <h3>Which binary do I need?</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>I want to…</th><th>Use</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Run the server (collect page views, serve the dashboard)</td>
+            <td><code>sumami-server</code> — or <code>sumami serve …</code> if you installed the two-in-one.</td>
+          </tr>
+          <tr>
+            <td>Analyse the data from the command line</td>
+            <td><code>sumami-client</code> — or <code>sumami summary …</code> if you installed the two-in-one.</td>
+          </tr>
+          <tr>
+            <td>Both — one binary that is the server and the client</td>
+            <td><code>sumami</code>. <code>sumami serve …</code> starts the server, every other subcommand is the analysis CLI.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      You only ever need to copy the one(s) you actually use. A server-only deployment is
+      <code>sumami-server</code> on the box; the analyser is the one you copy to your laptop.
+    </p>
+    <div class="callout tip">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+        Want a smaller binary instead?
+      </p>
+      <p>
+        There is an optional dynamic build: <code>make build-small</code> links the prebuilt
+        DuckDB library instead of compiling it in, which gives you noticeably smaller
+        executables — at the price of one extra file to ship. In that case
+        <code>libduckdb.so</code> (or <code>libduckdb.dylib</code> on macOS) has to sit next to
+        the binaries, and the loader has to be told where to find it. The default release is
+        static, so this only matters if you build from source.
+      </p>
+    </div>
 
     <h3>Linux (x86-64)</h3>
     <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
 ls -l</code></pre>
-    <p>You should now see <code>sumami-server</code>, <code>sumami</code> and <code>libduckdb.so</code>.</p>
+    <p>You should now see <code>sumami-server</code>, <code>sumami-client</code>, <code>sumami</code>, <code>js/</code> and <code>docs/</code>.</p>
 
     <h3>macOS (Apple silicon)</h3>
     <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-macos-arm64.tar.gz | tar xz</code></pre>
     <p>
-      On macOS the DuckDB library is named <code>libduckdb.dylib</code> instead of
-      <code>libduckdb.so</code>. The same rule applies: it belongs next to the binaries.
+      The same layout, and the same rule: the executables are self-contained on macOS too, so
+      there is nothing to copy next to them.
     </p>
 
     <h3>Windows</h3>
@@ -101,18 +144,36 @@ Expand-Archive sumami.zip</code></pre>
 cd sumami
 cargo build --release
 <span class="cmt"># the binaries land in target/release/</span></code></pre>
-
-    <h2>2. Install the files</h2>
-    <pre class="shell"><code><span class="cmt"># executables</span>
-sudo install -m 0755 sumami-server sumami /usr/local/bin/
-
-<span class="cmt"># the DuckDB shared library, so the loader finds it</span>
-sudo install -m 0755 libduckdb.so /usr/local/lib/
-sudo ldconfig</code></pre>
     <p>
-      If you would rather keep everything together in one directory (and see the three files
-      side by side), install them into <code>/opt/sumami</code> and set
-      <code>LD_LIBRARY_PATH=/opt/sumami</code> in the service's environment file instead.
+      <code>cargo build --release</code> produces the same self-contained executables as the
+      release archive. <code>make build-small</code> produces the smaller dynamic build
+      described above, and copies <code>libduckdb.so</code> into <code>target/release/</code>
+      for you.
+    </p>
+
+    <h2>2. Install the executables</h2>
+    <pre class="shell"><code><span class="cmt"># the server, and the analysis CLI if you want it on the box too</span>
+sudo install -m 0755 sumami-server sumami-client /usr/local/bin/
+
+<span class="cmt"># or install the two-in-one instead of the two separate binaries</span>
+sudo install -m 0755 sumami /usr/local/bin/
+
+<span class="cmt"># optional: the js/ and docs/ directories, for the dashboard frontend</span>
+<span class="cmt"># served by the backend itself and for the docs site at /docs</span>
+sudo install -d -m 0755 /opt/sumami
+sudo cp -r js docs /opt/sumami/</code></pre>
+    <p>
+      That is the whole installation. The binaries carry DuckDB inside them, so there is no
+      library to install alongside and no loader configuration to do. If you would rather keep
+      everything together in one directory, install them into <code>/opt/sumami</code> and
+      point the service's <code>ExecStart</code> at that path.
+    </p>
+    <p>
+      The <code>js/</code> and <code>docs/</code> directories are optional. You need
+      <code>js/</code> only if you serve the dashboard frontend from the backend yourself
+      (<code>SUMAMI_APP_URL=/app</code>); by default it comes from a CDN. <code>docs/</code> is
+      this documentation site, served at <code>/docs</code>. The tracker at
+      <code>/sumami.js</code> is compiled into the server binary, so it is available either way.
     </p>
 
     <h2>3. Create the admin account</h2>
@@ -169,7 +230,7 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
           <tr><td><code>--jwt-secret &lt;secret&gt;</code></td><td><code>SUMAMI_JWT_SECRET</code></td><td>generated</td><td>Secret used to sign tokens. A random one is generated and stored next to the database on first run if unset.</td></tr>
           <tr><td><code>--retention-days &lt;n&gt;</code></td><td><code>SUMAMI_RETENTION_DAYS</code></td><td><code>0</code></td><td>Default retention window in days. <code>0</code> means keep forever.</td></tr>
           <tr><td><code>--country-header &lt;name&gt;</code></td><td><code>SUMAMI_COUNTRY_HEADER</code></td><td>none</td><td>Header carrying the country code, e.g. <code>CF-IPCountry</code>.</td></tr>
-          <tr><td><code>--js-dir &lt;path&gt;</code></td><td><code>SUMAMI_JS_DIR</code></td><td><code>js</code></td><td>Directory holding the dashboard frontend files.</td></tr>
+          <tr><td><code>--js-dir &lt;path&gt;</code></td><td><code>SUMAMI_JS_DIR</code></td><td><code>js</code></td><td>Directory holding the dashboard frontend files. Only used when <code>SUMAMI_APP_URL=/app</code> makes the backend serve the frontend itself.</td></tr>
           <tr><td><code>--docs-dir &lt;path&gt;</code></td><td><code>SUMAMI_DOCS_DIR</code></td><td><code>docs</code></td><td>Directory holding the documentation site served at <code>/docs</code>.</td></tr>
           <tr><td><code>--ssl &lt;domain&gt;</code></td><td><code>SUMAMI_SSL_DOMAIN</code></td><td>none</td><td>Serve HTTPS with a certificate obtained and renewed automatically over ACME. <code>--ssl-domain</code> is accepted as an alias. See <a href="self-host.html#lets-sumami-manage-tls-itself">Let Sumami manage TLS itself</a>.</td></tr>
           <tr><td><code>--ssl-email &lt;address&gt;</code></td><td><code>SUMAMI_SSL_EMAIL</code></td><td>none</td><td>Contact address registered with the ACME provider. Let's Encrypt sends expiry notices there.</td></tr>
@@ -186,8 +247,14 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
       <li><code>SUMAMI_KEEP_QUERY</code> — set to <code>1</code>, <code>true</code> or
         <code>yes</code> to keep the query string of collected URLs. It is off by default,
         because query strings routinely carry session tokens and other personal data.</li>
-      <li><code>SUMAMI_APP_URL</code> — base URL of the dashboard frontend, if you serve it from
-        a CDN. The backend then only ships a tiny HTML shell.</li>
+      <li><code>SUMAMI_APP_URL</code> — base URL of the dashboard frontend
+        (<code>sumami-app.js</code> and <code>sumami.css</code>). It defaults to
+        <code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code>, so the frontend is
+        served from a CDN out of the box and the backend only ships a tiny HTML shell. Set it
+        to <code>/app</code> to serve the frontend from the backend's own <code>js/</code>
+        directory instead — that is what you want on an air-gapped machine. The tracker
+        (<code>sumami.js</code>) is served by the backend itself and is unaffected by this
+        setting.</li>
     </ul>
     <p>
       A few more environment variables tune the process rather than the data:
@@ -248,8 +315,9 @@ curl -s -X POST http://127.0.0.1:3999/api/websites \
 
     <h2>6. Install the tracker</h2>
     <p>
-      The server serves the tracker itself at <code>/sumami.js</code>. Put this in the
-      <code>&lt;head&gt;</code> of every page you want to measure:
+      The server serves the tracker itself at <code>/sumami.js</code> — it is compiled into the
+      binary, so it is always available whatever you set <code>SUMAMI_APP_URL</code> to. Put
+      this in the <code>&lt;head&gt;</code> of every page you want to measure:
     </p>
     <pre class="shell"><code>&lt;script defer
   src="https://your-sumami-host/sumami.js"
@@ -263,16 +331,18 @@ curl -s -X POST http://127.0.0.1:3999/api/websites \
     <h2>7. Look at the numbers</h2>
     <p>
       Open <code>http://127.0.0.1:3999/</code> and log in with the admin account. The dashboard
-      is a small HTML shell that loads the frontend JavaScript; the backend serves it from
-      <code>js/</code> by default, and you can point <code>SUMAMI_APP_URL</code> at a CDN if you
-      prefer.
+      is a small HTML shell that loads the frontend JavaScript. By default that frontend comes
+      from a CDN (<code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code>), so the
+      backend ships no frontend code; set <code>SUMAMI_APP_URL=/app</code> to serve it from the
+      backend's own <code>js/</code> directory instead. The tracker at
+      <code>/sumami.js</code> is always served by the backend itself.
     </p>
     <p>
       You can also read the same numbers straight from the database file:
     </p>
-    <pre class="shell"><code>sumami websites --db /var/lib/sumami/sumami.duckdb
-sumami summary --db /var/lib/sumami/sumami.duckdb 3f2a...
-sumami pages   --db /var/lib/sumami/sumami.duckdb 3f2a... --limit 10</code></pre>
+    <pre class="shell"><code>sumami-client websites --db /var/lib/sumami/sumami.duckdb
+sumami-client summary --db /var/lib/sumami/sumami.duckdb 3f2a...
+sumami-client pages   --db /var/lib/sumami/sumami.duckdb 3f2a... --limit 10</code></pre>
     <p>
       The <a href="cli.html">CLI reference</a> lists every subcommand and every flag.
     </p>

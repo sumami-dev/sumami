@@ -291,6 +291,14 @@ https://blog.example.com/posts/hello?utm_source=newsletter&amp;email=ada@example
         box has no outbound network access, nothing breaks.
       </li>
       <li>
+        <strong>The tracker is always served by your own server.</strong> The script you put
+        on your website (<code>sumami.js</code>) is compiled into the server binary and served
+        from your own host, so your visitors' browsers never talk to a third party to report a
+        page view. The <em>dashboard</em> frontend is a separate thing: it is loaded by your
+        own administrator's browser, and by default comes from a CDN. Set
+        <code>SUMAMI_APP_URL=/app</code> to serve it from your own server instead.
+      </li>
+      <li>
         <strong>No raw IPs in logs.</strong> Access logs record the method, the path, the status
         and the duration. Query strings are stripped from logged paths, because they routinely
         carry tokens and personal data.
@@ -351,12 +359,12 @@ sumami.track('signup', { email: 'ada@example.com', user_id: 'u-10423' });</code>
       <li>Change it for one website with <code>PUT /api/websites/:id</code> or the
         <code>PUT</code> equivalent in the dashboard.</li>
       <li>Read it back with <code>GET /api/websites/:id</code>.</li>
-      <li>Enforce it with <code>sumami prune</code>, scheduled from cron.</li>
+      <li>Enforce it with <code>sumami-client prune</code>, scheduled from cron.</li>
     </ul>
     <p>
       To remove a website and everything belonging to it:
     </p>
-    <pre class="shell"><code>sumami erase --db /var/lib/sumami/sumami.duckdb --website 3f2a...
+    <pre class="shell"><code>sumami-client erase --db /var/lib/sumami/sumami.duckdb 3f2a...
 
 <span class="cmt"># or through the API</span>
 curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
@@ -430,8 +438,8 @@ curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
           <tr><td>Geography</td><td>only from a configured edge header, else nothing</td></tr>
           <tr><td>Outbound calls from the server</td><td><span class="pill no">none, ever</span></td></tr>
           <tr><td>Request bodies in logs</td><td><span class="pill no">never</span></td></tr>
-          <tr><td>Retention</td><td>configurable per website, enforced by <code>sumami prune</code></td></tr>
-          <tr><td>Erasure</td><td><span class="pill yes"><code>sumami erase</code> and <code>DELETE /api/websites/:id</code></span></td></tr>
+          <tr><td>Retention</td><td>configurable per website, enforced by <code>sumami-client prune</code></td></tr>
+          <tr><td>Erasure</td><td><span class="pill yes"><code>sumami-client erase</code> and <code>DELETE /api/websites/:id</code></span></td></tr>
         </tbody>
       </table>
     </div>

@@ -1,15 +1,15 @@
 # Sumami — build helpers.
 #
-# DuckDB is linked dynamically so the executables stay small. The library is
-# downloaded at build time and copied next to the binaries so it is found at
-# runtime via the RPATH ($ORIGIN on Linux, @loader_path on macOS).
+# The default build compiles DuckDB into the executables, so the release is a
+# single self-contained binary. `make build-small` links the prebuilt
+# libduckdb dynamically instead (smaller executable, one extra file to ship).
 
 CARGO ?= cargo
 CARGO_HTTP_TIMEOUT ?= 600
 TARGET ?= target/release
 DUCKDB_VERSION ?= v2.0.0
 
-.PHONY: all build release test lint fmt run clean package libduckdb
+.PHONY: all build release test lint fmt run clean package build-small
 
 all: build
 
@@ -17,20 +17,18 @@ all: build
 build:
 	$(CARGO) build
 
-## Build (release) and put libduckdb next to the binaries.
-release: libduckdb
+## Build (release): static DuckDB, self-contained binaries.
+release:
 	CARGO_HTTP_TIMEOUT=$(CARGO_HTTP_TIMEOUT) $(CARGO) build --release
 
-## Copy the downloaded DuckDB library next to the built binaries.
-libduckdb:
+## Build (release) with a dynamically linked DuckDB: smaller, needs libduckdb.
+build-small:
+	CARGO_HTTP_TIMEOUT=$(CARGO_HTTP_TIMEOUT) $(CARGO) build --release --no-default-features
 	@set -e; \
 	dir=$$(ls -d target/duckdb-download/*/$(DUCKDB_VERSION) 2>/dev/null | head -1); \
 	if [ -n "$$dir" ]; then \
-		cp -f $$dir/libduckdb.* target/debug/ 2>/dev/null || true; \
 		cp -f $$dir/libduckdb.* $(TARGET)/ 2>/dev/null || true; \
 		echo "libduckdb copied from $$dir"; \
-	else \
-		echo "libduckdb not found in target/duckdb-download — run 'cargo build' first"; \
 	fi
 
 ## Run the tests.
@@ -46,19 +44,28 @@ fmt:
 	$(CARGO) fmt --all
 
 ## Run the server locally.
-run: libduckdb
+run:
 	$(CARGO) run -p sumami-service -- serve --db ./dev.duckdb --port 3000
 
-## Build a release archive: binaries + libduckdb + the frontend files.
+## Build the release artifacts.
+##
+##   sumami-server          the server (standalone executable)
+##   sumami-client          the analysis CLI (standalone executable)
+##   sumami-<ver>-<os>-<arch>.tar.gz
+##                          the two-in-one: the `sumami` binary + js/ + docs/
+##
+## The tarball deliberately does NOT contain all three binaries: each one carries its
+## own copy of DuckDB, so shipping three of them triples the download for no gain.
+## The two-in-one binary already contains both halves.
 package: release
 	@set -e; \
 	rm -rf dist; mkdir -p dist; \
-	cp $(TARGET)/sumami-server $(TARGET)/sumami dist/; \
-	dir=$$(ls -d target/duckdb-download/*/$(DUCKDB_VERSION) 2>/dev/null | head -1); \
-	[ -n "$$dir" ] && cp -f $$dir/libduckdb.* dist/ || true; \
-	cp -r js dist/js; cp -r docs dist/docs; \
-	tar czf sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz -C dist .; \
-	echo "wrote sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
+	cp $(TARGET)/sumami-server $(TARGET)/sumami-client $(TARGET)/sumami dist/; \
+	mkdir -p dist/bundle; \
+	cp $(TARGET)/sumami dist/bundle/; \
+	cp -r js dist/bundle/js; cp -r docs dist/bundle/docs; \
+	tar czf sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz -C dist/bundle .; \
+	echo "wrote dist/sumami-server, dist/sumami-client and sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
 
 ## Remove the build artefacts.
 clean:

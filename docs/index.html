@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sumami — self-hosted web analytics in one small binary</title>
+<title>Sumami — self-hosted web analytics in one self-contained binary</title>
 <meta name="description" content="Sumami (数猫咪) is a self-hosted, single-binary web analytics service built with Rust, Axum and embedded DuckDB. Cookieless, no raw IP storage, Umami v2 compatible API.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
@@ -53,8 +53,9 @@
           <p class="tagline-cn">由猫开发 — a self-hosted web analytics service that fits on a cheap VPS.</p>
           <p class="lede">
             Sumami is a single-binary analytics server written in Rust. It stores everything in
-            one embedded DuckDB file, serves its own dashboard and tracker, and makes no outbound
-            network calls at all. Nothing to sign up for, nothing to pay for, nothing that phones home.
+            one embedded DuckDB file, serves its own tracker and dashboard, and makes no
+            outbound network calls at all. Nothing to sign up for, nothing to pay for, nothing
+            that phones home.
           </p>
           <ul class="badges">
             <li><strong>Rust</strong> + Axum + Tokio</li>
@@ -104,7 +105,7 @@
       Sumami collects page views from your own websites and serves them back to you as
       statistics. The whole thing is one executable file plus one database file. There is no
       queue, no cache to operate, no object storage, no Kubernetes, no managed cloud service in
-      the middle. You copy two files to a box, run one systemd unit, and you are done.
+      the middle. You copy one file to a box, run one systemd unit, and you are done.
     </p>
     <p>
       The HTTP API is <strong>Umami v2 compatible</strong>, so the official Umami dashboard — and
@@ -139,7 +140,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
           <h3>An offline analyser</h3>
         </div>
-        <p>The <code>sumami</code> CLI reads the same DuckDB file directly, so you can query your traffic on a laptop with no server running at all.</p>
+        <p>The <code>sumami-client</code> CLI reads the same DuckDB file directly, so you can query your traffic on a laptop with no server running at all.</p>
       </li>
     </ul>
 
@@ -148,9 +149,8 @@
     <pre class="shell"><code><span class="cmt"># 1. download the release archive and unpack it</span>
 curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
 
-<span class="cmt"># 2. install the server, the CLI and the DuckDB library</span>
-sudo install -m 0755 sumami-server sumami /usr/local/bin/
-sudo install -m 0755 libduckdb.so /usr/local/lib/
+<span class="cmt"># 2. install the server (and the analysis CLI, if you want it here too)</span>
+sudo install -m 0755 sumami-server sumami-client /usr/local/bin/
 
 <span class="cmt"># 3. run it</span>
 sumami-server serve --db /var/lib/sumami/sumami.duckdb --port 3999
@@ -160,12 +160,21 @@ sumami-server serve --db /var/lib/sumami/sumami.duckdb --port 3999
 
 <span class="cmt"># 5. look at the dashboard at https://your-host/</span></code></pre>
     <p>
-      The release archive contains three files: <code>sumami-server</code> (the server),
-      <code>sumami</code> (the offline CLI) and <code>libduckdb.so</code> (the DuckDB 2.0.0
-      shared library). DuckDB is linked dynamically, which keeps the executables at a few
-      megabytes each; the library is found next to the binary, so keep the three together.
+      The release archive contains <code>sumami-server</code> (the server),
+      <code>sumami-client</code> (the analysis CLI), <code>sumami</code> (the two-in-one, where
+      <code>sumami serve …</code> is the server and every other subcommand is the CLI), the
+      <code>js/</code> directory with the dashboard frontend (and a copy of the tracker), and
+      the <code>docs/</code> directory with this documentation. DuckDB is compiled into every
+      executable, so each one is a single self-contained binary: there is no shared library to
+      ship alongside them, and nothing else to install.
       The <a href="install.html">install guide</a> has the full walkthrough, including Windows,
       macOS, the admin password and the systemd unit.
+    </p>
+    <p>
+      The dashboard frontend is loaded from a CDN by default, so the server ships no frontend
+      code and stays small; the tracker is compiled into the server binary and always served by
+      it. See the <a href="self-host.html#the-dashboard-frontend-and-the-tracker">self-hosting
+      guide</a> if you would rather serve the frontend yourself.
     </p>
 
     <h2>The privacy promise</h2>
@@ -189,7 +198,7 @@ sumami-server serve --db /var/lib/sumami/sumami.duckdb --port 3999
           <tr><td>Do Not Track / Global Privacy Control</td><td><span class="pill yes">honoured — nothing is sent</span></td></tr>
           <tr><td>Geolocation</td><td>only from an edge header you configure; never from a geo-IP database</td></tr>
           <tr><td>Outbound calls from the server</td><td><span class="pill no">none, ever</span></td></tr>
-          <tr><td>Retention</td><td>configurable window, enforced by <code>sumami prune</code></td></tr>
+          <tr><td>Retention</td><td>configurable window, enforced by <code>sumami-client prune</code></td></tr>
         </tbody>
       </table>
     </div>

@@ -48,9 +48,10 @@
     <h1 class="page-title">Self-host on a cheap VPS</h1>
     <p class="page-lede">
       A complete deployment of Sumami on a 1 vCPU / 512 MB machine: a dedicated user, a
-      systemd unit, a real certificate, and backups you can restore from. Nothing here needs
-      more than a few megabytes of RAM. TLS can come from a reverse proxy or from Sumami
-      itself — the guide covers both.
+      systemd unit, a real certificate, and backups you can restore from. The server is a
+      single self-contained executable — DuckDB is compiled into it — so deploying it means
+      copying one file onto the box. Nothing here needs more than a few megabytes of RAM. TLS
+      can come from a reverse proxy or from Sumami itself — the guide covers both.
     </p>
 
     <h2>What the box needs</h2>
@@ -64,6 +65,7 @@
           <tr><td>RAM</td><td>512 MB</td><td>DuckDB is capped at 256 MB by default so the OOM killer stays away.</td></tr>
           <tr><td>Disk</td><td>10 GB</td><td>The database is small; page views are a few dozen bytes each.</td></tr>
           <tr><td>OS</td><td>Debian 12 / Ubuntu 22.04+</td><td>Any systemd Linux works. Alpine needs <code>libstdc++</code> and <code>libgcc</code>.</td></tr>
+          <tr><td>Programs</td><td>one executable</td><td><code>sumami-server</code> is enough for the server; add <code>sumami-client</code> (or the two-in-one <code>sumami</code>) if you want the analysis CLI on the box too. All are self-contained — DuckDB is compiled in.</td></tr>
         </tbody>
       </table>
     </div>
@@ -94,32 +96,52 @@ sudo mkdir -p /var/lib/sumami
 sudo chown sumami:sumami /var/lib/sumami
 sudo chmod 0750 /var/lib/sumami</code></pre>
 
-    <h2>2. Install the three files</h2>
+    <h2>2. Install the executables</h2>
     <pre class="shell"><code><span class="cmt"># download and unpack the release archive</span>
 cd /tmp
 curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
 
-<span class="cmt"># install the executables</span>
-sudo install -m 0755 sumami-server sumami /usr/local/bin/
+<span class="cmt"># install the server — that is all there is to do</span>
+sudo install -m 0755 sumami-server /usr/local/bin/
 
-<span class="cmt"># install the DuckDB 2.0.0 shared library</span>
-sudo install -m 0755 libduckdb.so /usr/local/lib/
-sudo ldconfig
-ldconfig -p | grep duckdb</code></pre>
+<span class="cmt"># optional: the analysis CLI on this box too</span>
+sudo install -m 0755 sumami-client /usr/local/bin/
+
+<span class="cmt"># the js/ and docs/ directories from the archive (see below)</span>
+sudo install -d -m 0755 /opt/sumami
+sudo cp -r js docs /opt/sumami/</code></pre>
     <div class="callout tip">
       <p class="callout-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
-        Keeping the three files together
+        One file, nothing to configure
       </p>
       <p>
-        DuckDB is linked dynamically, and the loader looks for the library next to the binary.
-        If you install into <code>/usr/local/bin</code>, <code>libduckdb.so</code> must be on the
-        loader path — <code>/usr/local/lib</code> plus <code>ldconfig</code> does that. If you
-        would rather keep everything in one directory that is trivially backed up and versioned,
-        install all three into <code>/opt/sumami</code> and add
-        <code>LD_LIBRARY_PATH=/opt/sumami</code> to the unit's environment file.
+        DuckDB is compiled into the executables, so <code>sumami-server</code> is completely
+        self-contained: there is no <code>libduckdb.so</code> to install, no
+        <code>LD_LIBRARY_PATH</code> to set and no <code>ldconfig</code> to run. Copy one file
+        onto the box and it runs.
+      </p>
+      <p>
+        The archive also ships <code>sumami-client</code> (the analysis CLI on its own) and
+        <code>sumami</code> (the two-in-one, where <code>sumami serve …</code> is the server
+        and every other subcommand is the CLI). The unit below uses
+        <code>sumami-server</code>; swap it for <code>sumami serve</code> if you prefer the
+        two-in-one.
+      </p>
+      <p>
+        If you would rather keep the program in one directory that is trivially versioned and
+        swapped on upgrades, install the executables into <code>/opt/sumami</code> and point
+        the unit's <code>ExecStart</code> at <code>/opt/sumami/sumami-server</code>.
       </p>
     </div>
+    <p>
+      The archive also contains two directories: <code>docs/</code>, which the server serves as
+      this documentation site at <code>/docs</code>, and <code>js/</code>, which holds the
+      dashboard frontend. You only need <code>js/</code> if you serve the frontend from the
+      backend yourself with <code>SUMAMI_APP_URL=/app</code> — by default the frontend comes
+      from a CDN. The tracker in <code>js/sumami.js</code> is compiled into the binary, so
+      <code>/sumami.js</code> works whether or not you copy the directory across.
+    </p>
 
     <h2>3. Write the environment file</h2>
     <p>
@@ -149,6 +171,10 @@ SUMAMI_FLUSH_INTERVAL_SECS=2
 <span class="cmt"># directory holding the dashboard frontend and this docs site</span>
 SUMAMI_JS_DIR=/opt/sumami/js
 SUMAMI_DOCS_DIR=/opt/sumami/docs
+
+<span class="cmt"># the dashboard frontend comes from a CDN by default; uncomment this to</span>
+<span class="cmt"># serve it from the backend's own js/ directory instead (air-gapped installs)</span>
+# SUMAMI_APP_URL=/app
 
 <span class="cmt"># only if Sumami should manage TLS itself (see section 5, option B)</span>
 # SUMAMI_SSL_DOMAIN=example.com
@@ -205,6 +231,11 @@ sudo systemctl status sumami</code></pre>
       The command line is intentionally empty of flags: everything comes from the environment
       file, so <code>sudo systemctl edit sumami</code> is enough to change a setting on a live
       box.
+    </p>
+    <p>
+      The unit starts <code>sumami-server serve</code>. If you installed the two-in-one
+      <code>sumami</code> instead, use <code>ExecStart=/usr/local/bin/sumami serve</code> —
+      it is the same server.
     </p>
     <pre class="shell"><code>sudo journalctl -u sumami -f</code></pre>
     <p>
@@ -456,7 +487,8 @@ sudo ufw allow 443/tcp</code></pre>
     <p>
       Your entire dataset is one file, so a backup is one file copy. Stop the service first so
       the copy is consistent — DuckDB's write-ahead log means a live copy can otherwise be
-      incomplete.
+      incomplete. There is no library to back up: the executables are self-contained, so only
+      the database (and the files next to it) need copying.
     </p>
     <pre class="shell"><code><span class="cmt"># a nightly snapshot</span>
 sudo tee /usr/local/bin/sumami-backup &gt;/dev/null &lt;&lt;'EOF'
@@ -496,10 +528,10 @@ curl -s http://127.0.0.1:3999/api/heartbeat</code></pre>
       <code>GET /api/websites/:id</code>, and honoured by the CLI.
     </p>
     <pre class="shell"><code><span class="cmt"># local file: prune the database in place</span>
-sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...
+sumami-client prune --db /var/lib/sumami/sumami.duckdb 3f2a...
 
 <span class="cmt"># or through the running server</span>
-sumami prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...</code></pre>
+sumami-client prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...</code></pre>
     <p>
       Schedule it in the same cron file as the backup. Pruning before the backup keeps the
       backup small.
@@ -507,7 +539,7 @@ sumami prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a.
 
     <h2>9. Upgrades</h2>
     <pre class="shell"><code>sudo systemctl stop sumami
-sudo install -m 0755 sumami-server sumami /usr/local/bin/
+sudo install -m 0755 sumami-server sumami-client /usr/local/bin/
 sudo systemctl start sumami
 sudo journalctl -u sumami -n 20</code></pre>
     <p>
@@ -515,17 +547,75 @@ sudo journalctl -u sumami -n 20</code></pre>
       Take a backup first anyway.
     </p>
 
-    <h2>Serving the dashboard from a CDN</h2>
+    <h2>The dashboard frontend and the tracker</h2>
     <p>
-      The backend serves a deliberately tiny HTML shell at <code>/</code> that loads the frontend
-      JavaScript. If you would rather serve that frontend from a CDN, point
-      <code>SUMAMI_APP_URL</code> at the CDN base URL:
+      Two different JavaScript files are involved, and they are served in two different ways:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>File</th><th>What it is</th><th>Served by</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>sumami.js</code></td>
+            <td>The tracker you put on <em>your own</em> website. It sends the page views.</td>
+            <td>The backend itself, at <code>/sumami.js</code>. It is compiled into the binary, so it is always available — no CDN, no configuration.</td>
+          </tr>
+          <tr>
+            <td><code>sumami-app.js</code><br><code>sumami.css</code></td>
+            <td>The dashboard frontend — the pages you log into to read your statistics.</td>
+            <td>A CDN by default. The backend serves only a tiny HTML shell at <code>/</code> that points at <code>&lt;base&gt;/sumami-app.js</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Serving the dashboard frontend from a CDN</h3>
+    <p>
+      This is the <strong>default</strong> and you do not have to configure anything. The
+      backend serves a deliberately tiny HTML shell at <code>/</code> that references
+      <code>sumami-app.js</code> and <code>sumami.css</code> under a base URL — and that base
+      URL defaults to:
+    </p>
+    <pre class="shell"><code>SUMAMI_APP_URL=https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code></pre>
+    <p>
+      jsDelivr serves this public GitHub repository directly, so the dashboard frontend is
+      fetched from
+      <code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js/sumami-app.js</code> and
+      <code>.../sumami.css</code>. Two consequences: the backend ships no frontend code at all,
+      and the dashboard picks up frontend fixes without you upgrading the server.
+    </p>
+    <p>
+      You can point <code>SUMAMI_APP_URL</code> at any other base URL — your own CDN, a
+      self-hosted copy:
     </p>
     <pre class="shell"><code>SUMAMI_APP_URL=https://cdn.example.com/sumami-app</code></pre>
     <p>
       The shell then references <code>https://cdn.example.com/sumami-app/sumami-app.js</code>
-      and <code>.../sumami.css</code> instead of the local files, and the backend ships no
-      frontend code at all. This is optional — the default works fine on one box.
+      and <code>.../sumami.css</code> instead.
+    </p>
+
+    <h3>Serving the dashboard frontend from the backend</h3>
+    <p>
+      On an air-gapped machine there is no CDN to fetch from. Set
+      <code>SUMAMI_APP_URL=/app</code> and the backend serves the two frontend files from its
+      own <code>js/</code> directory instead:
+    </p>
+    <pre class="shell"><code><span class="cmt"># in /etc/sumami/sumami.env</span>
+SUMAMI_APP_URL=/app
+SUMAMI_JS_DIR=/opt/sumami/js</code></pre>
+    <p>
+      The shell then references <code>/app/sumami-app.js</code> and <code>/app/sumami.css</code>,
+      and the backend reads them from disk at request time — so you can update the frontend by
+      replacing the files in <code>js/</code>, without restarting the server. The files are also
+      served directly at <code>/app/sumami-app.js</code> and <code>/app/sumami.css</code>
+      either way, so that fallback path always works.
+    </p>
+    <p>
+      Whatever you set here, the <strong>tracker is unaffected</strong>: <code>sumami.js</code>
+      is always served by the backend itself, because your own website has to be able to reach
+      it.
     </p>
 
     <h2>A note on Cloudflare</h2>
@@ -542,7 +632,10 @@ sudo journalctl -u sumami -n 20</code></pre>
 
     <h2>Checklist</h2>
     <ul>
-      <li>Binaries and <code>libduckdb.so</code> installed, loader finds the library.</li>
+      <li>Executables installed on the PATH; DuckDB is compiled in, so there is no shared
+        library to install and no loader configuration to do.</li>
+      <li>Dashboard frontend reachable: from the CDN (the default), or from the backend with
+        <code>SUMAMI_APP_URL=/app</code> if the box has no outbound network access.</li>
       <li>Environment file at <code>/etc/sumami/sumami.env</code>, mode <code>0640</code>.</li>
       <li>Data directory owned by the <code>sumami</code> user, mode <code>0750</code>.</li>
       <li>systemd unit enabled and restarting on failure.</li>

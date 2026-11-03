@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FAQ — Sumami</title>
-<meta name="description" content="Frequently asked questions about Sumami: compatibility with Umami, system requirements, DuckDB, the libduckdb.so error, missing page views, dropped events, TLS, backups and privacy questions.">
+<meta name="description" content="Frequently asked questions about Sumami: compatibility with Umami, system requirements, DuckDB, the self-contained binary, missing page views, dropped events, TLS, backups and privacy questions.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
@@ -77,9 +77,9 @@
 
     <h3>What are the system requirements?</h3>
     <p>
-      A 64-bit Linux box (or macOS), 1 vCPU, 512 MB of RAM and about 30 MB of disk for the
-      program. The database grows with your traffic but stays small: a page view is a few dozen
-      bytes. DuckDB runs with an explicit 256 MB memory limit by default so a 512 MB box
+      A 64-bit Linux box (or macOS), 1 vCPU, 512 MB of RAM and some disk for the programs and
+      the database. The database grows with your traffic but stays small: a page view is a few
+      dozen bytes. DuckDB runs with an explicit 256 MB memory limit by default so a 512 MB box
       survives.
     </p>
 
@@ -96,8 +96,9 @@
     <p>
       Yes — that is the point of the compatible API. Point the Umami dashboard at your Sumami
       host and log in with the admin account. Alternatively, Sumami serves its own small
-      dashboard shell at <code>/</code>, loading the frontend from <code>js/</code> or from a
-      CDN if you set <code>SUMAMI_APP_URL</code>.
+      dashboard shell at <code>/</code>, loading the frontend from a CDN by default. Set
+      <code>SUMAMI_APP_URL=/app</code> to have the backend serve the frontend from its own
+      <code>js/</code> directory instead — that is what you want on an air-gapped machine.
     </p>
 
     <h3>Does it support multiple websites?</h3>
@@ -107,28 +108,84 @@
       country-header setting.
     </p>
 
+    <h3>Where does the dashboard come from?</h3>
+    <p>
+      Two JavaScript files, served in two different ways:
+    </p>
+    <ul>
+      <li><strong>The tracker (<code>sumami.js</code>)</strong> — the script you put on your own
+        website — is compiled into the server binary and always served by the server itself at
+        <code>/sumami.js</code>. It is always available, whatever you configure.</li>
+      <li><strong>The dashboard frontend (<code>sumami-app.js</code> and
+        <code>sumami.css</code>)</strong> — the pages you log into — is <em>not</em> in the
+        binary. The backend serves a tiny HTML shell at <code>/</code> that points at the
+        frontend's base URL, which defaults to
+        <code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code>. jsDelivr serves this
+        public GitHub repository directly, so the frontend is always up to date and the server
+        stays small.</li>
+    </ul>
+    <p>
+      On an air-gapped machine, set <code>SUMAMI_APP_URL=/app</code>: the backend then serves
+      the two frontend files from its own <code>js/</code> directory instead. They are also
+      reachable directly at <code>/app/sumami-app.js</code> and <code>/app/sumami.css</code>
+      either way.
+    </p>
+
     <h2>Installation</h2>
 
-    <h3>What is <code>libduckdb.so</code> and why is it missing?</h3>
+    <h3>Do I need to install DuckDB separately?</h3>
     <p>
-      DuckDB is linked dynamically, which is what keeps the executables at a few megabytes each
-      instead of tens. The shared library comes from the
-      <a href="https://github.com/duckdb/duckdb/releases">DuckDB releases page</a> and is
-      included in the Sumami release archive. If you get an error like
-      <code>error while loading shared libraries: libduckdb.so</code>, the library is not where
-      the loader expects it.
+      No. DuckDB is compiled into the executables, so <code>sumami-server</code>,
+      <code>sumami-client</code> and <code>sumami</code> are each a single self-contained
+      binary. There is no <code>libduckdb.so</code> to download, no <code>LD_LIBRARY_PATH</code>
+      to set, no rpath to fix and no <code>ldconfig</code> to run. Copy the binary onto the
+      machine and run it.
     </p>
-    <p>Either install it on the loader path:</p>
-    <pre class="shell"><code>sudo install -m 0755 libduckdb.so /usr/local/lib/
-sudo ldconfig
-ldconfig -p | grep duckdb</code></pre>
     <p>
-      Or keep the three files together and tell the loader where to look:
+      The trade-off is size: a statically linked binary is larger than a dynamically linked
+      one. If you build from source and prefer the smaller executables, use
+      <code>make build-small</code>. That build links the prebuilt DuckDB library
+      dynamically, which means <code>libduckdb.so</code> (or <code>libduckdb.dylib</code> on
+      macOS) has to sit next to the binaries and the loader has to find it — either through the
+      default search path or via <code>LD_LIBRARY_PATH</code>. The published release archive is
+      always the self-contained build.
     </p>
-    <pre class="shell"><code>export LD_LIBRARY_PATH=/opt/sumami</code></pre>
     <p>
-      On macOS the file is named <code>libduckdb.dylib</code> and the variable is
-      <code>DYLD_LIBRARY_PATH</code>.
+      If you do see <code>error while loading shared libraries: libduckdb.so</code>, you are
+      running the dynamic build, not the release one.
+    </p>
+
+    <h3>Which binary do I need?</h3>
+    <p>
+      The release ships three self-contained executables:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Binary</th><th>What it is</th><th>Use it when</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>sumami-server</code></td>
+            <td>The server only: collection API, statistics API, authentication, TLS.</td>
+            <td>You are running the server. This is the one the systemd unit starts.</td>
+          </tr>
+          <tr>
+            <td><code>sumami-client</code></td>
+            <td>The analysis CLI only. Reads a <code>.duckdb</code> file or talks to a server over HTTP.</td>
+            <td>You want to query the numbers from a terminal.</td>
+          </tr>
+          <tr>
+            <td><code>sumami</code></td>
+            <td>The two-in-one: <code>sumami serve …</code> is the server, every other subcommand is the CLI.</td>
+            <td>You want one binary that does both.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      You only copy the ones you use. The archive also contains <code>js/</code> (the tracker
+      and the dashboard frontend) and <code>docs/</code> (this documentation site).
     </p>
 
     <h3>Can I move the database file to another machine?</h3>
@@ -208,9 +265,9 @@ ldconfig -p | grep duckdb</code></pre>
     <h3>Can I run two instances against the same database?</h3>
     <p>
       Do not. DuckDB takes an exclusive lock on the file. One server writes; the CLI may read
-      it when the server is stopped. Use <code>sumami prune --url …</code> and
-      <code>sumami erase --url …</code> to make changes through a running server instead of
-      touching its file.
+      it when the server is stopped. Use <code>sumami-client prune --url …</code> and
+      <code>sumami-client erase --url …</code> to make changes through a running server instead
+      of touching its file.
     </p>
 
     <h3>Does it need HTTPS?</h3>
@@ -310,9 +367,16 @@ ldconfig -p | grep duckdb</code></pre>
     <h3>Is there any telemetry in Sumami itself?</h3>
     <p>
       No. The server makes no outbound requests of any kind — no analytics, no crash
-      reporting, no update checks. The dashboard pages make no requests to third parties
-      either: no fonts, no scripts and no images are loaded from anywhere else. You can run
-      the whole thing with the outbound network cut off.
+      reporting, no update checks, no geo-IP lookups. It never talks to anything but its
+      visitors and you.
+    </p>
+    <p>
+      The one thing that may leave the browser is the dashboard frontend, which is fetched
+      from a CDN by default (see the question above). That is your own administrator's browser
+      loading JavaScript, not your visitors' browsers — the tracker is served by your server
+      and talks to nothing but your server. If you would rather the dashboard load nothing
+      from a third party, set <code>SUMAMI_APP_URL=/app</code> and the backend serves the
+      frontend itself.
     </p>
 
     <h2>The CLI</h2>
@@ -320,7 +384,10 @@ ldconfig -p | grep duckdb</code></pre>
     <h3>Can I read the database without running the server?</h3>
     <p>
       Yes, that is what the CLI is for. Copy the <code>.duckdb</code> file to your laptop and
-      run <code>sumami websites --db ./sumami.duckdb</code>. The file is opened read-only.
+      run <code>sumami-client websites --db ./sumami.duckdb</code>. The file is opened
+      read-only. If you installed the two-in-one <code>sumami</code> instead of
+      <code>sumami-client</code>, the command is <code>sumami websites --db
+      ./sumami.duckdb</code> — identical behaviour.
     </p>
 
     <h3>Why does the CLI need credentials in HTTP mode?</h3>

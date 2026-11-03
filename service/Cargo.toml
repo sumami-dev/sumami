@@ -16,10 +16,13 @@ name = "sumami-server"
 path = "src/main.rs"
 
 [features]
-default = ["tls"]
+default = ["tls", "duckdb-static"]
 # TLS (ACME certificate management). Disable for a smaller binary when a reverse
 # proxy terminates TLS instead.
 tls = ["dep:rustls-acme", "dep:axum-server", "dep:tokio-stream"]
+# Static DuckDB: the executable is self-contained (one file to deploy).
+# Build with --no-default-features to link libduckdb dynamically instead.
+duckdb-static = ["duckdb/bundled"]
 
 [dependencies]
 anyhow.workspace = true

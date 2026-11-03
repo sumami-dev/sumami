@@ -1,21 +1,19 @@
-# The DuckDB library is linked dynamically so the `sumami` executables stay small
-# (a few MB instead of ~70 MB). The library is looked up next to the binary
-# (`$ORIGIN` on Linux, `@loader_path` on macOS), so a release archive is just:
+# The default build statically links DuckDB (see the `duckdb-static` feature in
+# service/Cargo.toml and cli/Cargo.toml), so the release is a single file with no
+# shared library to ship and no rpath to set.
 #
-#   sumami-server
-#   sumami
-#   libduckdb.so        <- from https://github.com/duckdb/duckdb/releases
-#
-# See AGENTS.md §4.1.
+# If you build with `--no-default-features`, DuckDB is linked dynamically and the
+# library is looked up next to the binary; uncomment the rpath settings for your
+# platform to make that work out of the box.
 
-[target.aarch64-apple-darwin]
-rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
 
-[target.x86_64-apple-darwin]
-rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
 
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]
+# [target.x86_64-unknown-linux-gnu]
+# rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]
 
-[target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]
+# [target.aarch64-unknown-linux-gnu]
+# rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]

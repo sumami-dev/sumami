@@ -7,6 +7,12 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 
+/// Where the dashboard frontend is served from by default.
+///
+/// jsDelivr serves the public GitHub repository directly, so the frontend can be
+/// updated (or pinned to a release tag) without touching the backend.
+pub const CDN_APP_URL: &str = "https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js";
+
 /// Runtime configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -107,7 +113,13 @@ impl Config {
 
         let js_dir = env_path("SUMAMI_JS_DIR").unwrap_or_else(|| PathBuf::from("js"));
 
-        let app_url = std::env::var("SUMAMI_APP_URL").ok().filter(|s| !s.is_empty());
+        // The dashboard frontend is published on a CDN (jsDelivr serves this public
+        // repository directly), so the backend never ships it. Point this at `/app`
+        // to serve it from the backend instead — useful for air-gapped installs.
+        let app_url = std::env::var("SUMAMI_APP_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| Some(CDN_APP_URL.to_string()));
 
         let docs_dir = docs_dir
             .or_else(|| env_path("SUMAMI_DOCS_DIR"))

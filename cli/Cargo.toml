@@ -7,9 +7,26 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "sumami_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sumami-client"
+path = "src/bin/sumami-client.rs"
+
 [[bin]]
 name = "sumami"
-path = "src/main.rs"
+path = "src/bin/sumami.rs"
+required-features = ["server"]
+
+[features]
+default = ["duckdb-static", "server"]
+# Static DuckDB: the executable is self-contained (one file to deploy).
+# Build with --no-default-features to link libduckdb dynamically instead.
+duckdb-static = ["duckdb/bundled"]
+# The two-in-one `sumami` binary also contains the server.
+server = ["dep:sumami-service"]
 
 [dependencies]
 anyhow.workspace = true
@@ -19,3 +36,5 @@ duckdb.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ureq = { version = "3", features = ["json"] }
+tokio.workspace = true
+sumami-service = { path = "../service", optional = true }

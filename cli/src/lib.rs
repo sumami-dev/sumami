@@ -1,4 +1,4 @@
-//! The Sumami CLI — read and analyse a Sumami database.
+//! The Sumami client — read and analyse a Sumami database.
 //!
 //! The same commands work against a local DuckDB file (`--db`) or against a running
 //! server over HTTP (`--url`, with the admin account).
@@ -181,7 +181,8 @@ enum ExportFormat {
     Csv,
 }
 
-fn main() -> Result<()> {
+/// Parse the command line and run the client.
+pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
     let command = cli.command.clone();
