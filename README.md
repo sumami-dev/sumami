@@ -35,8 +35,9 @@ cd sumami
 cargo build --release          # the first build compiles DuckDB: be patient
 ```
 
-The result is three executables in `target/release/`: `sumami-server` (the server),
-`sumami-client` (the CLI) and `sumami` (the two-in-one).
+The result is **one** executable in `target/release/`: `sumami`. It is both the server and
+the client — `sumami serve …` starts the server, `sumami summary …` reads the data —
+because both halves share the schema, the metric definitions and the query code.
 
 DuckDB is compiled into the executable, so the result is a **single file** — no shared
 library to install, no `LD_LIBRARY_PATH`, no runtime surprises:
@@ -97,7 +98,7 @@ The same commands work against a local `.duckdb` file and against a running serv
 ```bash
 cargo test                                  # unit + integration tests
 cargo clippy --all-targets -- -D warnings
-cargo run -p sumami-service -- serve --db ./dev.duckdb --port 3000
+cargo run -p sumami-cli -- serve --db ./dev.duckdb --port 3000
 cargo run -p sumami-cli -- --db ./dev.duckdb summary <website-id>
 ```
 
@@ -106,15 +107,22 @@ cargo run -p sumami-cli -- --db ./dev.duckdb summary <website-id>
 ## What is in the release
 
 ```
-sumami-server      the server (collection + stats + auth + TLS)
-sumami-client      the analysis CLI
-sumami             the two-in-one: `sumami serve …` is the server, `sumami summary …` is the CLI
+sumami             one binary: the server (`sumami serve`) and the client (`sumami summary`)
 js/                the tracker and the dashboard frontend (published on a CDN)
 docs/              the documentation site
 ```
 
-Each executable is self-contained (DuckDB is compiled in) — copy one file, run it.
+The binary is self-contained (DuckDB is compiled in) — copy one file, run it.
 The dashboard frontend is served from a CDN by default, so the backend never ships it.
+
+## Try it
+
+```bash
+sumami serve --db ./demo.duckdb --port 3000   # prints the admin password once
+sumami seed --db ./demo.duckdb --days 30       # synthetic traffic (stop the server first)
+```
+
+Open <http://localhost:3000/> and sign in.
 
 ## Licence
 

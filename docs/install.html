@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Install — Sumami</title>
-<meta name="description" content="Install Sumami: download the release archive, unpack the self-contained sumami-server, sumami-client and sumami executables, start the server, create a website and install the tracker.">
+<meta name="description" content="Install Sumami: download the release archive, unpack the self-contained sumami executable, start the server, create a website and install the tracker.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐾</text></svg>">
@@ -62,46 +62,43 @@
           <tr><th>File</th><th>What it is</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>sumami-server</code></td><td>The analytics server: collection API, statistics API, authentication, the dashboard shell and the tracker. A self-contained executable — DuckDB is compiled into it.</td></tr>
-          <tr><td><code>sumami-client</code></td><td>The analysis CLI. Reads a <code>.duckdb</code> file directly, or talks to a running server over HTTP. Also self-contained.</td></tr>
-          <tr><td><code>sumami</code></td><td>The two-in-one: <code>sumami serve --db … --port 3000</code> is the server, <code>sumami summary &lt;website-id&gt;</code> is the CLI. Also self-contained.</td></tr>
+          <tr><td><code>sumami</code></td><td>The one executable: the analytics server (collection API, statistics API, authentication, the dashboard shell and the tracker) and the analysis CLI. A self-contained executable — DuckDB is compiled into it. <code>sumami serve …</code> runs the server, every other subcommand is the analyser.</td></tr>
+          <tr><td><code>sumami-server</code><br><code>sumami-client</code></td><td>Symlinks to <code>sumami</code>, for people who prefer the explicit name. The program decides its mode by the name it was invoked under, so <code>sumami-server serve</code> and <code>sumami-client summary</code> both work. There is nothing extra to download.</td></tr>
           <tr><td><code>js/</code></td><td>The dashboard frontend files (<code>sumami-app.js</code>, <code>sumami.css</code>) and a copy of the tracker. The frontend is served from a CDN by default, and from here when you set <code>SUMAMI_APP_URL=/app</code>; the tracker itself is compiled into the server binary and always served by the backend.</td></tr>
           <tr><td><code>docs/</code></td><td>This documentation site, served by the server at <code>/docs</code>.</td></tr>
         </tbody>
       </table>
     </div>
     <p>
-      DuckDB is linked <strong>statically</strong>: its engine is compiled into the executables.
-      Each binary is self-contained — there is no <code>libduckdb.so</code> to ship, no
+      DuckDB is linked <strong>statically</strong>: its engine is compiled into the executable.
+      It is self-contained — there is no <code>libduckdb.so</code> to ship, no
       <code>LD_LIBRARY_PATH</code> to set, no rpath to fix and no <code>ldconfig</code> step.
       Copy one file and run it.
     </p>
 
-    <h3>Which binary do I need?</h3>
+    <h3>One binary, two modes</h3>
+    <p>
+      There is nothing to choose: you download one file, and the subcommand decides what it
+      does.
+    </p>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>I want to…</th><th>Use</th></tr>
+          <tr><th>I want to…</th><th>Command</th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td>Run the server (collect page views, serve the dashboard)</td>
-            <td><code>sumami-server</code> — or <code>sumami serve …</code> if you installed the two-in-one.</td>
-          </tr>
-          <tr>
-            <td>Analyse the data from the command line</td>
-            <td><code>sumami-client</code> — or <code>sumami summary …</code> if you installed the two-in-one.</td>
-          </tr>
-          <tr>
-            <td>Both — one binary that is the server and the client</td>
-            <td><code>sumami</code>. <code>sumami serve …</code> starts the server, every other subcommand is the analysis CLI.</td>
-          </tr>
+          <tr><td>Run the server (collect page views, serve the dashboard)</td><td><code>sumami serve --db … --port 3000</code></td></tr>
+          <tr><td>Create or reset the admin account</td><td><code>sumami admin --username admin</code></td></tr>
+          <tr><td>Print the resolved configuration</td><td><code>sumami config</code></td></tr>
+          <tr><td>Analyse the data from the command line</td><td><code>sumami summary &lt;website-id&gt;</code>, <code>sumami pages</code>, <code>sumami export</code>, …</td></tr>
+          <tr><td>Fill a database with demo traffic</td><td><code>sumami seed --db ./sumami.duckdb</code></td></tr>
         </tbody>
       </table>
     </div>
     <p>
-      You only ever need to copy the one(s) you actually use. A server-only deployment is
-      <code>sumami-server</code> on the box; the analyser is the one you copy to your laptop.
+      If you prefer the explicit names, the symlinks <code>sumami-server</code> and
+      <code>sumami-client</code> are in the archive: <code>sumami-server serve</code> is the
+      server and <code>sumami-client summary</code> is the analyser. They are the same file.
     </p>
     <div class="callout tip">
       <p class="callout-title">
@@ -110,10 +107,10 @@
       </p>
       <p>
         There is an optional dynamic build: <code>make build-small</code> links the prebuilt
-        DuckDB library instead of compiling it in, which gives you noticeably smaller
-        executables — at the price of one extra file to ship. In that case
+        DuckDB library instead of compiling it in, which gives you a noticeably smaller
+        executable — at the price of one extra file to ship. In that case
         <code>libduckdb.so</code> (or <code>libduckdb.dylib</code> on macOS) has to sit next to
-        the binaries, and the loader has to be told where to find it. The default release is
+        the binary, and the loader has to be told where to find it. The default release is
         static, so this only matters if you build from source.
       </p>
     </div>
@@ -121,7 +118,7 @@
     <h3>Linux (x86-64)</h3>
     <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
 ls -l</code></pre>
-    <p>You should now see <code>sumami-server</code>, <code>sumami-client</code>, <code>sumami</code>, <code>js/</code> and <code>docs/</code>.</p>
+    <p>You should now see <code>sumami</code>, the <code>sumami-server</code> and <code>sumami-client</code> symlinks, <code>js/</code> and <code>docs/</code>.</p>
 
     <h3>macOS (Apple silicon)</h3>
     <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-macos-arm64.tar.gz | tar xz</code></pre>
@@ -143,29 +140,30 @@ Expand-Archive sumami.zip</code></pre>
     <pre class="shell"><code>git clone https://github.com/sumami-dev/sumami.git
 cd sumami
 cargo build --release
-<span class="cmt"># the binaries land in target/release/</span></code></pre>
+<span class="cmt"># the executable lands in target/release/sumami</span></code></pre>
     <p>
-      <code>cargo build --release</code> produces the same self-contained executables as the
+      <code>cargo build --release</code> produces the same self-contained executable as the
       release archive. <code>make build-small</code> produces the smaller dynamic build
       described above, and copies <code>libduckdb.so</code> into <code>target/release/</code>
       for you.
     </p>
 
-    <h2>2. Install the executables</h2>
-    <pre class="shell"><code><span class="cmt"># the server, and the analysis CLI if you want it on the box too</span>
-sudo install -m 0755 sumami-server sumami-client /usr/local/bin/
-
-<span class="cmt"># or install the two-in-one instead of the two separate binaries</span>
+    <h2>2. Install the executable</h2>
+    <pre class="shell"><code><span class="cmt"># the one executable: the server and the analysis CLI</span>
 sudo install -m 0755 sumami /usr/local/bin/
+
+<span class="cmt"># optional: the explicit-name symlinks, if you prefer them</span>
+sudo ln -sf /usr/local/bin/sumami /usr/local/bin/sumami-server
+sudo ln -sf /usr/local/bin/sumami /usr/local/bin/sumami-client
 
 <span class="cmt"># optional: the js/ and docs/ directories, for the dashboard frontend</span>
 <span class="cmt"># served by the backend itself and for the docs site at /docs</span>
 sudo install -d -m 0755 /opt/sumami
 sudo cp -r js docs /opt/sumami/</code></pre>
     <p>
-      That is the whole installation. The binaries carry DuckDB inside them, so there is no
+      That is the whole installation. The binary carries DuckDB inside it, so there is no
       library to install alongside and no loader configuration to do. If you would rather keep
-      everything together in one directory, install them into <code>/opt/sumami</code> and
+      everything together in one directory, install it into <code>/opt/sumami</code> and
       point the service's <code>ExecStart</code> at that path.
     </p>
     <p>
@@ -181,13 +179,13 @@ sudo cp -r js docs /opt/sumami/</code></pre>
       The server has one user: the administrator. Create it before the first run so the password
       is one you chose.
     </p>
-    <pre class="shell"><code>sumami-server admin --db /var/lib/sumami/sumami.duckdb \
+    <pre class="shell"><code>sumami admin --db /var/lib/sumami/sumami.duckdb \
   --username admin --password 'a-long-passphrase'</code></pre>
     <p>
       If you leave <code>--password</code> out, a strong password is generated and printed
       <strong>once</strong>:
     </p>
-    <pre class="shell"><code>$ sumami-server admin --db ./sumami.duckdb --username admin
+    <pre class="shell"><code>$ sumami admin --db ./sumami.duckdb --username admin
 admin user 'admin' ready
 password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
 (store it now — it is not shown again)</code></pre>
@@ -205,12 +203,12 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
     </div>
 
     <h2>4. Run the server</h2>
-    <pre class="shell"><code>sumami-server serve --db /var/lib/sumami/sumami.duckdb --host 127.0.0.1 --port 3999</code></pre>
+    <pre class="shell"><code>sumami serve --db /var/lib/sumami/sumami.duckdb --host 127.0.0.1 --port 3999</code></pre>
     <p>
       To serve HTTPS directly — without a reverse proxy in front — add
       <code>--ssl</code>:
     </p>
-    <pre class="shell"><code>sumami-server serve --db /var/lib/sumami/sumami.duckdb \
+    <pre class="shell"><code>sumami serve --db /var/lib/sumami/sumami.duckdb \
   --ssl example.com --ssl-email you@example.com</code></pre>
     <p>
       <code>--ssl-domain</code> is still accepted as an alias for <code>--ssl</code>.
@@ -340,11 +338,27 @@ curl -s -X POST http://127.0.0.1:3999/api/websites \
     <p>
       You can also read the same numbers straight from the database file:
     </p>
-    <pre class="shell"><code>sumami-client websites --db /var/lib/sumami/sumami.duckdb
-sumami-client summary --db /var/lib/sumami/sumami.duckdb 3f2a...
-sumami-client pages   --db /var/lib/sumami/sumami.duckdb 3f2a... --limit 10</code></pre>
+    <pre class="shell"><code>sumami summary --db /var/lib/sumami/sumami.duckdb 3f2a...
+sumami pages --db /var/lib/sumami/sumami.duckdb 3f2a... --limit 10</code></pre>
     <p>
       The <a href="cli.html">CLI reference</a> lists every subcommand and every flag.
+    </p>
+
+    <h2>Just want to look at it first?</h2>
+    <p>
+      You do not need a website to see the dashboard working. <code>sumami seed</code> fills a
+      database with synthetic demo traffic — invented pages, invented visitors, a plausible
+      traffic shape — so you can evaluate the whole thing without pointing a real site at it:
+    </p>
+    <pre class="shell"><code><span class="cmt"># the server must be stopped while the database is written</span>
+sumami seed --db ./demo.duckdb --days 30
+
+<span class="cmt"># then start it on the demo database</span>
+sumami serve --db ./demo.duckdb --port 3000</code></pre>
+    <p>
+      Open <code>http://127.0.0.1:3000/</code> and sign in with the admin account (the first
+      start prints its password once). The seeded website is called "Example Blog". The
+      <a href="cli.html#seed">CLI reference</a> describes the flags.
     </p>
 
     <h2>Next steps</h2>

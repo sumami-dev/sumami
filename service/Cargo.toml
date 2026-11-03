@@ -7,13 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# The server is a library: the one and only executable (`sumami`) lives in the
+# `cli` crate and uses it for both the server and the client.
 [lib]
 name = "sumami_service"
 path = "src/lib.rs"
-
-[[bin]]
-name = "sumami-server"
-path = "src/main.rs"
 
 [features]
 default = ["tls", "duckdb-static"]
@@ -52,3 +50,7 @@ rustls-acme = { version = "0.15", default-features = false, features = [
 ], optional = true }
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"], optional = true }
 tokio-stream = { version = "0.1", features = ["net"], optional = true }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

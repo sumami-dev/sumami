@@ -140,7 +140,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
           <h3>An offline analyser</h3>
         </div>
-        <p>The <code>sumami-client</code> CLI reads the same DuckDB file directly, so you can query your traffic on a laptop with no server running at all.</p>
+        <p>The <code>sumami</code> CLI reads the same DuckDB file directly, so you can query your traffic on a laptop with no server running at all.</p>
       </li>
     </ul>
 
@@ -149,26 +149,30 @@
     <pre class="shell"><code><span class="cmt"># 1. download the release archive and unpack it</span>
 curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
 
-<span class="cmt"># 2. install the server (and the analysis CLI, if you want it here too)</span>
-sudo install -m 0755 sumami-server sumami-client /usr/local/bin/
+<span class="cmt"># 2. install the one executable — it is both the server and the CLI</span>
+sudo install -m 0755 sumami /usr/local/bin/
 
 <span class="cmt"># 3. run it</span>
-sumami-server serve --db /var/lib/sumami/sumami.duckdb --port 3999
+sumami serve --db /var/lib/sumami/sumami.duckdb --port 3999
 
 <span class="cmt"># 4. drop the tracker into your website</span>
 <span class="cmt">#    &lt;script defer src="https://your-host/sumami.js" data-website-id="&lt;uuid&gt;"&gt;&lt;/script&gt;</span>
 
 <span class="cmt"># 5. look at the dashboard at https://your-host/</span></code></pre>
     <p>
-      The release archive contains <code>sumami-server</code> (the server),
-      <code>sumami-client</code> (the analysis CLI), <code>sumami</code> (the two-in-one, where
-      <code>sumami serve …</code> is the server and every other subcommand is the CLI), the
-      <code>js/</code> directory with the dashboard frontend (and a copy of the tracker), and
-      the <code>docs/</code> directory with this documentation. DuckDB is compiled into every
-      executable, so each one is a single self-contained binary: there is no shared library to
-      ship alongside them, and nothing else to install.
+      The release archive contains <code>sumami</code> — one executable that is both the server
+      (<code>sumami serve …</code>) and the analysis CLI (<code>sumami summary …</code>) — plus
+      the <code>js/</code> directory with the dashboard frontend (and a copy of the tracker), and
+      the <code>docs/</code> directory with this documentation. DuckDB is compiled into the
+      executable, so it is a single self-contained binary: there is no shared library to ship
+      alongside it, and nothing else to install.
       The <a href="install.html">install guide</a> has the full walkthrough, including Windows,
       macOS, the admin password and the systemd unit.
+    </p>
+    <p>
+      No website yet? <code>sumami seed --db ./demo.duckdb</code> fills a database with
+      synthetic demo traffic so you can look at the dashboard before pointing a real site at
+      it.
     </p>
     <p>
       The dashboard frontend is loaded from a CDN by default, so the server ships no frontend
@@ -198,7 +202,7 @@ sumami-server serve --db /var/lib/sumami/sumami.duckdb --port 3999
           <tr><td>Do Not Track / Global Privacy Control</td><td><span class="pill yes">honoured — nothing is sent</span></td></tr>
           <tr><td>Geolocation</td><td>only from an edge header you configure; never from a geo-IP database</td></tr>
           <tr><td>Outbound calls from the server</td><td><span class="pill no">none, ever</span></td></tr>
-          <tr><td>Retention</td><td>configurable window, enforced by <code>sumami-client prune</code></td></tr>
+          <tr><td>Retention</td><td>configurable window, enforced by <code>sumami prune</code></td></tr>
         </tbody>
       </table>
     </div>
@@ -263,7 +267,7 @@ sumami-server serve --db /var/lib/sumami/sumami.duckdb --port 3999
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>
           <h3><a href="cli.html">CLI</a></h3>
         </div>
-        <p>The offline analyser: read the database file directly, or talk to a running server.</p>
+        <p>The offline analyser: read the database file directly, or talk to a running server. One binary, two modes.</p>
       </li>
       <li>
         <div class="card-title">

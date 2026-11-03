@@ -2298,6 +2298,7 @@ dependencies = [
  "sumami-service",
  "tokio",
  "ureq",
+ "uuid",
 ]
 
 [[package]]
@@ -2311,6 +2312,7 @@ dependencies = [
  "chrono",
  "clap",
  "duckdb",
+ "http-body-util",
  "jsonwebtoken",
  "rustls-acme",
  "serde",
@@ -2318,6 +2320,7 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "tokio-stream",
+ "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",

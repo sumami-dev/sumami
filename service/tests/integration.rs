@@ -89,6 +89,9 @@ async fn writer_flushes_queued_hits() {
     assert_eq!(views, 2);
 
     writer.shutdown();
+    // Stop the writer thread so the test runtime can shut down.
+    writer.shutdown();
+
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
 
@@ -127,5 +130,123 @@ async fn writer_stores_custom_events() {
     assert_eq!(events, 1);
 
     writer.shutdown();
+    // Stop the writer thread so the test runtime can shut down.
+    writer.shutdown();
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+/// The API must be a thin wrapper around the shared query layer: the numbers it
+/// returns have to be exactly the ones `reports` produces, and the shape has to stay
+/// Umami-compatible.
+#[tokio::test(flavor = "multi_thread")]
+async fn api_matches_the_shared_report_layer() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use sumami_service::api::{self, AppState};
+    use sumami_service::config::Config;
+    use sumami_service::pool::Db;
+    use sumami_service::reports::{self, ReportQuery, TimeRange};
+    use tower::ServiceExt;
+
+    let path = temp_db("api");
+    let db = std::sync::Arc::new(Db::open(&path, "256MB").unwrap());
+
+    let website_id = "website-1";
+    db.with_write(|conn| {
+        conn.execute(
+            "INSERT INTO website (id, name, domain, created_at, updated_at, retention_days, country_header)
+             VALUES ('website-1', 'Example', 'example.com', now(), now(), 0, NULL)",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO session (id, website_id, visitor_id, created_at, updated_at, url, views, duration)
+             VALUES ('s1', 'website-1', 'v1', now(), now(), '/a', 3, 30)",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO session (id, website_id, visitor_id, created_at, updated_at, url, views, duration)
+             VALUES ('s2', 'website-1', 'v2', now(), now(), '/b', 1, 10)",
+            [],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+
+    let mut config = Config::from_env_and_flags(
+        Some(path.clone()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    config.jwt_secret = "test-secret".to_string();
+
+    let (writer, _handle) = sumami_service::writer::Writer::spawn(
+        db.clone(),
+        std::time::Duration::from_millis(200),
+        1000,
+    );
+
+    let state = AppState::new(
+        db.clone(),
+        writer.clone(),
+        std::sync::Arc::new(config),
+        std::sync::Arc::new("test-secret".to_string()),
+    );
+
+    let app = api::router(state);
+
+    let request = Request::builder()
+        .uri("/api/websites/website-1/stats")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let api_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // The same report, computed by the shared layer.
+    let range = TimeRange {
+        start: chrono::Utc::now().naive_utc() - chrono::Duration::days(1),
+        end: chrono::Utc::now().naive_utc() + chrono::Duration::days(1),
+    };
+    let query = ReportQuery::new(website_id, range);
+    let shared = db
+        .with_read(|conn| reports::summary_with_change(conn, &query))
+        .unwrap();
+
+    // The Umami-compatible shape.
+    for key in ["pageviews", "visitors", "views", "bounces", "visitDuration"] {
+        assert!(api_json.get(key).is_some(), "missing metric {key}");
+        assert!(api_json[key].get("value").is_some(), "{key} has no value");
+        assert!(api_json[key].get("change").is_some(), "{key} has no change");
+    }
+
+    // The numbers agree.
+    assert_eq!(
+        api_json["pageviews"]["value"].as_i64().unwrap(),
+        shared.pageviews.value
+    );
+    assert_eq!(
+        api_json["visitors"]["value"].as_i64().unwrap(),
+        shared.visitors.value
+    );
+    assert_eq!(api_json["views"]["value"].as_i64().unwrap(),
+        shared.views.value
+    );
+    assert_eq!(
+        api_json["bounces"]["value"].as_i64().unwrap(),
+        shared.bounces.value
+    );
+
+    // Stop the writer thread so the test runtime can shut down.
+    writer.shutdown();
+
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }

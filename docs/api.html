@@ -354,6 +354,12 @@
       <dt>visitDuration</dt>
       <dd>Average session duration, in seconds.</dd>
     </dl>
+    <p>
+      These definitions live in one place: the server and the <a href="cli.html">CLI</a> run the
+      same query code against the same schema, so a metric means exactly the same thing whether
+      you read it from the API or from the command line. The numbers are equal by
+      construction, not by convention.
+    </p>
 
     <details class="endpoint">
       <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/stats</span></summary>

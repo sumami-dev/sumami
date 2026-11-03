@@ -47,25 +47,22 @@ fmt:
 run:
 	$(CARGO) run -p sumami-service -- serve --db ./dev.duckdb --port 3000
 
-## Build the release artifacts.
+## Build the release artefact.
 ##
-##   sumami-server          the server (standalone executable)
-##   sumami-client          the analysis CLI (standalone executable)
 ##   sumami-<ver>-<os>-<arch>.tar.gz
-##                          the two-in-one: the `sumami` binary + js/ + docs/
+##       the `sumami` binary (server + client) + js/ + docs/
 ##
-## The tarball deliberately does NOT contain all three binaries: each one carries its
-## own copy of DuckDB, so shipping three of them triples the download for no gain.
-## The two-in-one binary already contains both halves.
+## One binary: the server and the client share the schema, the metric definitions and
+## the query code, so there is only one copy of DuckDB in it.
 package: release
 	@set -e; \
-	rm -rf dist; mkdir -p dist; \
-	cp $(TARGET)/sumami-server $(TARGET)/sumami-client $(TARGET)/sumami dist/; \
-	mkdir -p dist/bundle; \
+	rm -rf dist; mkdir -p dist/bundle; \
 	cp $(TARGET)/sumami dist/bundle/; \
+	ln -sf sumami dist/bundle/sumami-server; \
+	ln -sf sumami dist/bundle/sumami-client; \
 	cp -r js dist/bundle/js; cp -r docs dist/bundle/docs; \
 	tar czf sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz -C dist/bundle .; \
-	echo "wrote dist/sumami-server, dist/sumami-client and sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
+	echo "wrote sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
 
 ## Remove the build artefacts.
 clean:

@@ -135,18 +135,17 @@
 
     <h3>Do I need to install DuckDB separately?</h3>
     <p>
-      No. DuckDB is compiled into the executables, so <code>sumami-server</code>,
-      <code>sumami-client</code> and <code>sumami</code> are each a single self-contained
-      binary. There is no <code>libduckdb.so</code> to download, no <code>LD_LIBRARY_PATH</code>
-      to set, no rpath to fix and no <code>ldconfig</code> to run. Copy the binary onto the
-      machine and run it.
+      No. DuckDB is compiled into the executable, so <code>sumami</code> is a single
+      self-contained binary. There is no <code>libduckdb.so</code> to download, no
+      <code>LD_LIBRARY_PATH</code> to set, no rpath to fix and no <code>ldconfig</code> to
+      run. Copy the binary onto the machine and run it.
     </p>
     <p>
       The trade-off is size: a statically linked binary is larger than a dynamically linked
-      one. If you build from source and prefer the smaller executables, use
+      one. If you build from source and prefer the smaller executable, use
       <code>make build-small</code>. That build links the prebuilt DuckDB library
       dynamically, which means <code>libduckdb.so</code> (or <code>libduckdb.dylib</code> on
-      macOS) has to sit next to the binaries and the loader has to find it — either through the
+      macOS) has to sit next to the binary and the loader has to find it — either through the
       default search path or via <code>LD_LIBRARY_PATH</code>. The published release archive is
       always the self-contained build.
     </p>
@@ -157,35 +156,63 @@
 
     <h3>Which binary do I need?</h3>
     <p>
-      The release ships three self-contained executables:
+      One: <code>sumami</code>. The server and the analysis CLI are the same program, and the
+      subcommand decides which half runs.
     </p>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Binary</th><th>What it is</th><th>Use it when</th></tr>
+          <tr><th>I want to…</th><th>Command</th></tr>
         </thead>
         <tbody>
           <tr>
-            <td><code>sumami-server</code></td>
-            <td>The server only: collection API, statistics API, authentication, TLS.</td>
-            <td>You are running the server. This is the one the systemd unit starts.</td>
+            <td>Run the server</td>
+            <td><code>sumami serve --db … --port 3000</code></td>
           </tr>
           <tr>
-            <td><code>sumami-client</code></td>
-            <td>The analysis CLI only. Reads a <code>.duckdb</code> file or talks to a server over HTTP.</td>
-            <td>You want to query the numbers from a terminal.</td>
+            <td>Manage the admin account</td>
+            <td><code>sumami admin --username admin</code></td>
           </tr>
           <tr>
-            <td><code>sumami</code></td>
-            <td>The two-in-one: <code>sumami serve …</code> is the server, every other subcommand is the CLI.</td>
-            <td>You want one binary that does both.</td>
+            <td>Print the resolved configuration</td>
+            <td><code>sumami config</code></td>
+          </tr>
+          <tr>
+            <td>Analyse the data from the command line</td>
+            <td><code>sumami summary &lt;website-id&gt;</code>, <code>sumami pages</code>, <code>sumami export</code>, …</td>
+          </tr>
+          <tr>
+            <td>Fill a database with demo traffic</td>
+            <td><code>sumami seed --db ./sumami.duckdb</code></td>
           </tr>
         </tbody>
       </table>
     </div>
     <p>
-      You only copy the ones you use. The archive also contains <code>js/</code> (the tracker
-      and the dashboard frontend) and <code>docs/</code> (this documentation site).
+      The release archive also ships <code>sumami-server</code> and <code>sumami-client</code>
+      as symlinks to <code>sumami</code>, for people who prefer the explicit names — the
+      program switches mode by the name it was invoked under. There is nothing extra to
+      download. The archive also contains <code>js/</code> (the tracker and the dashboard
+      frontend) and <code>docs/</code> (this documentation site).
+    </p>
+
+    <h3>How do I try it without a website?</h3>
+    <p>
+      Use <code>sumami seed</code>. It fills a database with <strong>synthetic</strong> demo
+      traffic — invented pages, referrers, countries and browsers, returning visitors, weekend
+      dips and a few custom events — so you can evaluate the dashboard without pointing a real
+      site at it.
+    </p>
+    <pre class="shell"><code><span class="cmt"># the server must be stopped while the database is written</span>
+sumami seed --db ./demo.duckdb --days 30 --visitors 140 \
+  --website "Example Blog" --domain example.com
+
+sumami serve --db ./demo.duckdb --port 3000</code></pre>
+    <p>
+      Open <code>http://127.0.0.1:3000/</code> and sign in with the admin account. Everything
+      the dashboard shows is invented, so none of it says anything about a real site — it is
+      there so you can see what the numbers look like. The
+      <a href="cli.html#seed">CLI reference</a> has the full list of flags.
     </p>
 
     <h3>Can I move the database file to another machine?</h3>
@@ -207,7 +234,7 @@
     <p>
       If you have lost it, set a new one:
     </p>
-    <pre class="shell"><code>sumami-server admin --db /var/lib/sumami/sumami.duckdb \
+    <pre class="shell"><code>sumami admin --db /var/lib/sumami/sumami.duckdb \
   --username admin --password 'a-new-long-passphrase'</code></pre>
 
     <h3>How do I change the port?</h3>
@@ -265,9 +292,10 @@
     <h3>Can I run two instances against the same database?</h3>
     <p>
       Do not. DuckDB takes an exclusive lock on the file. One server writes; the CLI may read
-      it when the server is stopped. Use <code>sumami-client prune --url …</code> and
-      <code>sumami-client erase --url …</code> to make changes through a running server instead
-      of touching its file.
+      it when the server is stopped. The destructive commands — <code>prune</code> and
+      <code>erase</code> — work on the file too, so stop the service before running them.
+      To delete a website while the server is running, call
+      <code>DELETE /api/websites/:id</code> instead.
     </p>
 
     <h3>Does it need HTTPS?</h3>
@@ -299,7 +327,7 @@
       DNS-01 challenge instead.
     </p>
     <p>
-      From the server itself: <code>sumami-server serve --ssl example.com --ssl-email
+      From the server itself: <code>sumami serve --ssl example.com --ssl-email
       you@example.com</code>. The certificate is issued by Let's Encrypt over ACME and renewed
       in the background. The challenge is TLS-ALPN-01, so port 443 must reach the Sumami
       process directly — no proxy in front of it. Port 80 does not need to be open. Back up the
@@ -384,10 +412,9 @@
     <h3>Can I read the database without running the server?</h3>
     <p>
       Yes, that is what the CLI is for. Copy the <code>.duckdb</code> file to your laptop and
-      run <code>sumami-client websites --db ./sumami.duckdb</code>. The file is opened
-      read-only. If you installed the two-in-one <code>sumami</code> instead of
-      <code>sumami-client</code>, the command is <code>sumami websites --db
-      ./sumami.duckdb</code> — identical behaviour.
+      run <code>sumami summary --db ./sumami.duckdb &lt;website-id&gt;</code>. The file is
+      opened read-only, and the queries are the ones the API runs — so the numbers are the same
+      ones the server would have returned.
     </p>
 
     <h3>Why does the CLI need credentials in HTTP mode?</h3>
@@ -400,10 +427,19 @@
 
     <h3>Does the CLI write to my database? Does it modify anything?</h3>
     <p>
-      Not unless you ask it to. The file is opened read-only, with two exceptions:
-      <code>prune</code> enforces the retention window and <code>erase</code> deletes a
-      website's data. Both ask for confirmation. Neither ever touches a database file that the
-      server currently has open.
+      Not unless you ask it to. The file is opened read-only, with three exceptions:
+      <code>prune</code> enforces the retention window, <code>erase</code> deletes a
+      website's data and <code>seed</code> writes synthetic demo traffic. <code>prune</code>
+      and <code>erase</code> ask for confirmation. None of them ever touches a database file
+      that the server currently has open.
+    </p>
+
+    <h3>Do the CLI and the API return the same numbers?</h3>
+    <p>
+      Yes, and not by coincidence. The server and the CLI call the same query code, so the
+      numbers the CLI prints are the numbers the API returns — by construction, not by
+      convention. The only thing that differs is where the queries run: the CLI's local mode
+      runs them against the file, its HTTP mode asks the server to run them.
     </p>
 
     <h2>Still stuck?</h2>

@@ -399,6 +399,9 @@ fn remote_report(
 }
 
 /// Run a report against a local database.
+///
+/// This calls the **same** functions the HTTP API calls
+/// (`sumami_service::reports`), so the local mode and the API can never disagree.
 fn local_report(
     conn: &Connection,
     report: Report,
@@ -406,149 +409,58 @@ fn local_report(
     range: Range,
     limit: i64,
 ) -> Result<Value> {
-    let ts = |value: chrono::NaiveDateTime| {
-        duckdb::types::Value::Timestamp(
-            duckdb::types::TimeUnit::Microsecond,
-            value.and_utc().timestamp_micros(),
-        )
-    };
+    use sumami_service::reports::{self, Dimension, ReportQuery};
 
-    let website_id = |website: Option<&str>| -> Result<String> {
+    // Only the reports about one website need its id.
+    let website_id = if report == Report::Websites {
+        String::new()
+    } else {
         website
             .map(str::to_string)
-            .ok_or_else(|| anyhow!("this report needs a website id"))
+            .ok_or_else(|| anyhow!("this report needs a website id"))?
     };
 
-    match report {
-        Report::Websites => {
-            let mut stmt = conn.prepare(
-                "SELECT id, name, domain, created_at FROM website ORDER BY created_at DESC",
-            )?;
-            let mut rows = stmt.query([])?;
-            let mut out = Vec::new();
-            while let Some(row) = rows.next()? {
-                out.push(json!({
-                    "id": row.get::<_, String>(0)?,
-                    "name": row.get::<_, String>(1)?,
-                    "domain": row.get::<_, Option<String>>(2)?,
-                    "createdAt": row.get::<_, chrono::NaiveDateTime>(3)?,
-                }));
+    let mut query = ReportQuery::new(&website_id, reports::TimeRange {
+        start: range.start,
+        end: range.end,
+    });
+    query.limit = limit.clamp(1, 1000);
+
+    let value = match report {
+        Report::Websites => serde_json::to_value(reports::websites(conn)?)?,
+        Report::Summary => serde_json::to_value(reports::summary_with_change(conn, &query)?)?,
+        Report::Timeseries => serde_json::to_value(reports::timeseries(conn, &query)?)?,
+        Report::Pages => {
+            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Url)?)?
+        }
+        Report::Referrers => {
+            let mut rows = reports::breakdown(conn, &query, Dimension::Referrer)?;
+            for row in &mut rows {
+                if row.name == "unknown" {
+                    row.name = "(direct)".to_string();
+                }
             }
-            Ok(json!(out))
+            serde_json::to_value(rows)?
         }
-        Report::Summary => {
-            let website = website_id(website)?;
-            let mut stmt = conn.prepare(
-                "SELECT COALESCE(SUM(views), 0), COUNT(DISTINCT visitor_id), COUNT(DISTINCT id),
-                        COUNT(*) FILTER (WHERE views <= 1), COALESCE(AVG(duration), 0)
-                 FROM session
-                 WHERE website_id = ? AND created_at >= ? AND created_at < ?",
-            )?;
-            let mut rows = stmt.query(duckdb::params![website, ts(range.start), ts(range.end)])?;
-            let value = match rows.next()? {
-                Some(row) => json!({
-                    "pageviews": { "value": row.get::<_, i64>(0)? },
-                    "visitors": { "value": row.get::<_, i64>(1)? },
-                    "views": { "value": row.get::<_, i64>(2)? },
-                    "bounces": { "value": row.get::<_, i64>(3)? },
-                    "visitDuration": { "value": row.get::<_, f64>(4)? as i64 },
-                }),
-                None => json!({
-                    "pageviews": { "value": 0 },
-                    "visitors": { "value": 0 },
-                    "views": { "value": 0 },
-                    "bounces": { "value": 0 },
-                    "visitDuration": { "value": 0 },
-                }),
-            };
-            Ok(value)
+        Report::Browsers => {
+            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Browser)?)?
         }
-        Report::Timeseries => {
-            let website = website_id(website)?;
-            let mut stmt = conn.prepare(
-                "SELECT strftime(date_trunc('day', created_at), '%Y-%m-%dT%H:00:00Z'),
-                        COALESCE(SUM(views), 0)
-                 FROM session
-                 WHERE website_id = ? AND created_at >= ? AND created_at < ?
-                 GROUP BY 1 ORDER BY 1",
-            )?;
-            let mut rows = stmt.query(duckdb::params![website, ts(range.start), ts(range.end)])?;
-            let mut out = Vec::new();
-            while let Some(row) = rows.next()? {
-                let name: String = row.get(0)?;
-                out.push(json!({ "name": name, "value": row.get::<_, i64>(1)?, "date": name }));
-            }
-            Ok(json!(out))
+        Report::Os => serde_json::to_value(reports::breakdown(conn, &query, Dimension::Os)?)?,
+        Report::Devices => {
+            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Device)?)?
         }
-        Report::Pages | Report::Referrers | Report::Browsers | Report::Os | Report::Devices
-        | Report::Countries | Report::Languages | Report::Screens => {
-            let website = website_id(website)?;
-            let (column, aggregate) = match report {
-                Report::Pages => ("url", "COALESCE(SUM(views), 0)"),
-                Report::Referrers => ("referrer", "COALESCE(SUM(views), 0)"),
-                Report::Browsers => ("browser", "COUNT(DISTINCT visitor_id)"),
-                Report::Os => ("os", "COUNT(DISTINCT visitor_id)"),
-                Report::Devices => ("device", "COUNT(DISTINCT visitor_id)"),
-                Report::Countries => ("country", "COUNT(DISTINCT visitor_id)"),
-                Report::Languages => ("language", "COUNT(DISTINCT visitor_id)"),
-                Report::Screens => ("screen", "COUNT(DISTIST visitor_id)"),
-                _ => unreachable!(),
-            };
-            let sql = format!(
-                "SELECT COALESCE({column}, 'unknown'), {aggregate}
-                 FROM session
-                 WHERE website_id = ? AND created_at >= ? AND created_at < ?
-                 GROUP BY 1 ORDER BY 2 DESC LIMIT {limit}"
-            );
-            let mut stmt = conn.prepare(&sql)?;
-            let mut rows = stmt.query(duckdb::params![website, ts(range.start), ts(range.end)])?;
-            let mut out = Vec::new();
-            while let Some(row) = rows.next()? {
-                out.push(json!({ "name": row.get::<_, String>(0)?, "value": row.get::<_, i64>(1)? }));
-            }
-            Ok(json!(out))
+        Report::Countries => {
+            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Country)?)?
         }
-        Report::Events => {
-            let website = website_id(website)?;
-            let mut stmt = conn.prepare(
-                "SELECT COALESCE(name, 'unknown'), COUNT(*)
-                 FROM event
-                 WHERE website_id = ? AND created_at >= ? AND created_at < ?
-                 GROUP BY 1 ORDER BY 2 DESC LIMIT {limit}",
-            )?;
-            let mut rows = stmt.query(duckdb::params![website, ts(range.start), ts(range.end)])?;
-            let mut out = Vec::new();
-            while let Some(row) = rows.next()? {
-                out.push(json!({ "name": row.get::<_, String>(0)?, "value": row.get::<_, i64>(1)? }));
-            }
-            Ok(json!(out))
+        Report::Languages => {
+            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Language)?)?
         }
-        Report::Sessions => {
-            let website = website_id(website)?;
-            let sql = format!(
-                "SELECT id, created_at, url, referrer, browser, os, device, country, views, duration
-                 FROM session
-                 WHERE website_id = ? AND created_at >= ? AND created_at < ?
-                 ORDER BY created_at DESC LIMIT {limit}"
-            );
-            let mut stmt = conn.prepare(&sql)?;
-            let mut rows = stmt.query(duckdb::params![website, ts(range.start), ts(range.end)])?;
-            let mut out = Vec::new();
-            while let Some(row) = rows.next()? {
-                out.push(json!({
-                    "id": row.get::<_, String>(0)?,
-                    "createdAt": row.get::<_, chrono::NaiveDateTime>(1)?,
-                    "url": row.get::<_, Option<String>>(2)?,
-                    "referrer": row.get::<_, Option<String>>(3)?,
-                    "browser": row.get::<_, Option<String>>(4)?,
-                    "os": row.get::<_, Option<String>>(5)?,
-                    "device": row.get::<_, Option<String>>(6)?,
-                    "country": row.get::<_, Option<String>>(7)?,
-                    "views": row.get::<_, i64>(8)?,
-                    "duration": row.get::<_, i64>(9)?,
-                }));
-            }
-            Ok(json!(out))
+        Report::Screens => {
+            serde_json::to_value(reports::breakdown(conn, &query, Dimension::Screen)?)?
         }
-    }
+        Report::Events => serde_json::to_value(reports::events(conn, &query)?)?,
+        Report::Sessions => serde_json::to_value(reports::sessions(conn, &query)?)?,
+    };
+
+    Ok(value)
 }

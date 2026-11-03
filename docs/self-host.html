@@ -65,7 +65,7 @@
           <tr><td>RAM</td><td>512 MB</td><td>DuckDB is capped at 256 MB by default so the OOM killer stays away.</td></tr>
           <tr><td>Disk</td><td>10 GB</td><td>The database is small; page views are a few dozen bytes each.</td></tr>
           <tr><td>OS</td><td>Debian 12 / Ubuntu 22.04+</td><td>Any systemd Linux works. Alpine needs <code>libstdc++</code> and <code>libgcc</code>.</td></tr>
-          <tr><td>Programs</td><td>one executable</td><td><code>sumami-server</code> is enough for the server; add <code>sumami-client</code> (or the two-in-one <code>sumami</code>) if you want the analysis CLI on the box too. All are self-contained — DuckDB is compiled in.</td></tr>
+          <tr><td>Programs</td><td>one executable</td><td><code>sumami</code> — the server and the analysis CLI in one program. Self-contained: DuckDB is compiled in.</td></tr>
         </tbody>
       </table>
     </div>
@@ -96,16 +96,13 @@ sudo mkdir -p /var/lib/sumami
 sudo chown sumami:sumami /var/lib/sumami
 sudo chmod 0750 /var/lib/sumami</code></pre>
 
-    <h2>2. Install the executables</h2>
+    <h2>2. Install the executable</h2>
     <pre class="shell"><code><span class="cmt"># download and unpack the release archive</span>
 cd /tmp
 curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
 
-<span class="cmt"># install the server — that is all there is to do</span>
-sudo install -m 0755 sumami-server /usr/local/bin/
-
-<span class="cmt"># optional: the analysis CLI on this box too</span>
-sudo install -m 0755 sumami-client /usr/local/bin/
+<span class="cmt"># install the one executable — that is all there is to do</span>
+sudo install -m 0755 sumami /usr/local/bin/
 
 <span class="cmt"># the js/ and docs/ directories from the archive (see below)</span>
 sudo install -d -m 0755 /opt/sumami
@@ -116,22 +113,20 @@ sudo cp -r js docs /opt/sumami/</code></pre>
         One file, nothing to configure
       </p>
       <p>
-        DuckDB is compiled into the executables, so <code>sumami-server</code> is completely
+        DuckDB is compiled into the executable, so <code>sumami</code> is completely
         self-contained: there is no <code>libduckdb.so</code> to install, no
         <code>LD_LIBRARY_PATH</code> to set and no <code>ldconfig</code> to run. Copy one file
         onto the box and it runs.
       </p>
       <p>
-        The archive also ships <code>sumami-client</code> (the analysis CLI on its own) and
-        <code>sumami</code> (the two-in-one, where <code>sumami serve …</code> is the server
-        and every other subcommand is the CLI). The unit below uses
-        <code>sumami-server</code>; swap it for <code>sumami serve</code> if you prefer the
-        two-in-one.
+        The archive also ships <code>sumami-server</code> and <code>sumami-client</code> as
+        symlinks to <code>sumami</code>, for people who prefer the explicit names — they are
+        the same file. The unit below uses <code>sumami serve</code>.
       </p>
       <p>
         If you would rather keep the program in one directory that is trivially versioned and
-        swapped on upgrades, install the executables into <code>/opt/sumami</code> and point
-        the unit's <code>ExecStart</code> at <code>/opt/sumami/sumami-server</code>.
+        swapped on upgrades, install it into <code>/opt/sumami</code> and point
+        the unit's <code>ExecStart</code> at <code>/opt/sumami/sumami</code>.
       </p>
     </div>
     <p>
@@ -202,7 +197,7 @@ Type=simple
 User=sumami
 Group=sumami
 EnvironmentFile=/etc/sumami/sumami.env
-ExecStart=/usr/local/bin/sumami-server serve
+ExecStart=/usr/local/bin/sumami serve
 Restart=on-failure
 RestartSec=5
 
@@ -233,9 +228,8 @@ sudo systemctl status sumami</code></pre>
       box.
     </p>
     <p>
-      The unit starts <code>sumami-server serve</code>. If you installed the two-in-one
-      <code>sumami</code> instead, use <code>ExecStart=/usr/local/bin/sumami serve</code> —
-      it is the same server.
+      The unit starts <code>sumami serve</code>. If you prefer the explicit name, the
+      <code>sumami-server</code> symlink works just as well.
     </p>
     <pre class="shell"><code>sudo journalctl -u sumami -f</code></pre>
     <p>
@@ -345,7 +339,7 @@ sudo nginx -t && sudo systemctl reload nginx</code></pre>
     <p>
       Pass the domain and a contact address to the server:
     </p>
-    <pre class="shell"><code>sumami-server serve --ssl example.com --ssl-email you@example.com</code></pre>
+    <pre class="shell"><code>sumami serve --ssl example.com --ssl-email you@example.com</code></pre>
     <p>
       In the systemd unit that means adding the flags to <code>ExecStart</code>:
     </p>
@@ -361,7 +355,7 @@ Type=simple
 User=sumami
 Group=sumami
 EnvironmentFile=/etc/sumami/sumami.env
-ExecStart=/usr/local/bin/sumami-server serve --ssl example.com --ssl-email you@example.com
+ExecStart=/usr/local/bin/sumami serve --ssl example.com --ssl-email you@example.com
 Restart=on-failure
 RestartSec=5
 
@@ -395,10 +389,10 @@ sudo systemctl restart sumami</code></pre>
           <tr><th>Flag</th><th>Environment variable</th><th>Default</th><th>Meaning</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>--ssl <domain></code></td><td><code>SUMAMI_SSL_DOMAIN</code></td><td>none</td><td>The domain to serve HTTPS for. Without it the server speaks plain HTTP. <code>--ssl-domain</code> is accepted as an alias.</td></tr>
-          <tr><td><code>--ssl-email <address></code></td><td><code>SUMAMI_SSL_EMAIL</code></td><td>none</td><td>Contact address registered with the ACME provider. Let's Encrypt sends expiry notices there.</td></tr>
-          <tr><td><code>--ssl-cache-dir <path></code></td><td><code>SUMAMI_SSL_CACHE_DIR</code></td><td><code><directory of the database>/acme</code></td><td>Directory holding the ACME account and the certificates.</td></tr>
-          <tr><td><code>--ssl-port <port></code></td><td><code>SUMAMI_SSL_PORT</code></td><td><code>443</code></td><td>The port to listen on for HTTPS.</td></tr>
+          <tr><td><code>--ssl &lt;domain&gt;</code></td><td><code>SUMAMI_SSL_DOMAIN</code></td><td>none</td><td>The domain to serve HTTPS for. Without it the server speaks plain HTTP. <code>--ssl-domain</code> is accepted as an alias.</td></tr>
+          <tr><td><code>--ssl-email &lt;address&gt;</code></td><td><code>SUMAMI_SSL_EMAIL</code></td><td>none</td><td>Contact address registered with the ACME provider. Let's Encrypt sends expiry notices there.</td></tr>
+          <tr><td><code>--ssl-cache-dir &lt;path&gt;</code></td><td><code>SUMAMI_SSL_CACHE_DIR</code></td><td><code>&lt;directory of the database&gt;/acme</code></td><td>Directory holding the ACME account and the certificates.</td></tr>
+          <tr><td><code>--ssl-port &lt;port&gt;</code></td><td><code>SUMAMI_SSL_PORT</code></td><td><code>443</code></td><td>The port to listen on for HTTPS.</td></tr>
         </tbody>
       </table>
     </div>
@@ -527,19 +521,19 @@ curl -s http://127.0.0.1:3999/api/heartbeat</code></pre>
       retention window is a first-class setting: it is stored per website, returned by
       <code>GET /api/websites/:id</code>, and honoured by the CLI.
     </p>
-    <pre class="shell"><code><span class="cmt"># local file: prune the database in place</span>
-sumami-client prune --db /var/lib/sumami/sumami.duckdb 3f2a...
-
-<span class="cmt"># or through the running server</span>
-sumami-client prune --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...</code></pre>
+    <pre class="shell"><code><span class="cmt"># stop the service, then prune the database in place</span>
+sudo systemctl stop sumami
+sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...
+sudo systemctl start sumami</code></pre>
     <p>
       Schedule it in the same cron file as the backup. Pruning before the backup keeps the
-      backup small.
+      backup small. The service has to be stopped while it runs — DuckDB allows only one
+      writer per file.
     </p>
 
     <h2>9. Upgrades</h2>
     <pre class="shell"><code>sudo systemctl stop sumami
-sudo install -m 0755 sumami-server sumami-client /usr/local/bin/
+sudo install -m 0755 sumami /usr/local/bin/
 sudo systemctl start sumami
 sudo journalctl -u sumami -n 20</code></pre>
     <p>

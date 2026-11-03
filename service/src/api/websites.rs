@@ -12,28 +12,8 @@ use crate::models::{CreateWebsite, UpdateWebsite, Website};
 pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<Website>>, ApiError> {
     let websites = state
         .db
-        .with_read(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, name, domain, created_at, updated_at, retention_days, country_header
-                 FROM website ORDER BY created_at DESC",
-            )?;
-            let mut rows = stmt.query([])?;
-            let mut out = Vec::new();
-            while let Some(row) = rows.next()? {
-                out.push(Website {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    domain: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
-                    retention_days: row.get(5)?,
-                    country_header: row.get(6)?,
-                });
-            }
-            Ok(out)
-        })
+        .with_read(crate::reports::websites)
         .map_err(ApiError::internal)?;
-
     Ok(Json(websites))
 }
 

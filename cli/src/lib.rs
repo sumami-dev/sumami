@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod output;
+mod seed;
 mod source;
 
 use std::path::PathBuf;
@@ -110,6 +111,21 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
+    /// Fill the database with synthetic demo data.
+    Seed {
+        /// The name of the website to seed (created when missing).
+        #[arg(long, default_value = "Example Blog")]
+        website: String,
+        /// The domain of the website.
+        #[arg(long, default_value = "example.com")]
+        domain: String,
+        /// How many days of history to generate.
+        #[arg(long, default_value_t = 30)]
+        days: i64,
+        /// Roughly how many visitors per day.
+        #[arg(long, default_value_t = 120)]
+        visitors: i64,
+    },
     /// Store the credentials for a server.
     Login {
         /// The base URL of the server.
@@ -211,6 +227,36 @@ pub fn run() -> Result<()> {
                 println!("credentials saved to {}", path.display());
                 println!("logged in to {base}");
             }
+            Ok(())
+        }
+        Command::Seed {
+            website,
+            domain,
+            days,
+            visitors,
+        } => {
+            let path = cli
+                .db
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("sumami.duckdb"));
+
+            let options = seed::SeedOptions {
+                website,
+                domain,
+                days,
+                visitors_per_day: visitors,
+            };
+
+            let db = sumami_service::pool::Db::open(&path, "256MB")
+                .map_err(|err| anyhow!("opening {}: {err}", path.display()))?;
+
+            let (website_id, sessions, events) = db
+                .with_write(|conn| seed::seed(conn, &options))
+                .map_err(|err| anyhow!("{err}"))?;
+
+            println!("seeded {sessions} sessions and {events} events");
+            println!("website: {website_id}");
+            println!("start the server and open the dashboard to see it");
             Ok(())
         }
         Command::Prune { website } => {

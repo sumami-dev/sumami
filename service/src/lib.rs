@@ -12,6 +12,7 @@ pub mod db;
 pub mod error;
 pub mod models;
 pub mod pool;
+pub mod reports;
 pub mod server;
 pub mod static_files;
 #[cfg(feature = "tls")]

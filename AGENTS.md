@@ -28,13 +28,17 @@ One binary + one DuckDB file = the whole system.
                     └───────────────────────────────┘
 ```
 
-**Three release artifacts:**
+**One release artifact:**
 
-| Artifact        | What it is                                                                |
-| --------------- | ------------------------------------------------------------------------- |
-| `sumami-server` | the server only                                                            |
-| `sumami-client` | the analysis CLI only                                                      |
-| `sumami`        | **the two-in-one** — `sumami serve …` is the server, `sumami summary …` is the client |
+| Artifact | What it is                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------- |
+| `sumami` | **everything**: `sumami serve …` is the server, `sumami summary …` is the client              |
+
+The server and the client are **the same program**: they share the DuckDB schema, the
+metric definitions and the query implementation (`service/src/reports.rs`), so they cannot
+disagree — and there is only **one copy of DuckDB** in the binary. Installing the binary
+under another name (`sumami-server`, `sumami-client`) switches the default mode; those are
+symlinks in the release, not separate builds.
 
 Brand: **Sumami / 数猫咪** — "Sum" + "Umami", and phonetically *"Tsunami speed"*.
 Slogan: *Count kitties who visit my websites. — 由猫开发*.
@@ -47,8 +51,8 @@ This repository (`sumami-dev/sumami`, **public**) is a workspace of four compone
 
 | Path       | Language       | What it is                                                                 |
 | ---------- | -------------- | -------------------------------------------------------------------------- |
-| `service/` | Rust           | The server: collection API, stats API, auth, DuckDB writer, static hosting. |
-| `cli/`     | Rust           | Offline reader/analyzer for a `.duckdb` file. Reads data the service wrote. |
+| `service/` | Rust           | The server library: collection API, stats API, auth, DuckDB writer, TLS, **the shared report layer**. |
+| `cli/`     | Rust           | The analysis client **and the one executable** (`sumami`: server + client). |
 | `js/`      | JavaScript     | The tracker (`sumami.js`) + the dashboard frontend (`sumami-app.js`). Published on a CDN. |
 | `docs/`    | HTML/Markdown  | The website & documentation served by the service binary.                  |
 
@@ -191,6 +195,25 @@ Say so in the issue; do not implement it quietly.
   which serves this public repository directly. Set `SUMAMI_APP_URL=/app` to serve it
   from the backend instead (air-gapped installs).
 
+### 4.1b The shared query layer (`service/src/reports.rs`)
+
+Every report — summary, timeseries, the ten breakdowns, sessions, events — has **exactly
+one implementation**, in `service/src/reports.rs`:
+
+```
+service/src/reports.rs        ← the only SQL in the project
+   ↑                ↑
+service/api/*      cli/src/source.rs
+```
+
+The API handlers are thin wrappers around it, and the CLI's local mode calls the very same
+functions. Two consequences:
+
+* the numbers the CLI prints and the numbers the API returns are equal **by construction**;
+* a metric that changes (say, how a bounce is counted) changes in one place.
+
+Never write a second SQL query for a report that already exists here.
+
 ### 4.2 Umami v2 API compatibility (the contract)
 
 Implemented in v1 (target for the `sumami-dev/sumami` client used by the dashboard):
@@ -322,6 +345,16 @@ Two independent, **dependency-free** files (no build step, no npm, no bundler):
 
 Deployment recipes (plain `<script>`, self-hosting, CDN, multi-site) live in `js/README.md`.
 
+### 4.5b Demo data (`sumami seed`)
+
+`sumami seed --db <file> --days 30 --visitors 140` fills a database with **synthetic**
+traffic: a weighted page/referrer/country/browser distribution, returning visitors within
+a day, weekend dips, and custom events. It exists so the dashboard can be evaluated and
+demoed without pointing a real site at it.
+
+Everything it generates is invented (invented domains, invented visitors). It writes
+directly to the database file, so the server has to be stopped while it runs.
+
 ### 4.6 docs/ — the website
 
 A static site (plain HTML + one stylesheet, no build step, no npm) served by the service
@@ -375,7 +408,7 @@ make release          # release build (static DuckDB: self-contained binaries)
 make test             # unit + integration tests
 make lint             # clippy -- -D warnings
 make run              # serve on :3000 with ./dev.duckdb
-make package          # release artifacts: sumami-server, sumami-client, sumami (tarball)
+make package          # release artefact: the `sumami` binary + js/ + docs/
 make build-small      # optional: dynamically linked DuckDB (smaller, needs libduckdb)
 ```
 
@@ -384,7 +417,7 @@ Plain cargo works too:
 ```bash
 cargo build --release
 cargo test --workspace
-cargo run -p sumami-service -- serve --db ./dev.duckdb --port 3000
+cargo run -p sumami-cli -- serve --db ./dev.duckdb --port 3000
 cargo run -p sumami-cli -- --db ./dev.duckdb summary <website-id>
 ```
 
@@ -406,11 +439,12 @@ Deployment (cheap VPS, Debian/Ubuntu):
 
 ```bash
 # The release is a single self-contained binary — nothing else to install.
-sudo install -m 0755 target/release/sumami-server /usr/local/bin/
-sudo install -m 0755 target/release/sumami-client /usr/local/bin/   # optional
-sudo install -m 0755 target/release/sumami /usr/local/bin/          # optional (two-in-one)
+sudo install -m 0755 target/release/sumami /usr/local/bin/
 sudo systemctl enable --now sumami
 ```
+
+Optional aliases (symlinks, zero cost):
+`ln -s /usr/local/bin/sumami /usr/local/bin/sumami-server`
 
 With TLS managed by Sumami itself:
 
