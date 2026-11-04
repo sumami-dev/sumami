@@ -225,3 +225,47 @@ async fn the_log_records_what_happened() {
     assert_eq!(lines[0]["message"], "created the website");
     assert_eq!(lines[0]["actor"], "admin");
 }
+
+/// A question is answered, and the answer is kept in the conversation.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_question_is_answered_and_kept() {
+    let (app, _db, _writer, _guard) = app("ask").await;
+
+    // Start a conversation about the website.
+    let (status, session) = call(
+        &app,
+        "POST",
+        "/api/chat/sessions",
+        Some(r#"{"website": "w1", "title": "about the traffic"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = session["id"].as_str().unwrap().to_string();
+
+    // Ask a question.
+    let (status, answer) = call(
+        &app,
+        "POST",
+        &format!("/api/chat/sessions/{id}/ask"),
+        Some(r#"{"question": "how many page views"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the question should be answered");
+
+    // The answer holds the numbers of the database.
+    let facts = &answer["facts"];
+    assert_eq!(facts["summary"]["pageviews"]["value"], 1);
+    assert_eq!(facts["metric"], "pageviews");
+
+    // The words hold the same number.
+    let text = answer["message"]["content"].as_str().unwrap();
+    assert!(text.contains('1'), "the answer should hold the page views: {text}");
+
+    // Both the question and the answer are in the conversation.
+    let (status, messages) = call(&app, "GET", &format!("/api/chat/sessions/{id}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let messages = messages.as_array().unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0]["role"], "user");
+    assert_eq!(messages[1]["role"], "assistant");
+}

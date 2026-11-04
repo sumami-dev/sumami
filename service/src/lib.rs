@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod analyst;
 pub mod api;
 pub mod auth;
 pub mod config;

@@ -293,7 +293,7 @@ pub struct LoginResponse {
 }
 
 /// A metric with its period-over-period change.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetricValue {
     pub value: i64,
@@ -301,7 +301,7 @@ pub struct MetricValue {
 }
 
 /// Summary metrics, Umami-shaped.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetricsSummary {
     pub pageviews: MetricValue,

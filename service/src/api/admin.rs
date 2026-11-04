@@ -265,6 +265,62 @@ pub async fn say(
     )?))
 }
 
+/// The body of a question.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskRequest {
+    /// The question.
+    pub question: String,
+    /// The website the question is about. Defaults to the one of the session.
+    #[serde(default)]
+    pub website: Option<String>,
+}
+
+/// `POST /api/chat/sessions/{id}/ask` — ask a question, get an answer.
+///
+/// The question is turned into a report, the report is run, and the answer is
+/// written from the numbers that came back — so the answer cannot disagree with
+/// the dashboard. The question and the answer are both kept in the conversation.
+pub async fn ask(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<AskRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let question = request.question.trim();
+    if question.is_empty() {
+        return Err(ApiError::BadRequest("the question is empty".into()));
+    }
+
+    // The website comes from the request, or from the conversation it is asked in.
+    let session = state
+        .instance
+        .chat_sessions()?
+        .into_iter()
+        .find(|session| session.id == id)
+        .ok_or_else(|| ApiError::NotFound(format!("no conversation '{id}'")))?;
+    let website = request
+        .website
+        .or(session.website_id.clone())
+        .ok_or_else(|| ApiError::BadRequest("the question is about which website?".into()))?;
+
+    let answer = crate::analyst::ask(state.storage.as_ref(), &website, question, crate::db::now())?;
+
+    // The question and the answer are both part of the conversation.
+    state.instance.chat_message(&id, "user", question, None)?;
+    let message = state.instance.chat_message(
+        &id,
+        "assistant",
+        &answer.text,
+        Some(&serde_json::to_string(&answer.facts)?),
+    )?;
+
+    Ok(Json(serde_json::json!({
+        "message": message,
+        "facts": answer.facts,
+        "report": answer.report,
+    })))
+}
+
 // --------------------------------------------------------------------------------------
 // The cache
 // --------------------------------------------------------------------------------------

@@ -20,7 +20,7 @@ use crate::models::{
 };
 
 /// A time window (start inclusive, end exclusive).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimeRange {
     /// Start of the window.
     pub start: NaiveDateTime,

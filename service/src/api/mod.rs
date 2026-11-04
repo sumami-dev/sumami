@@ -264,6 +264,10 @@ pub fn router(state: AppState) -> Router {
             post(admin::say),
         )
         .route(
+            "/api/chat/sessions/{id}/ask",
+            post(admin::ask),
+        )
+        .route(
             "/api/cache",
             get(admin::cache_stats).delete(admin::purge_cache),
         )
