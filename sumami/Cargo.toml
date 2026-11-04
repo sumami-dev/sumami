@@ -32,8 +32,11 @@ anyhow.workspace = true
 tokio.workspace = true
 
 # The two halves of the open-source build.
-sumami-service = { path = "../service" }
-sumami-cli = { path = "../cli" }
+#
+# The versions are needed for publishing: the paths are used locally, and the
+# versions are what the published crate depends on.
+sumami-service = { path = "../service", version = "0.1.0" }
+sumami-cli = { path = "../cli", version = "0.1.0" }
 
 [dev-dependencies]
 # The shutdown test sends a real SIGTERM to the real executable.

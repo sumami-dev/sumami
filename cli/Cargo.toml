@@ -33,4 +33,7 @@ tokio.workspace = true
 uuid = { version = "1", features = ["v4"] }
 # The shared layer: the schema, the models and every report live here, so the
 # server and the client cannot drift apart.
-sumami-service = { path = "../service" }
+#
+# The version is needed for publishing: the path is used locally, and the
+# version is what the published crate depends on.
+sumami-service = { path = "../service", version = "0.1.0" }
