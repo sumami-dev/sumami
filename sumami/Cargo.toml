@@ -7,6 +7,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# The crates are not published yet, and they will not be until the name is
+# settled: a crates.io name is effectively permanent (you can yank a version,
+# but you cannot rename the crate). Publishing `sumami-service` before the
+# naming question is answered would lock in a name we may have to change.
+publish = false
+
 [lib]
 name = "sumami"
 path = "src/lib.rs"
