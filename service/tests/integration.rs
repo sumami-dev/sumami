@@ -368,3 +368,99 @@ async fn api_matches_the_shared_report_layer() {
 
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
+
+/// The dashboard must see what the writer has just written.
+///
+/// **DuckDB snapshots the database when a connection is opened**, not when it
+/// queries: a connection that was open before a write keeps showing the numbers
+/// from before it — even after a checkpoint. A pooled reader therefore has to be
+/// replaced when the data changes, or the dashboard would show yesterday's
+/// numbers.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_dashboard_sees_what_the_writer_wrote() {
+    let path = temp_db("fresh");
+    let db = Arc::new(Db::open(&path, "256MB").unwrap());
+
+    // The reader is opened *before* the write — it is the one that would go
+    // stale.
+    let before = db
+        .with_read(|conn| {
+            let mut stmt = conn.prepare("SELECT count(*) FROM event")?;
+            let mut rows = stmt.query([])?;
+            match rows.next()? {
+                Some(row) => Ok(row.get::<_, i64>(0)?),
+                None => Ok(0),
+            }
+        })
+        .unwrap();
+    assert_eq!(before, 0);
+
+    let (writer, _handle) = Writer::spawn(db.clone(), Duration::from_millis(100), 1000);
+    let _guard = WriterGuard(writer.clone());
+    writer.push(hit("website-1", "/one"));
+
+    let mut after = 0;
+    for _ in 0..100 {
+        after = db
+            .with_read(|conn| {
+                let mut stmt = conn.prepare("SELECT count(*) FROM event")?;
+                let mut rows = stmt.query([])?;
+                match rows.next()? {
+                    Some(row) => Ok(row.get::<_, i64>(0)?),
+                    None => Ok(0),
+                }
+            })
+            .unwrap();
+        if after > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(after, 1, "the dashboard must see the hit that was just written");
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+/// The same, for the SQLite backend: its readers get a fresh snapshot on every
+/// read, so a pooled connection is never stale.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_sqlite_dashboard_sees_what_the_writer_wrote() {
+    use sumami_service::sqlite::SqliteBackend;
+    use sumami_service::storage::Storage;
+
+    let dir = std::env::temp_dir().join(format!("sumami-test-fresh-sqlite-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("data.sqlite");
+
+    let backend = Arc::new(SqliteBackend::open(&path).unwrap());
+
+    // The reader is opened before the write.
+    let before = backend
+        .with_reader(|conn| {
+            let mut stmt = conn.prepare("SELECT count(*) FROM event")?;
+            let mut rows = stmt.query([])?;
+            match rows.next()? {
+                Some(row) => Ok(row.get::<_, i64>(0)?),
+                None => Ok(0),
+            }
+        })
+        .unwrap();
+    assert_eq!(before, 0);
+
+    backend.write_batch(&[hit("website-1", "/one")]).unwrap();
+
+    let after = backend
+        .with_reader(|conn| {
+            let mut stmt = conn.prepare("SELECT count(*) FROM event")?;
+            let mut rows = stmt.query([])?;
+            match rows.next()? {
+                Some(row) => Ok(row.get::<_, i64>(0)?),
+                None => Ok(0),
+            }
+        })
+        .unwrap();
+    assert_eq!(after, 1, "the dashboard must see the hit that was just written");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

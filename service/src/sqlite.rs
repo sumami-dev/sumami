@@ -26,14 +26,25 @@ use uuid::Uuid;
 use crate::models::{
     BreakdownRow, EventRow, Hit, MetricsSummary, MetricValue, Revenue, SessionRow, Website,
 };
+use crate::pool::{Pool, Pooled};
 use crate::storage::{
     group_sessions, session_scan_limit, Dimension, ReportQuery, SessionEvent, Storage, StorageStats,
     SummaryMetrics, WebsitePatch,
 };
 
 /// The SQLite backend.
+///
+/// **One writer, a pool of readers.** SQLite in WAL mode lets many readers work
+/// while the writer is busy — the opposite of DuckDB, which takes an exclusive
+/// lock on the file. So the dashboard's requests each take a connection from the
+/// pool, and a slow report does not hold up the writer.
 pub struct SqliteBackend {
-    conn: Mutex<Connection>,
+    /// The one connection that writes.
+    writer: Mutex<Connection>,
+    /// The connections the requests read on. `None` for an in-memory database:
+    /// every `open_in_memory()` is a *different* database, so there is only the
+    /// one connection.
+    readers: Option<Pool<Connection>>,
     path: PathBuf,
 }
 
@@ -48,7 +59,8 @@ impl SqliteBackend {
         let conn = Connection::open(path)?;
         Self::prepare(&conn)?;
         Ok(Self {
-            conn: Mutex::new(conn),
+            writer: Mutex::new(conn),
+            readers: Some(Pool::new(4)),
             path: path.to_path_buf(),
         })
     }
@@ -58,7 +70,8 @@ impl SqliteBackend {
         let conn = Connection::open_in_memory()?;
         Self::prepare(&conn)?;
         Ok(Self {
-            conn: Mutex::new(conn),
+            writer: Mutex::new(conn),
+            readers: None,
             path: PathBuf::from(":memory:"),
         })
     }
@@ -168,15 +181,42 @@ CREATE TABLE IF NOT EXISTS meta (
         Ok(())
     }
 
-    /// Run `f` with the connection.
+    /// Run `f` with the writer's connection.
     pub fn with_connection<T>(&self, f: impl FnOnce(&mut Connection) -> Result<T>) -> Result<T> {
-        let mut conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut conn = self.writer.lock().unwrap_or_else(|e| e.into_inner());
         f(&mut conn)
     }
 
-    /// Run `f` with the connection.
+    /// Run `f` with the writer's connection.
     fn with<T>(&self, f: impl FnOnce(&mut Connection) -> Result<T>) -> Result<T> {
         self.with_connection(f)
+    }
+
+    /// Run `f` with a connection from the reader pool.
+    ///
+    /// This is what the dashboard uses: the request takes a connection, reads and
+    /// gives it back. Two requests do not wait for each other.
+    pub fn with_reader<T>(&self, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+        let Some(readers) = &self.readers else {
+            // No pool: an in-memory database has exactly one connection.
+            let conn = self.writer.lock().unwrap_or_else(|e| e.into_inner());
+            return f(&conn);
+        };
+        // A SQLite reader gets a fresh snapshot on every read, so a pooled
+        // connection is never stale.
+        let connection = readers.take(|| self.open_reader())?;
+        let pooled = Pooled {
+            pool: readers,
+            connection: Some(connection),
+        };
+        f(pooled.get())
+    }
+
+    /// Open one more connection to the same file.
+    fn open_reader(&self) -> Result<Connection> {
+        let conn = Connection::open(&self.path)?;
+        Self::prepare(&conn)?;
+        Ok(conn)
     }
 }
 
@@ -352,7 +392,7 @@ impl Storage for SqliteBackend {
     }
 
     fn websites(&self) -> Result<Vec<Website>> {
-        self.with(|conn| {
+        self.with_reader(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, name, domain, created_at, updated_at, retention_days, country_header
                  FROM website ORDER BY created_at DESC",
@@ -375,7 +415,7 @@ impl Storage for SqliteBackend {
     }
 
     fn website(&self, id: &str) -> Result<Option<Website>> {
-        self.with(|conn| {
+        self.with_reader(|conn| {
             Ok(conn
                 .query_row(
                     "SELECT id, name, domain, created_at, updated_at, retention_days, country_header
@@ -498,7 +538,7 @@ impl Storage for SqliteBackend {
     }
 
     fn summary(&self, query: &ReportQuery) -> Result<SummaryMetrics> {
-        self.with(|conn| summary(conn, query))
+        self.with_reader(|conn| summary(conn, query))
     }
 
     fn summary_with_change(&self, query: &ReportQuery) -> Result<MetricsSummary> {
@@ -517,19 +557,19 @@ impl Storage for SqliteBackend {
     }
 
     fn breakdown(&self, query: &ReportQuery, dimension: Dimension) -> Result<Vec<BreakdownRow>> {
-        self.with(|conn| breakdown(conn, query, dimension))
+        self.with_reader(|conn| breakdown(conn, query, dimension))
     }
 
     fn timeseries(&self, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
-        self.with(|conn| timeseries(conn, query))
+        self.with_reader(|conn| timeseries(conn, query))
     }
 
     fn events(&self, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
-        self.with(|conn| events(conn, query))
+        self.with_reader(|conn| events(conn, query))
     }
 
     fn event_log(&self, query: &ReportQuery) -> Result<Vec<EventRow>> {
-        self.with(|conn| event_log(conn, query))
+        self.with_reader(|conn| event_log(conn, query))
     }
 
     fn sessions(&self, query: &ReportQuery) -> Result<Vec<SessionRow>> {
@@ -543,7 +583,7 @@ impl Storage for SqliteBackend {
     }
 
     fn recent_events(&self, query: &ReportQuery, limit: i64) -> Result<Vec<SessionEvent>> {
-        self.with(|conn| recent_events(conn, query, limit))
+        self.with_reader(|conn| recent_events(conn, query, limit))
     }
 
     fn write_batch(&self, hits: &[Hit]) -> Result<()> {
@@ -668,7 +708,7 @@ INSERT INTO event (
     }
 
     fn revenue(&self, query: &ReportQuery) -> Result<Vec<Revenue>> {
-        self.with(|conn| revenue(conn, query))
+        self.with_reader(|conn| revenue(conn, query))
     }
 
     fn prune(&self, website: Option<&str>) -> Result<(u64, u64)> {
@@ -745,7 +785,7 @@ INSERT INTO event (
 
 
     fn stats(&self) -> Result<StorageStats> {
-        let websites = self.with(|conn| {
+        let websites = self.with_reader(|conn| {
             let mut stmt = conn.prepare("SELECT count(*) FROM website")?;
             let mut rows = stmt.query([])?;
             match rows.next()? {

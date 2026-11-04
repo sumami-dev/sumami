@@ -141,6 +141,17 @@ A page view is never sent twice: the tracker keeps one flag per page, so a page
 that has been reported is not reported again — not on the next `pagehide`, not on
 the next `visibilitychange`.
 
+**The metrics belong to the document, not to the route.** A single page
+application that changes its route does not load a new document — it keeps the
+one it loaded, and the Core Web Vitals keep describing *that* document. So every
+page view of a document reports the **same** document-level numbers: they are
+measured once and frozen, and a route change reports the document's metrics, not
+a partial set of its own.
+
+Without this, a visitor who browses three routes of an SPA would report the same
+document's LCP three times with three different values, and every average would
+be wrong.
+
 ### The query string
 
 The query string **is** sent, in full, and so is the full referrer. The server does

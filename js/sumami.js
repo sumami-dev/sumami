@@ -255,10 +255,39 @@
   }
 
   /**
+   * The vitals of **this document**, frozen the first time they are reported.
+   *
+   * The Core Web Vitals describe a *document*, not a route: LCP is the largest
+   * paint of the page, CLS is the layout shift of the page, INP is the longest
+   * interaction of the page. A single page application that changes its route
+   * does not get a new document — it keeps the one it loaded.
+   *
+   * So every page view of a document reports the **same** document-level
+   * numbers. Without this, a visitor who browses three routes of an SPA would
+   * report the same document's LCP three times, with three different values,
+   * and every average would be wrong.
+   */
+  var documentVitals = null;
+
+  /** The document-level vitals, frozen the first time they are used. */
+  function documentLevelVitals() {
+    if (!documentVitals) {
+      documentVitals = {
+        lcp: vitals.lcp,
+        inp: vitals.inp,
+        cls: vitals.cls,
+        fcp: vitals.fcp,
+        ttfb: vitals.ttfb
+      };
+    }
+    return documentVitals;
+  }
+
+  /**
    * The fields every hit carries.
    *
    * `withVitals` is false for the custom events: the web vitals describe the
-   * page, and they are sent once — with the page view.
+   * document, and they are sent with the page views.
    */
   function basePayload(withVitals) {
     var payload = {
@@ -274,11 +303,12 @@
     if (withVitals) {
       // The server reads the metrics as strings and parses them itself
       // (`raw.str(name).parse::<f64>()`), so they are sent as strings.
-      payload.lcp = String(vitals.lcp);
-      payload.inp = String(vitals.inp);
-      payload.cls = String(vitals.cls);
-      payload.fcp = String(vitals.fcp);
-      payload.ttfb = String(vitals.ttfb);
+      var metrics = documentLevelVitals();
+      payload.lcp = String(metrics.lcp);
+      payload.inp = String(metrics.inp);
+      payload.cls = String(metrics.cls);
+      payload.fcp = String(metrics.fcp);
+      payload.ttfb = String(metrics.ttfb);
     }
 
     return payload;
