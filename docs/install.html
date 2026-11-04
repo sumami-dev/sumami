@@ -278,6 +278,12 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
         buffered in memory before the oldest are dropped.</li>
       <li><code>SUMAMI_FLUSH_INTERVAL_SECS</code> (default <code>2</code>) — how often the
         writer commits a batch to disk.</li>
+      <li><code>SUMAMI_CACHE_STALE_SECS</code> (default <code>30</code>) — how old a cached
+        report may be. The writer commits every couple of seconds, so a cache that only
+        accepted the current version of the data would never hit on a busy site; with the
+        window, the numbers on the screen are at most that old and the query runs once
+        instead of a hundred times. <code>0</code> means "only while the data has not
+        changed".</li>
       <li><code>SUMAMI_JWT_SECRET_FILE</code> — path of a file holding the token secret, if you
         would rather keep it out of the environment.</li>
     </ul>

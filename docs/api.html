@@ -479,9 +479,9 @@
     <h2>The control plane</h2>
     <p>
       Everything an instance keeps that is <em>not</em> analytics: the log, the Search
-      Console import, the saved reports, the assistant's conversations and the report
-      cache. These live in the instance store — a small database of their own — so they
-      survive an analytics rebuild.
+      Console import, the saved reports, the assistant's conversations, the teams and the
+      report cache. These live in the instance store — a small database of their own — so
+      they survive an analytics rebuild.
     </p>
 
     <details class="endpoint">
@@ -610,6 +610,71 @@
     </details>
 
     <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/chat/sessions/:id/ask</span></summary>
+      <div class="endpoint-body">
+        <p>
+          Ask a question, get an answer. The question is turned into a report — the same
+          report the dashboard asks for — the report is run, and the answer is written from
+          the numbers that came back. So the answer cannot disagree with the dashboard,
+          it cannot invent a number, and it needs no API key: nothing leaves the box.
+        </p>
+        <pre class="shell"><code>curl -X POST http://127.0.0.1:3999/api/chat/sessions/9f1c.../ask \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{ "question": "why did traffic drop last week?" }'</code></pre>
+        <pre class="shell"><code>{
+  "message": {
+    "id": 12,
+    "role": "assistant",
+    "content": "Over the last 7 days: 1,204 page views. That is -12.4% against the previous 7 days. The biggest movers: /pricing (-180), /docs (-60).",
+    "data": "{ ... the numbers the answer was made of ... }"
+  },
+  "facts": { "metric": "pageviews", "summary": { ... }, "movers": [ ... ] },
+  "report": "summary"
+}</code></pre>
+        <p>
+          The questions it understands are the ones a site owner asks: how many visitors
+          or page views, over which window (<code>last 30 days</code>, <code>this week</code>,
+          <code>最近 30 天</code>), broken down by pages, referrers, browsers, devices or
+          countries, and compared with the period before. Questions in Chinese are answered
+          in Chinese.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">POST</span> <span class="endpoint-path">/api/teams</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The teams of this instance. <code>GET</code> lists them, <code>POST</code> creates
+          one; <code>GET /api/teams/:id</code> returns one and <code>DELETE</code> removes it
+          along with its memberships.
+        </p>
+        <pre class="shell"><code>curl -X POST http://127.0.0.1:3999/api/teams \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{ "name": "Marketing" }'</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">POST</span> <span class="endpoint-path">/api/teams/:id/members</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The members of a team. <code>GET</code> lists them, <code>POST</code> adds one or
+          changes their role, and <code>DELETE /api/teams/:id/members/:username</code> removes
+          one. The role is <code>owner</code>, <code>member</code> or <code>viewer</code>.
+        </p>
+        <p>
+          The <strong>team</strong> role lives in the membership; the account keeps its
+          <strong>instance</strong> role. Putting an account in a team never takes its
+          instance rights away, and taking it out never gives it any back.
+        </p>
+        <pre class="shell"><code>curl -X POST http://127.0.0.1:3999/api/teams/7a2e.../members \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{ "username": "alice", "role": "viewer" }'</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
       <summary><span class="method get">DELETE</span> <span class="endpoint-path">/api/cache</span></summary>
       <div class="endpoint-body">
         <p>
@@ -617,9 +682,13 @@
           <code>DELETE</code> empties it.
         </p>
         <p>
-          The cache carries the version of the data it was computed from, and the writer
-          changes that version with every batch — so a cached answer is never older than
-          the last write.
+          The cache carries the version of the data it was computed from and the moment it
+          was computed. While the version still matches, the answer is exactly right.
+          After a write the answer may still be used for as long as the stale window
+          allows — <code>SUMAMI_CACHE_STALE_SECS</code>, 30 seconds by default,
+          <code>0</code> for "only while the data has not changed". The window is what
+          makes the cache worth having: the writer commits every couple of seconds, so a
+          cache that only accepted the current version would never hit on a busy site.
         </p>
       </div>
     </details>

@@ -51,7 +51,8 @@
       Sumami is an independent open-source project that implements the Umami v2 HTTP API. It is
       an open-source alternative to Umami: the official Umami dashboard and the Umami tracker
       work against it unchanged. What differs is the packaging — Sumami ships as a
-      self-contained service with a single DuckDB file and no external database, no PostgreSQL
+      self-contained service whose instance is one directory (a DuckDB file for the events, a
+      small SQLite file for the accounts) and needs no external database, no PostgreSQL
       and no ClickHouse — and the privacy defaults, which are cookieless by construction.
     </p>
     <p>
@@ -207,13 +208,15 @@ sumami serve --db ./demo.duckdb --port 3000</code></pre>
       <a href="cli.html#seed">CLI reference</a> has the full list of flags.
     </p>
 
-    <h3>Can I move the database file to another machine?</h3>
+    <h3>Can I move the instance to another machine?</h3>
     <p>
-      Yes. Stop the service, copy the <code>.duckdb</code> file (and the
-      <code>.jwt-secret</code> file next to it, if you want existing tokens to keep working),
-      and start the service on the new box. Because the visitor identifier is derived from the
-      server secret, changing the secret means visitor identifiers change — which is a
-      privacy feature, not a bug.
+      Yes. Stop the service and copy the <strong>instance directory</strong> — by default
+      <code>sumami/</code>, holding <code>data.duckdb</code> (the events),
+      <code>instance.sqlite</code> (the accounts, the log, the cache) and
+      <code>jwt-secret</code> — then start the service on the new box. Copying the
+      <code>jwt-secret</code> file is what keeps the issued tokens working; because the
+      visitor identifier is derived from the server secret, changing the secret means visitor
+      identifiers change, which is a privacy feature rather than a bug.
     </p>
 
     <h3>Where did my admin password go?</h3>
@@ -226,7 +229,7 @@ sumami serve --db ./demo.duckdb --port 3000</code></pre>
     <p>
       If you have lost it, set a new one:
     </p>
-    <pre class="shell"><code>sumami admin --db /var/lib/sumami/sumami.duckdb \
+    <pre class="shell"><code>sumami admin --dir /var/lib/sumami \
   --username admin --password 'a-new-long-passphrase'</code></pre>
 
     <h3>How do I change the port?</h3>
@@ -329,10 +332,13 @@ sumami serve --db ./demo.duckdb --port 3000</code></pre>
 
     <h3>How do I back it up?</h3>
     <p>
-      One file. Stop the service, copy <code>sumami.duckdb</code> somewhere safe, start the
-      service again. The <a href="self-host.html">self-hosting guide</a> has a ready-made
-      script and a cron entry. Copy the <code>.jwt-secret</code> file too if you want issued
-      tokens to survive the move.
+      One directory. Stop the service, copy the instance directory (by default
+      <code>sumami/</code>) somewhere safe, start the service again. The
+      <a href="self-host.html">self-hosting guide</a> has a ready-made script and a cron entry.
+      The directory holds the events (<code>data.duckdb</code>), the accounts and the rest of
+      the control plane (<code>instance.sqlite</code>), and the signing secret
+      (<code>jwt-secret</code>) — copy the last one too if you want issued tokens to survive
+      the move.
     </p>
 
     <h3>How do I move to a new version?</h3>

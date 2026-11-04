@@ -137,7 +137,8 @@ sudo cp -r js docs /opt/sumami/</code></pre>
     </p>
     <pre class="shell"><code>sudo install -d -m 0750 /etc/sumami
 sudo tee /etc/sumami/sumami.env &gt;/dev/null &lt;&lt;'EOF'
-SUMAMI_DB=/var/lib/sumami/sumami.duckdb
+<span class="cmt"># the instance directory: the events, the accounts, the logs, the secret</span>
+SUMAMI_DIR=/var/lib/sumami
 SUMAMI_HOST=127.0.0.1
 SUMAMI_PORT=3999
 
@@ -172,8 +173,8 @@ sudo chown root:sumami /etc/sumami/sumami.env
 sudo chmod 0640 /etc/sumami/sumami.env</code></pre>
     <p>
       If you leave <code>SUMAMI_JWT_SECRET</code> unset, the server generates a random secret
-      on first run and writes it next to the database
-      (<code>/var/lib/sumami/sumami.duckdb.jwt-secret</code>, mode <code>0600</code>). That is
+      on first run and writes it in the instance directory
+      (<code>/var/lib/sumami/jwt-secret</code>, mode <code>0600</code>). That is
       fine, but setting it explicitly means the secret survives a move to another machine.
     </p>
     <h2>4. Write the systemd unit</h2>
@@ -396,7 +397,7 @@ sudo systemctl restart sumami</code></pre>
       <p>
         By default the cache directory is derived from the database path: it is an
         <code>acme</code> directory next to the database file. With
-        <code>SUMAMI_DB=/var/lib/sumami/sumami.duckdb</code> the cache is
+        <code>SUMAMI_DIR=/var/lib/sumami</code> the cache is
         <code>/var/lib/sumami/acme</code>. That is an absolute path, so it does not depend on
         the working directory of the service, and it lands inside the data directory the
         hardening above already allows writes to. You do not need to set anything for this
@@ -471,24 +472,29 @@ sudo ufw allow 443/tcp</code></pre>
 
     <h2>7. Backups</h2>
     <p>
-      Your entire dataset is one file, so a backup is one file copy. Stop the service first so
-      the copy is consistent — DuckDB's write-ahead log means a live copy can otherwise be
-      incomplete. There is no library to back up: the executables are self-contained, so only
-      the database (and the files next to it) need copying.
+      An instance is a <strong>directory</strong>, so a backup is one directory copy. It holds
+      the events (<code>data.duckdb</code>), the accounts, the log and the cache
+      (<code>instance.sqlite</code>), the signing secret (<code>jwt-secret</code>), the logs and
+      the TLS cache. Stop the service first so the copy is consistent — DuckDB's write-ahead
+      log means a live copy can otherwise be incomplete. There is no library to back up: the
+      executables are self-contained, so only the instance directory needs copying.
     </p>
     <pre class="shell"><code><span class="cmt"># a nightly snapshot</span>
 sudo tee /usr/local/bin/sumami-backup &gt;/dev/null &lt;&lt;'EOF'
 #!/bin/sh
 set -eu
 DEST=/var/backups/sumami
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$DEST"
 systemctl stop sumami
-cp -a /var/lib/sumami/sumami.duckdb "$DEST/sumami-$(date -u +%Y%m%dT%H%M%SZ).duckdb"
-cp -a /var/lib/sumami/sumami.duckdb.jwt-secret "$DEST/" 2>/dev/null || true
+<span class="cmt"># the events, the accounts and the signing secret</span>
+cp -a /var/lib/sumami/data.duckdb "$DEST/data-$STAMP.duckdb"
+cp -a /var/lib/sumami/instance.sqlite "$DEST/instance-$STAMP.sqlite"
+cp -a /var/lib/sumami/jwt-secret "$DEST/" 2>/dev/null || true
 <span class="cmt"># the ACME account and certificates, if Sumami manages TLS itself</span>
 cp -a /var/lib/sumami/acme "$DEST/" 2>/dev/null || true
 systemctl start sumami
-find "$DEST" -name 'sumami-*.duckdb' -mtime +30 -delete
+find "$DEST" -name 'data-*.duckdb' -mtime +30 -delete
 EOF
 sudo chmod 0755 /usr/local/bin/sumami-backup</code></pre>
     <pre class="shell"><code>sudo tee /etc/cron.d/sumami-backup &gt;/dev/null &lt;&lt;'EOF'
@@ -502,8 +508,9 @@ sudo chmod 0644 /etc/cron.d/sumami-backup</code></pre>
     </p>
     <h3>Restoring</h3>
     <pre class="shell"><code>sudo systemctl stop sumami
-sudo cp -a /var/backups/sumami/sumami-20260115T033000Z.duckdb /var/lib/sumami/sumami.duckdb
-sudo chown sumami:sumami /var/lib/sumami/sumami.duckdb
+sudo cp -a /var/backups/sumami/data-20260115T033000Z.duckdb /var/lib/sumami/data.duckdb
+sudo cp -a /var/backups/sumami/instance-20260115T033000Z.sqlite /var/lib/sumami/instance.sqlite
+sudo chown sumami:sumami /var/lib/sumami/data.duckdb /var/lib/sumami/instance.sqlite
 sudo systemctl start sumami
 curl -s http://127.0.0.1:3999/api/heartbeat</code></pre>
 
@@ -515,7 +522,7 @@ curl -s http://127.0.0.1:3999/api/heartbeat</code></pre>
     </p>
     <pre class="shell"><code><span class="cmt"># stop the service, then prune the database in place</span>
 sudo systemctl stop sumami
-sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...
+sumami prune --dir /var/lib/sumami 3f2a...
 sudo systemctl start sumami</code></pre>
     <p>
       Schedule it in the same cron file as the backup. Pruning before the backup keeps the
