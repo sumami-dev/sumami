@@ -42,8 +42,9 @@ The defaults are chosen for the deployment target, not for a workstation:
 | `SUMAMI_DUCKDB_FLUSH_THRESHOLD` | 32 MB | DuckDB's default (128 MB) keeps that much freed memory before returning it to the OS. |
 | `SUMAMI_DUCKDB_TEMP_LIMIT` | 2 GB | A query that spills must not fill the disk. |
 | `SUMAMI_DUCKDB_THREADS` | auto (one per 64 MB of budget) | A parallel `COUNT(DISTINCT …)` builds **one hash table per thread**, so a query's memory scales with the thread count: at 10 threads a 5M-row summary query runs out of a 128 MB limit, at 2 threads it takes 154 ms. |
-| `SUMAMI_STORE_TITLES` | off | The page title is roughly half of the stored bytes and almost nobody looks at it. |
-| `SUMAMI_STORE_FULL_REFERRER` | off | The referrer breakdown groups by host (that is what Umami shows too), and the full URL is the largest field we would store. |
+| `SUMAMI_STORE_TITLES` | **on** | On by default: Umami stores the title, and that is the baseline. Set it to `0` to save the space — the title is roughly half of the stored bytes and almost nobody looks at it. |
+| `SUMAMI_STORE_FULL_REFERRER` | **on** | On by default. Set it to `0` to keep the referrer host alone — which is what the breakdown groups by anyway. |
+| `SUMAMI_KEEP_QUERY` | **on** | On by default: Umami stores the query string, and the marketing parameters live in it (they are parsed out of it either way). Set it to `0` to drop the raw query string. |
 
 Measured on 10M and 100M row tables (`cli/examples/scale.rs`, event-row schema,
 128 MB DuckDB limit, the production thread derivation — 2 threads on a 128 MB budget):

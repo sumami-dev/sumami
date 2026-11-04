@@ -206,6 +206,10 @@ fn build_hit(
         Some(url) => split_url(&url),
         None => (None, None, Vec::new()),
     };
+    // The query string is stored by default — Umami stores it, and it is where the
+    // marketing parameters live. `SUMAMI_KEEP_QUERY=0` keeps the parameters but
+    // drops the raw query string.
+    let url_query = if state.config.keep_query { url_query } else { None };
     let param = |name: &str| -> Option<String> {
         params
             .iter()
@@ -213,11 +217,17 @@ fn build_hit(
             .map(|(_, value)| value.clone())
     };
 
-    // The referrer: host, path and query.
+    // The referrer: host, path and query. The breakdown groups by the host, which
+    // is what Umami shows; the path and the query are the extra we keep.
+    // `SUMAMI_STORE_FULL_REFERRER=0` keeps the host alone.
     let (referrer, referrer_path, referrer_query) = match raw.str("referrer") {
         Some(referrer) => {
             let (host, path, query) = split_referrer(&referrer);
-            (host, path, query)
+            if state.config.store_full_referrer {
+                (host, path, query)
+            } else {
+                (host, None, None)
+            }
         }
         None => (None, None, None),
     };
@@ -246,7 +256,11 @@ fn build_hit(
 
         url,
         url_query,
-        title: raw.str("title"),
+        title: if state.config.store_titles {
+            raw.str("title")
+        } else {
+            None
+        },
 
         referrer,
         referrer_path,
@@ -374,46 +388,6 @@ fn decode_component(value: &str) -> String {
     String::from_utf8_lossy(&out).to_string()
 }
 
-/// Cap the length of a stored string.
-fn truncate(value: &str, max: usize) -> String {
-    if value.len() <= max {
-        value.to_string()
-    } else {
-        let mut end = max;
-        while end > 0 && !value.is_char_boundary(end) {
-            end -= 1;
-        }
-        value[..end].to_string()
-    }
-}
-
-/// The host of a referring URL — what the referrer breakdown groups by.
-///
-/// A referrer that is not a URL (some sites send a bare path) is kept as it is.
-fn referrer_host(referrer: &str) -> String {
-    if let Some(rest) = referrer.strip_prefix("http://") {
-        let host = rest.split('/').next().unwrap_or(rest);
-        return truncate(host, 128);
-    }
-    if let Some(rest) = referrer.strip_prefix("https://") {
-        let host = rest.split('/').next().unwrap_or(rest);
-        return truncate(host, 128);
-    }
-    truncate(referrer, 128)
-}
-
-/// Strip the query string (and fragment) unless explicitly allowed.
-fn sanitize_url(url: &str, keep_query: bool) -> String {
-    if keep_query {
-        return url.to_string();
-    }
-    let without_fragment = url.split('#').next().unwrap_or(url);
-    match without_fragment.find('?') {
-        Some(idx) => without_fragment[..idx].to_string(),
-        None => without_fragment.to_string(),
-    }
-}
-
 /// The client IP: prefer the proxy header, fall back to the socket address.
 fn client_ip(headers: &HeaderMap, peer: Option<&ConnectInfo<SocketAddr>>) -> String {
     for header in ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] {
@@ -477,10 +451,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn strips_query_strings() {
-        assert_eq!(sanitize_url("/a/b?token=secret", false), "/a/b");
-        assert_eq!(sanitize_url("/a/b", false), "/a/b");
-        assert_eq!(sanitize_url("/a/b?x=1", true), "/a/b?x=1");
+    fn splits_the_page_into_a_path_and_a_query() {
+        // The query string is stored by default — Umami stores it, and it is where
+        // the marketing parameters live. `SUMAMI_KEEP_QUERY=0` drops it later.
+        let (url, query, params) = split_url("/a/b?token=secret&utm_source=twitter");
+        assert_eq!(url.as_deref(), Some("/a/b"));
+        assert_eq!(query.as_deref(), Some("token=secret&utm_source=twitter"));
+        assert_eq!(
+            params,
+            vec![
+                ("token".to_string(), "secret".to_string()),
+                ("utm_source".to_string(), "twitter".to_string())
+            ]
+        );
+
+        let (url, query, params) = split_url("/a/b");
+        assert_eq!(url.as_deref(), Some("/a/b"));
+        assert_eq!(query, None);
+        assert!(params.is_empty());
     }
 
     #[test]

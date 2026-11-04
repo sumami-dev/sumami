@@ -156,12 +156,13 @@ impl Config {
 
         let country_header = country_header.or_else(|| std::env::var("SUMAMI_COUNTRY_HEADER").ok());
 
-        let store_titles = env_flag("SUMAMI_STORE_TITLES", false);
-        let store_full_referrer = env_flag("SUMAMI_STORE_FULL_REFERRER", false);
+        // These three keep everything by default — that is what Umami stores, and
+        // it is the baseline we promised. Turning one off is a per-site policy
+        // decision, so it is environment-only.
+        let store_titles = env_flag("SUMAMI_STORE_TITLES", true);
+        let store_full_referrer = env_flag("SUMAMI_STORE_FULL_REFERRER", true);
 
-        let keep_query = std::env::var("SUMAMI_KEEP_QUERY")
-            .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
-            .unwrap_or(false);
+        let keep_query = env_flag("SUMAMI_KEEP_QUERY", true);
 
         let js_dir = env_path("SUMAMI_JS_DIR").unwrap_or_else(|| PathBuf::from("js"));
 

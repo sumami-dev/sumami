@@ -80,10 +80,6 @@ fn parity() -> anyhow::Result<()> {
 #[derive(Clone)]
 struct Level {
     name: &'static str,
-    /// How many distinct URLs the traffic uses.
-    urls: i64,
-    /// How many distinct titles the traffic uses.
-    titles: i64,
     /// The SQL expression that builds the URL.
     url: String,
     /// The SQL expression that builds the title.
@@ -212,8 +208,6 @@ fn levels() -> Vec<Level> {
     vec![
         Level {
             name: "synthetic",
-            urls: 5_000,
-            titles: 2_000,
             url: "'/post/' || (i % 5000)::VARCHAR".to_string(),
             title: "'A reasonably long article title number ' || (i % 2000)::VARCHAR".to_string(),
             referrer: "'/ref/path/' || (i % 1000)::VARCHAR".to_string(),
@@ -226,8 +220,6 @@ fn levels() -> Vec<Level> {
         },
         Level {
             name: "real",
-            urls: 50_000,
-            titles: 20_000,
             url: "'/blog/2026/11/a-really-long-article-slug-about-analytics-' || (i % 50000)::VARCHAR || '-tail'".to_string(),
             title: "'Why your analytics database grows faster than your traffic — a long, realistic article title ' || (i % 20000)::VARCHAR".to_string(),
             referrer: "'/item?id=' || (i % 100000)::VARCHAR || '&utm_source=hn'".to_string(),
@@ -240,8 +232,6 @@ fn levels() -> Vec<Level> {
         },
         Level {
             name: "worst",
-            urls: 100_000,
-            titles: 50_000,
             url: "'/p/' || md5(i::text)::VARCHAR || '/' || md5((i+1)::text)::VARCHAR".to_string(),
             title: "'Title ' || md5((i+2)::text)::VARCHAR || ' for page ' || md5((i+3)::text)::VARCHAR".to_string(),
             referrer: "'/item/' || md5((i+4)::text)::VARCHAR".to_string(),

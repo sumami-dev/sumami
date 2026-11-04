@@ -234,9 +234,19 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
       policy rather than per-server:
     </p>
     <ul>
-      <li><code>SUMAMI_KEEP_QUERY</code> — set to <code>1</code>, <code>true</code> or
-        <code>yes</code> to keep the query string of collected URLs. It is off by default,
-        because query strings routinely carry session tokens and other personal data.</li>
+      <li><code>SUMAMI_KEEP_QUERY</code> — whether to store the query string of the
+        collected URLs. It is <strong>on</strong> by default, because that is what Umami
+        stores and the marketing parameters (UTM, ad click ids) live in it — they are
+        parsed out of it either way. Set it to <code>0</code> to keep the parameters but
+        drop the raw query string, which is where session tokens and other personal data
+        tend to be.</li>
+      <li><code>SUMAMI_STORE_TITLES</code> — whether to store the page title. It is
+        <strong>on</strong> by default (Umami stores it); set it to <code>0</code> to
+        save the space — the title is roughly half of the stored bytes and almost nobody
+        looks at it.</li>
+      <li><code>SUMAMI_STORE_FULL_REFERRER</code> — whether to store the referring URL
+        in full. It is <strong>on</strong> by default; set it to <code>0</code> to keep
+        the host alone, which is what the referrer breakdown groups by anyway.</li>
       <li><code>SUMAMI_APP_URL</code> — base URL of the dashboard frontend
         (<code>sumami-app.js</code> and <code>sumami.css</code>). It defaults to
         <code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code>, so the frontend is
