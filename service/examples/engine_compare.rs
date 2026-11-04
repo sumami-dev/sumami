@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
     let sqlite_size = file_size(&sqlite_path);
 
     // --- the queries ----------------------------------------------------
-    let mut query = ReportQuery::new(website, range.clone());
+    let mut query = ReportQuery::new(website, range);
     query.limit = 50;
 
     let mut rows = Vec::new();

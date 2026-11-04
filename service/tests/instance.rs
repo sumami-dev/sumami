@@ -6,8 +6,7 @@
 //! rebuild.
 
 use sumami_service::instance::{
-    Account, ChatMessage, ChatSession, GscRow, ImportReport, Instance, LogEntry, Snapshot,
-    SqliteInstance,
+    Account, ChatMessage, ChatSession, GscRow, ImportReport, LogEntry, Snapshot, SqliteInstance,
 };
 
 /// A store in memory.
@@ -249,5 +248,5 @@ fn the_account_round_trips() {
     assert_eq!(account.username, "admin");
     assert_eq!(account.role, "admin");
     assert!(account.team_id.is_none());
-    assert!(account.created_at.timestamp() > 0);
+    assert!(account.created_at.and_utc().timestamp() > 0);
 }
