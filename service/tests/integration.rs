@@ -15,7 +15,7 @@ fn temp_db(name: &str) -> std::path::PathBuf {
     dir.join("sumami.duckdb")
 }
 
-/// A synthetic hit.
+/// A synthetic hit — every field set, so the test can prove nothing is lost.
 fn hit(website_id: &str, url: &str) -> Hit {
     Hit {
         website_id: website_id.to_string(),
@@ -25,21 +25,41 @@ fn hit(website_id: &str, url: &str) -> Hit {
         kind: HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
         url: Some(url.to_string()),
-        referrer: Some("https://news.ycombinator.com/".to_string()),
-        hostname: Some("example.com".to_string()),
+        url_query: Some("utm_source=twitter".to_string()),
         title: Some("Example".to_string()),
-        name: None,
-        data: None,
-        language: Some("en-US".to_string()),
-        screen: Some("1920x1080".to_string()),
+        referrer: Some("news.ycombinator.com".to_string()),
+        referrer_path: Some("/item".to_string()),
+        referrer_query: Some("?id=1".to_string()),
+        hostname: Some("example.com".to_string()),
         browser: Some("Chrome".to_string()),
         browser_version: Some("120".to_string()),
         os: Some("macOS".to_string()),
         os_version: Some("10.15".to_string()),
         device: Some("desktop".to_string()),
+        screen: Some("1920x1080".to_string()),
+        language: Some("en-US".to_string()),
         country: Some("DE".to_string()),
         region: None,
         city: None,
+        utm_source: Some("twitter".to_string()),
+        utm_medium: Some("social".to_string()),
+        utm_campaign: Some("spring".to_string()),
+        utm_content: None,
+        utm_term: None,
+        gclid: Some("gclid-1".to_string()),
+        fbclid: None,
+        msclkid: None,
+        ttclid: None,
+        lifatid: None,
+        twclid: None,
+        lcp: Some(1200.0),
+        inp: Some(80.0),
+        cls: Some(0.02),
+        fcp: Some(700.0),
+        ttfb: Some(90.0),
+        name: None,
+        tag: None,
+        data: None,
     }
 }
 
@@ -53,11 +73,11 @@ async fn writer_flushes_queued_hits() {
     writer.push(hit("website-1", "/one"));
     writer.push(hit("website-1", "/two"));
 
-    let mut sessions = 0;
+    let mut events = 0;
     for _ in 0..100 {
-        sessions = db
+        events = db
             .with_read(|conn| {
-                let mut stmt = conn.prepare("SELECT count(*) FROM session")?;
+                let mut stmt = conn.prepare("SELECT count(*) FROM event")?;
                 let mut rows = stmt.query([])?;
                 match rows.next()? {
                     Some(row) => Ok(row.get::<_, i64>(0)?),
@@ -65,28 +85,82 @@ async fn writer_flushes_queued_hits() {
                 }
             })
             .unwrap();
-        if sessions > 0 {
+        if events > 0 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    assert_eq!(sessions, 1, "the writer should have flushed the batch");
+    assert_eq!(events, 2, "the writer should have flushed both hits");
 
-    // The session keeps the last url and counts both views.
-    let (url, views) = db
+    // Nothing is lost: every field of the first hit is stored.
+    let stored = db
         .with_read(|conn| {
-            let mut stmt = conn.prepare("SELECT url, views FROM session")?;
+            let mut stmt = conn.prepare(
+                "SELECT url, url_query, title, referrer, referrer_path, referrer_query, hostname,
+                        browser, os, device, screen, language, country,
+                        utm_source, utm_medium, utm_campaign, gclid,
+                        lcp, inp, cls, fcp, ttfb, session_id, visitor_id
+                 FROM event WHERE url = '/one'",
+            )?;
             let mut rows = stmt.query([])?;
             match rows.next()? {
-                Some(row) => Ok((row.get::<_, Option<String>>(0)?, row.get::<_, i64>(1)?)),
-                None => Ok((None, 0)),
+                Some(row) => Ok(Some((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, Option<String>>(10)?,
+                    row.get::<_, Option<String>>(11)?,
+                    row.get::<_, Option<String>>(12)?,
+                    row.get::<_, Option<String>>(13)?,
+                    row.get::<_, Option<String>>(14)?,
+                    row.get::<_, Option<String>>(15)?,
+                    row.get::<_, Option<String>>(16)?,
+                    row.get::<_, Option<f64>>(17)?,
+                    row.get::<_, Option<f64>>(18)?,
+                    row.get::<_, Option<f64>>(19)?,
+                    row.get::<_, Option<f64>>(20)?,
+                    row.get::<_, Option<f64>>(21)?,
+                    row.get::<_, String>(22)?,
+                    row.get::<_, String>(23)?,
+                ))),
+                None => Ok(None),
             }
         })
         .unwrap();
 
-    assert_eq!(url.as_deref(), Some("/two"));
-    assert_eq!(views, 2);
+    let stored = stored.expect("the hit should be stored");
+    assert_eq!(stored.0.as_deref(), Some("/one"));
+    assert_eq!(stored.1.as_deref(), Some("utm_source=twitter"));
+    assert_eq!(stored.2.as_deref(), Some("Example"));
+    assert_eq!(stored.3.as_deref(), Some("news.ycombinator.com"));
+    assert_eq!(stored.4.as_deref(), Some("/item"));
+    assert_eq!(stored.5.as_deref(), Some("?id=1"));
+    assert_eq!(stored.6.as_deref(), Some("example.com"));
+    assert_eq!(stored.7.as_deref(), Some("Chrome"));
+    assert_eq!(stored.8.as_deref(), Some("macOS"));
+    assert_eq!(stored.9.as_deref(), Some("desktop"));
+    assert_eq!(stored.10.as_deref(), Some("1920x1080"));
+    assert_eq!(stored.11.as_deref(), Some("en-US"));
+    assert_eq!(stored.12.as_deref(), Some("DE"));
+    assert_eq!(stored.13.as_deref(), Some("twitter"));
+    assert_eq!(stored.14.as_deref(), Some("social"));
+    assert_eq!(stored.15.as_deref(), Some("spring"));
+    assert_eq!(stored.16.as_deref(), Some("gclid-1"));
+    assert_eq!(stored.17, Some(1200.0));
+    assert_eq!(stored.18, Some(80.0));
+    assert_eq!(stored.19, Some(0.02));
+    assert_eq!(stored.20, Some(700.0));
+    assert_eq!(stored.21, Some(90.0));
+    assert_eq!(stored.22, "session-1");
+    assert_eq!(stored.23, "visitor-1");
 
     writer.shutdown();
     // Stop the writer thread so the test runtime can shut down.
@@ -160,16 +234,19 @@ async fn api_matches_the_shared_report_layer() {
              VALUES ('website-1', 'Example', 'example.com', now(), now(), 0, NULL)",
             [],
         )?;
-        conn.execute(
-            "INSERT INTO session (id, website_id, visitor_id, created_at, updated_at, url, views, duration)
-             VALUES ('s1', 'website-1', 'v1', now(), now(), '/a', 3, 30)",
-            [],
-        )?;
-        conn.execute(
-            "INSERT INTO session (id, website_id, visitor_id, created_at, updated_at, url, views, duration)
-             VALUES ('s2', 'website-1', 'v2', now(), now(), '/b', 1, 10)",
-            [],
-        )?;
+        // Three page views: /a twice in one session, /b once in another.
+        for (id, session, visitor, url) in [
+            (1i64, "s1", "v1", "/a"),
+            (2, "s1", "v1", "/a"),
+            (3, "s2", "v2", "/b"),
+        ] {
+            conn.execute(
+                "INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url,
+                        event_type, browser, os, device)
+                 VALUES (?1, 'website-1', ?2, ?3, now(), ?4, 'pageview', 'Chrome', 'macOS', 'desktop')",
+                duckdb::params![id, session, visitor, url],
+            )?;
+        }
         Ok(())
     })
     .unwrap();

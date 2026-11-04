@@ -151,6 +151,10 @@ fn kind_name(kind: HitKind) -> &'static str {
 }
 
 /// Turn a request into a [`Hit`].
+///
+/// The field set mirrors Umami's: the page and its query string, the referrer (host,
+/// path and query), the marketing parameters, the ad click ids and the web vitals all
+/// come out of the payload.
 fn build_hit(
     state: &AppState,
     headers: &HeaderMap,
@@ -172,7 +176,7 @@ fn build_hit(
     let ip_prefix = ua::ip_prefix(&ip);
 
     // Session id: use the client's when provided (Umami compatibility), otherwise derive
-    // a rotating id from the coarse IP prefix + user agent. The raw IP is never stored.
+    // a rotating one. The raw IP is never stored — only a prefix feeds the HMAC.
     let session_id = match raw.str("sessionId") {
         Some(client_id) if is_safe_session_id(&client_id) => client_id,
         _ => {
@@ -187,33 +191,35 @@ fn build_hit(
         }
     };
 
-    // Visitor id: the same derivation with a daily bucket, so "unique visitors" means
-    // unique visitors per day without keeping a durable identifier.
+    // Visitor id: the same derivation without a time bucket, so it survives across days
+    // (Umami's `distinct_id`).
     let visitor_id = ua::derive_session_id(
         state.jwt_secret.as_bytes(),
         &ip_prefix,
         &user_agent,
         &meta.id,
-        (chrono::Utc::now().timestamp() / 86_400).max(0) as u64,
+        0,
     );
 
-    let url = raw
-        .str("url")
-        .map(|u| sanitize_url(&u, state.config.keep_query));
-    let referrer = raw.str("referrer").map(|r| {
-        let cleaned = sanitize_url(&r, state.config.keep_query);
-        if state.config.store_full_referrer {
-            truncate(&cleaned, 256)
-        } else {
-            // Only the host: it is what the referrer breakdown shows (and what Umami
-            // shows), and the full URL is the largest field we would store.
-            referrer_host(&cleaned)
+    // The page: path and query, kept apart like Umami keeps them.
+    let (url, url_query, params) = match raw.str("url") {
+        Some(url) => split_url(&url),
+        None => (None, None, Vec::new()),
+    };
+    let param = |name: &str| -> Option<String> {
+        params
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.clone())
+    };
+
+    // The referrer: host, path and query.
+    let (referrer, referrer_path, referrer_query) = match raw.str("referrer") {
+        Some(referrer) => {
+            let (host, path, query) = split_referrer(&referrer);
+            (host, path, query)
         }
-    });
-    let title = if state.config.store_titles {
-        raw.str("title").map(|t| truncate(&t, 256))
-    } else {
-        None
+        None => (None, None, None),
     };
 
     let country_header = meta
@@ -227,6 +233,9 @@ fn build_hit(
         .map(|v| v.trim().to_uppercase())
         .filter(|v| !v.is_empty() && v.len() <= 8);
 
+    // The web vitals, if the tracker reported them.
+    let metric = |name: &str| -> Option<f64> { raw.number(name) };
+
     Ok(Hit {
         website_id: meta.id,
         session_id,
@@ -234,23 +243,135 @@ fn build_hit(
         retention_days: meta.retention_days,
         kind,
         created_at: crate::db::now(),
+
         url,
+        url_query,
+        title: raw.str("title"),
+
         referrer,
+        referrer_path,
+        referrer_query,
         hostname: raw.str("hostname"),
-        title,
-        name: raw.str("name"),
-        data: raw.data(),
-        language: raw.str("language"),
-        screen: raw.str("screen"),
+
         browser: info.browser,
         browser_version: info.browser_version,
         os: info.os,
         os_version: info.os_version,
         device: info.device,
+        screen: raw.str("screen"),
+        language: raw.str("language"),
         country,
-        region: None,
-        city: None,
+        region: raw.str("region"),
+        city: raw.str("city"),
+
+        utm_source: param("utm_source"),
+        utm_medium: param("utm_medium"),
+        utm_campaign: param("utm_campaign"),
+        utm_content: param("utm_content"),
+        utm_term: param("utm_term"),
+
+        gclid: param("gclid"),
+        fbclid: param("fbclid"),
+        msclkid: param("msclkid"),
+        ttclid: param("ttclid"),
+        lifatid: param("lifatid"),
+        twclid: param("twclid"),
+
+        lcp: metric("lcp"),
+        inp: metric("inp"),
+        cls: metric("cls"),
+        fcp: metric("fcp"),
+        ttfb: metric("ttfb"),
+
+        name: raw.str("name"),
+        tag: raw.str("tag"),
+        data: raw.data(),
     })
+}
+
+/// Split a URL into its path, its query string and its parameters.
+fn split_url(url: &str) -> (Option<String>, Option<String>, Vec<(String, String)>) {
+    let without_fragment = url.split('#').next().unwrap_or(url);
+    match without_fragment.split_once('?') {
+        Some((path, query)) => (
+            Some(path.to_string()),
+            Some(query.to_string()),
+            parse_query(query),
+        ),
+        None => (Some(without_fragment.to_string()), None, Vec::new()),
+    }
+}
+
+/// Split a referrer into its host, path and query.
+fn split_referrer(referrer: &str) -> (Option<String>, Option<String>, Option<String>) {
+    let without_scheme = referrer
+        .strip_prefix("https://")
+        .or_else(|| referrer.strip_prefix("http://"))
+        .unwrap_or(referrer);
+
+    let (host, rest) = match without_scheme.split_once('/') {
+        Some((host, rest)) => (host, Some(rest)),
+        None => (without_scheme, None),
+    };
+
+    let (path, query) = match rest {
+        Some(rest) => match rest.split_once('?') {
+            Some((path, query)) => (Some(path.to_string()), Some(query.to_string())),
+            None => (Some(rest.to_string()), None),
+        },
+        None => (None, None),
+    };
+
+    (
+        Some(host.to_string()),
+        path,
+        query,
+    )
+}
+
+/// Parse a query string into its parameters.
+fn parse_query(query: &str) -> Vec<(String, String)> {
+    query
+        .split('&')
+        .filter(|part| !part.is_empty())
+        .map(|part| match part.split_once('=') {
+            Some((key, value)) => (decode_component(key), decode_component(value)),
+            None => (decode_component(part), String::new()),
+        })
+        .collect()
+}
+
+/// Decode a percent-encoded query component.
+fn decode_component(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'%' if index + 2 < bytes.len() => {
+                let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or("");
+                match u8::from_str_radix(hex, 16) {
+                    Ok(byte) => {
+                        out.push(byte);
+                        index += 3;
+                    }
+                    Err(_) => {
+                        out.push(bytes[index]);
+                        index += 1;
+                    }
+                }
+            }
+            b'+' => {
+                out.push(b' ');
+                index += 1;
+            }
+            byte => {
+                out.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).to_string()
 }
 
 /// Cap the length of a stored string.

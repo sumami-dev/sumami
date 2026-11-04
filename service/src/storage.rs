@@ -409,6 +409,12 @@ pub trait Storage: Send + Sync {
     /// Persist a batch of hits.
     fn write_batch(&self, hits: &[crate::models::Hit]) -> Result<()>;
 
+    /// Persist a batch of revenue records.
+    fn write_revenue(&self, records: &[crate::models::Revenue]) -> Result<()>;
+
+    /// The revenue of a website over a window.
+    fn revenue(&self, query: &ReportQuery) -> Result<Vec<crate::models::Revenue>>;
+
     /// Delete data that is older than the retention window.
     fn prune(&self, website: Option<&str>) -> Result<(u64, u64)>;
 

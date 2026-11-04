@@ -83,11 +83,6 @@
             <td>no</td>
             <td>Base URL of the API, when the tracker file itself is hosted somewhere else. Defaults to the origin the script was loaded from.</td>
           </tr>
-          <tr>
-            <td><code>data-allow-query</code></td>
-            <td>no</td>
-            <td>Set to <code>"true"</code> to include the query string in the collected URL. Off by default — see the <a href="privacy.html">privacy page</a>.</td>
-          </tr>
         </tbody>
       </table>
     </div>
@@ -179,6 +174,27 @@ sumami.pageview();</code></pre>
       <a href="privacy.html">privacy page</a>.
     </p>
 
+    <h2>The web vitals</h2>
+    <p>
+      The tracker measures the Core Web Vitals with <code>PerformanceObserver</code>:
+      <code>lcp</code> from <code>largest-contentful-paint</code>, <code>fcp</code> from
+      <code>paint</code>, <code>cls</code> from <code>layout-shift</code> (the worst
+      session window, as the specification defines it), <code>inp</code> from
+      <code>event</code> with a <code>durationThreshold</code>, and <code>ttfb</code> from
+      the navigation timing.
+    </p>
+    <p>
+      The metrics are only known once the page has been painted, so the page view is sent
+      when the document becomes hidden or the page is closed — with
+      <code>navigator.sendBeacon</code>, so it survives the unload. A page view is never
+      sent twice.
+    </p>
+    <p>
+      Single page applications are supported: the tracker patches
+      <code>history.pushState</code> and <code>history.replaceState</code> and listens for
+      <code>popstate</code>, so every route change is recorded as its own page view.
+    </p>
+
     <h2>How a hit is sent</h2>
     <ul>
       <li>One request per event, to <code>POST /api/send</code>.</li>
@@ -199,13 +215,19 @@ sumami.pageview();</code></pre>
         </thead>
         <tbody>
           <tr><td><code>website</code></td><td><code>3f2a…</code></td><td>The id or domain you configured.</td></tr>
-          <tr><td><code>url</code></td><td><code>/posts/hello</code></td><td>The path. The query string and fragment are stripped unless <code>data-allow-query</code> is set.</td></tr>
+          <tr><td><code>url</code></td><td><code>/posts/hello?utm_source=hn</code></td><td>The full URL: the path <em>and</em> the query string. The server splits the two apart.</td></tr>
           <tr><td><code>hostname</code></td><td><code>blog.example.com</code></td><td>The visitor's host.</td></tr>
           <tr><td><code>title</code></td><td><code>Hello</code></td><td>The document title.</td></tr>
-          <tr><td><code>referrer</code></td><td><code>https://news.example.com/</code></td><td>Cleaned the same way as the URL. Same-origin referrers are reduced to their path.</td></tr>
+          <tr><td><code>referrer</code></td><td><code>https://news.example.com/item?id=1</code></td><td>The full referring URL. The server splits it into its host, its path and its query.</td></tr>
           <tr><td><code>language</code></td><td><code>en-GB</code></td><td><code>navigator.language</code>.</td></tr>
           <tr><td><code>screen</code></td><td><code>1920x1080</code></td><td>Screen dimensions, not the viewport.</td></tr>
+          <tr><td><code>lcp</code></td><td><code>1500.5</code></td><td>Largest Contentful Paint, in milliseconds.</td></tr>
+          <tr><td><code>inp</code></td><td><code>120</code></td><td>Interaction to Next Paint, in milliseconds.</td></tr>
+          <tr><td><code>cls</code></td><td><code>0.05</code></td><td>Cumulative Layout Shift, as a ratio.</td></tr>
+          <tr><td><code>fcp</code></td><td><code>800</code></td><td>First Contentful Paint, in milliseconds.</td></tr>
+          <tr><td><code>ttfb</code></td><td><code>123.5</code></td><td>Time to First Byte, in milliseconds.</td></tr>
           <tr><td><code>name</code></td><td><code>signup</code></td><td>Only for custom events.</td></tr>
+          <tr><td><code>tag</code></td><td><code>cta</code></td><td>Only for custom events.</td></tr>
           <tr><td><code>data</code></td><td><code>{"plan":"free"}</code></td><td>Only for custom events and <code>identify</code>. User-supplied — see the warning above.</td></tr>
         </tbody>
       </table>
@@ -229,7 +251,9 @@ sumami.pageview();</code></pre>
       <li><strong>No IP address.</strong> The tracker does not send one, and the server does not
         store one. A rotating, non-reversible id derived from a coarse IP prefix is used
         instead.</li>
-      <li><strong>No query strings</strong> unless you explicitly opt in.</li>
+      <li><strong>The query string is sent</strong>, because the server parses the UTM
+        parameters and the ad click ids out of it. Nothing is fingerprinted and no
+        identifier is derived from it.</li>
     </ul>
     <p>
       Full details, including what the server does with what it receives, are on the

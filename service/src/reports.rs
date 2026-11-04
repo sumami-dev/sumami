@@ -96,6 +96,14 @@ impl Storage for Db {
         self.with_write(|conn| write_batch(conn, hits))
     }
 
+    fn write_revenue(&self, records: &[crate::models::Revenue]) -> Result<()> {
+        self.with_write(|conn| write_revenue(conn, records))
+    }
+
+    fn revenue(&self, query: &ReportQuery) -> Result<Vec<crate::models::Revenue>> {
+        self.with_read(|conn| revenue(conn, query))
+    }
+
     fn prune(&self, website: Option<&str>) -> Result<(u64, u64)> {
         self.with_write(|conn| prune(conn, website))
     }
@@ -110,10 +118,10 @@ impl Storage for Db {
 
     fn erase(&self, website: &str) -> Result<u64> {
         self.with_write(|conn| {
+            let revenue = conn.execute("DELETE FROM revenue WHERE website_id = ?", [website])?;
             let events = conn.execute("DELETE FROM event WHERE website_id = ?", [website])?;
-            let sessions = conn.execute("DELETE FROM session WHERE website_id = ?", [website])?;
             let websites = conn.execute("DELETE FROM website WHERE id = ?", [website])?;
-            Ok((events + sessions + websites) as u64)
+            Ok((revenue + events + websites) as u64)
         })
     }
 
@@ -352,6 +360,9 @@ fn set_user_password(
 
 // --------------------------------------------------------------------------------------
 // Reports
+//
+// Everything is derived from the `event` table: one row per page view. There is no
+// session table to keep in sync, and nothing is stored twice.
 // --------------------------------------------------------------------------------------
 
 /// A WHERE clause and its parameters.
@@ -420,35 +431,6 @@ fn timestamp(value: NaiveDateTime) -> Value {
     Value::Timestamp(duckdb::types::TimeUnit::Microsecond, micros)
 }
 
-/// Compute the summary metrics for a window.
-fn summary(conn: &Connection, query: &ReportQuery) -> Result<SummaryMetrics> {
-    let filters = Filters::new(query);
-    let sql = format!(
-        "SELECT
-            COALESCE(SUM(views), 0)                    AS pageviews,
-            COUNT(DISTINCT visitor_id)                AS visitors,
-            COUNT(DISTINCT id)                        AS visits,
-            COUNT(*) FILTER (WHERE views <= 1)         AS bounces,
-            COALESCE(AVG(duration), 0)                 AS avg_duration
-         FROM session
-         WHERE {}",
-        filters.clause()
-    );
-
-    let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query(filters.params().as_slice())?;
-    match rows.next()? {
-        Some(row) => Ok(SummaryMetrics {
-            pageviews: row.get(0)?,
-            visitors: row.get(1)?,
-            views: row.get(2)?,
-            bounces: row.get(3)?,
-            visit_duration: row.get(4)?,
-        }),
-        None => Ok(SummaryMetrics::default()),
-    }
-}
-
 /// Build a metric with its period-over-period change.
 fn metric(value: i64, previous: f64) -> MetricValue {
     let change = if previous == 0.0 {
@@ -466,6 +448,50 @@ fn metric(value: i64, previous: f64) -> MetricValue {
     }
 }
 
+/// Compute the summary metrics for a window.
+fn summary(conn: &Connection, query: &ReportQuery) -> Result<SummaryMetrics> {
+    let filters = Filters::new(query);
+
+    let sql = format!(
+        "SELECT COUNT(*), COUNT(DISTINCT visitor_id), COUNT(DISTINCT session_id)
+         FROM event WHERE {}",
+        filters.clause()
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let (pageviews, visitors, views) = match stmt.query(filters.params().as_slice())?.next()? {
+        Some(row) => (row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?),
+        None => (0, 0, 0),
+    };
+    drop(stmt);
+
+    // Bounces (sessions with a single view) and the average session length.
+    let sql = format!(
+        "SELECT COUNT(*) FILTER (WHERE n = 1),
+                COALESCE(AVG(d), 0)
+         FROM (
+             SELECT session_id,
+                    COUNT(*) AS n,
+                    epoch(MAX(created_at) - MIN(created_at)) AS d
+             FROM event WHERE {}
+             GROUP BY session_id
+         )",
+        filters.clause()
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let (bounces, duration) = match stmt.query(filters.params().as_slice())?.next()? {
+        Some(row) => (row.get::<_, i64>(0)?, row.get::<_, f64>(1)?),
+        None => (0, 0.0),
+    };
+
+    Ok(SummaryMetrics {
+        pageviews,
+        visitors,
+        views,
+        bounces,
+        visit_duration: duration,
+    })
+}
+
 /// Break a website down over one dimension.
 fn breakdown(
     conn: &Connection,
@@ -473,18 +499,21 @@ fn breakdown(
     dimension: Dimension,
 ) -> Result<Vec<BreakdownRow>> {
     let filters = Filters::new(query);
+
+    // Content dimensions count views, audience dimensions count visitors.
     let aggregate = match dimension.aggregate() {
-        "views" => "COALESCE(SUM(views), 0)",
+        "views" => "COUNT(*)",
         _ => "COUNT(DISTINCT visitor_id)",
     };
+
     let sql = format!(
         "SELECT COALESCE({column}, 'unknown') AS name, {aggregate} AS value
-         FROM session
-         WHERE {where_clause}
+         FROM event WHERE {where_clause}
          GROUP BY name
          ORDER BY value DESC, name ASC
          LIMIT {limit}",
         column = dimension.column(),
+        aggregate = aggregate,
         where_clause = filters.clause(),
         limit = query.limit.clamp(1, 1000),
     );
@@ -513,17 +542,15 @@ fn timeseries(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow
     let filters = Filters::new(query);
 
     // Bucket by hour for short windows, by day for long ones.
-    let granularity = if (query.range.end - query.range.start).num_seconds() <= 2 * 24 * 3600 {
-        "hour"
+    let format = if (query.range.end - query.range.start).num_seconds() <= 2 * 24 * 3600 {
+        "%Y-%m-%dT%H:00:00Z"
     } else {
-        "day"
+        "%Y-%m-%dT00:00:00Z"
     };
 
     let sql = format!(
-        "SELECT strftime(date_trunc('{granularity}', created_at), '%Y-%m-%dT%H:00:00Z') AS bucket,
-                COALESCE(SUM(views), 0) AS value
-         FROM session
-         WHERE {where_clause}
+        "SELECT strftime(date_trunc('day', created_at), '{format}') AS bucket, COUNT(*) AS value
+         FROM event WHERE {where_clause}
          GROUP BY bucket
          ORDER BY bucket ASC",
         where_clause = filters.clause(),
@@ -546,13 +573,11 @@ fn timeseries(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow
 
 /// Custom events, grouped by name.
 fn events(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
-    let mut filters = Filters::new(query);
-    filters.clauses.push("name IS NOT NULL".to_string());
-
+    let filters = Filters::new(query);
     let sql = format!(
-        "SELECT COALESCE(name, 'unknown') AS name, COUNT(*) AS value
+        "SELECT COALESCE(event_name, 'unknown') AS name, COUNT(*) AS value
          FROM event
-         WHERE {where_clause}
+         WHERE {where_clause} AND event_type = 'event'
          GROUP BY name
          ORDER BY value DESC, name ASC
          LIMIT {limit}",
@@ -578,10 +603,11 @@ fn events(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
 fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
     let filters = Filters::new(query);
     let sql = format!(
-        "SELECT id, website_id, session_id, created_at, name, url, hostname, data
-         FROM event
-         WHERE {where_clause}
-         ORDER BY created_at DESC, id ASC
+        "SELECT id, website_id, session_id, created_at, event_name, url, hostname, data,
+                referrer, referrer_path, referrer_query, country, city, browser, os, device,
+                utm_source, utm_medium, utm_campaign, lcp, inp, cls
+         FROM event WHERE {where_clause}
+         ORDER BY created_at DESC, id DESC
          LIMIT {limit} OFFSET {offset}",
         where_clause = filters.clause(),
         limit = query.limit.clamp(1, 1000),
@@ -593,7 +619,7 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
         out.push(EventRow {
-            id: row.get(0)?,
+            id: row.get::<_, i64>(0)?.to_string(),
             website_id: row.get(1)?,
             session_id: row.get(2)?,
             created_at: row.get(3)?,
@@ -601,20 +627,52 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
             url: row.get(5)?,
             hostname: row.get(6)?,
             data: row.get(7)?,
+            referrer: row.get(8)?,
+            referrer_path: row.get(9)?,
+            referrer_query: row.get(10)?,
+            country: row.get(11)?,
+            city: row.get(12)?,
+            browser: row.get(13)?,
+            os: row.get(14)?,
+            device: row.get(15)?,
+            utm_source: row.get(16)?,
+            utm_medium: row.get(17)?,
+            utm_campaign: row.get(18)?,
+            lcp: row.get(19)?,
+            inp: row.get(20)?,
+            cls: row.get(21)?,
         });
     }
     Ok(out)
 }
 
-/// The session log.
+/// The session log: one row per session, derived from its page views.
 fn sessions(conn: &Connection, query: &ReportQuery) -> Result<Vec<SessionRow>> {
     let filters = Filters::new(query);
     let sql = format!(
-        "SELECT id, website_id, created_at, updated_at, hostname, url, title, referrer, entry_url,
-                browser, os, device, country, region, city, language, screen, views, duration
-         FROM session
-         WHERE {where_clause}
-         ORDER BY created_at DESC, id ASC
+        "SELECT session_id,
+                MIN(created_at),
+                MAX(created_at),
+                COUNT(*),
+                arg_max(url, created_at),
+                arg_min(url, created_at),
+                any_value(title),
+                any_value(referrer),
+                any_value(referrer_path),
+                any_value(hostname),
+                any_value(browser),
+                any_value(os),
+                any_value(device),
+                any_value(country),
+                any_value(region),
+                any_value(city),
+                any_value(language),
+                any_value(screen),
+                any_value(visitor_id),
+                epoch(MAX(created_at) - MIN(created_at))
+         FROM event WHERE {where_clause}
+         GROUP BY session_id
+         ORDER BY MIN(created_at) DESC
          LIMIT {limit} OFFSET {offset}",
         where_clause = filters.clause(),
         limit = query.limit.clamp(1, 1000),
@@ -625,26 +683,61 @@ fn sessions(conn: &Connection, query: &ReportQuery) -> Result<Vec<SessionRow>> {
     let mut rows = stmt.query(filters.params().as_slice())?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
+        let created_at: chrono::NaiveDateTime = row.get(1)?;
+        let updated_at: chrono::NaiveDateTime = row.get(2)?;
+        let views: i64 = row.get(3)?;
+        let duration: f64 = row.get(19).unwrap_or(0.0);
         out.push(SessionRow {
             id: row.get(0)?,
-            website_id: row.get(1)?,
-            created_at: row.get(2)?,
-            updated_at: row.get(3)?,
-            hostname: row.get(4)?,
-            url: row.get(5)?,
+            website_id: query.website_id.clone(),
+            created_at,
+            updated_at,
+            hostname: row.get(9)?,
+            url: row.get(4)?,
             title: row.get(6)?,
             referrer: row.get(7)?,
-            entry_url: row.get(8)?,
-            browser: row.get(9)?,
-            os: row.get(10)?,
-            device: row.get(11)?,
-            country: row.get(12)?,
-            region: row.get(13)?,
-            city: row.get(14)?,
-            language: row.get(15)?,
-            screen: row.get(16)?,
-            views: row.get(17)?,
-            duration: row.get(18)?,
+            referrer_path: row.get(8)?,
+            entry_url: row.get(5)?,
+            browser: row.get(10)?,
+            os: row.get(11)?,
+            device: row.get(12)?,
+            country: row.get(13)?,
+            region: row.get(14)?,
+            city: row.get(15)?,
+            language: row.get(16)?,
+            screen: row.get(17)?,
+            views,
+            duration: duration as i64,
+        });
+    }
+    Ok(out)
+}
+
+/// The revenue of a website over a window.
+fn revenue(conn: &Connection, query: &ReportQuery) -> Result<Vec<crate::models::Revenue>> {
+    let filters = Filters::new(query);
+    let sql = format!(
+        "SELECT website_id, session_id, event_id, event_name, currency, revenue, created_at
+         FROM revenue WHERE {where_clause}
+         ORDER BY created_at DESC
+         LIMIT {limit} OFFSET {offset}",
+        where_clause = filters.clause(),
+        limit = query.limit.clamp(1, 1000),
+        offset = query.offset.max(0),
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(filters.params().as_slice())?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(crate::models::Revenue {
+            website_id: row.get(0)?,
+            session_id: row.get(1)?,
+            event_id: row.get(2)?,
+            event_name: row.get(3)?,
+            currency: row.get(4)?,
+            revenue: row.get(5)?,
+            created_at: row.get(6)?,
         });
     }
     Ok(out)
@@ -654,118 +747,125 @@ fn sessions(conn: &Connection, query: &ReportQuery) -> Result<Vec<SessionRow>> {
 // Writes
 // --------------------------------------------------------------------------------------
 
-/// Persist a batch of hits in one transaction.
+/// The columns of the `event` table, in order.
+const EVENT_COLUMNS: &str = "website_id, session_id, visitor_id, created_at, \
+    url, url_query, title, referrer, referrer_path, referrer_query, hostname, \
+    browser, browser_version, os, os_version, device, screen, language, country, region, city, \
+    utm_source, utm_medium, utm_campaign, utm_content, utm_term, \
+    gclid, fbclid, msclkid, ttclid, lifatid, twclid, \
+    lcp, inp, cls, fcp, ttfb, \
+    event_type, event_name, tag, data";
+
+/// Persist a batch of hits.
+///
+/// The event table is append only: every hit becomes one row and nothing is ever
+/// updated. Sessions, visitors and page views are derived from it.
 fn write_batch(conn: &Connection, batch: &[Hit]) -> Result<()> {
-    conn.execute_batch("BEGIN TRANSACTION")?;
+    let now = crate::db::now();
 
-    let result = (|| -> Result<()> {
-        let now = crate::db::now();
+    // Retention: drop hits that are older than the website's window.
+    let kept: Vec<&Hit> = batch
+        .iter()
+        .filter(|hit| {
+            if hit.retention_days > 0 {
+                let cutoff = now - chrono::Duration::days(hit.retention_days as i64);
+                hit.created_at >= cutoff
+            } else {
+                true
+            }
+        })
+        .collect();
 
-        // Retention: drop hits that are older than the website's window.
-        let kept: Vec<Hit> = batch
-            .iter()
-            .filter(|hit| {
-                if hit.retention_days > 0 {
-                    let cutoff = now - chrono::Duration::days(hit.retention_days as i64);
-                    hit.created_at >= cutoff
-                } else {
-                    true
-                }
-            })
-            .cloned()
-            .collect();
-
-        let grouped = crate::storage::aggregate_batch(&kept);
-
-        for session in &grouped.sessions {
-            upsert_session(conn, session)?;
-        }
-
-        for hit in grouped.events {
-            insert_event(conn, hit)?;
-        }
-
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => {
-            conn.execute_batch("COMMIT")?;
-            Ok(())
-        }
-        Err(err) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            Err(err)
-        }
+    if kept.is_empty() {
+        return Ok(());
     }
-}
 
-/// Insert or update a session row.
-fn upsert_session(
-    conn: &Connection,
-    s: &crate::storage::SessionAggregate,
-) -> Result<()> {
-    conn.execute(
-        r#"
-INSERT INTO session (
-    id, website_id, visitor_id, created_at, updated_at, hostname, url, title, referrer, entry_url,
-    browser, browser_version, os, os_version, device, country, region, city, language, screen,
-    data, views, duration
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-ON CONFLICT (id) DO UPDATE SET
-    updated_at      = excluded.updated_at,
-    url             = COALESCE(excluded.url, session.url),
-    title           = COALESCE(excluded.title, session.title),
-    referrer        = COALESCE(excluded.referrer, session.referrer),
-    screen          = COALESCE(excluded.screen, session.screen),
-    data            = COALESCE(excluded.data, session.data),
-    views           = session.views + excluded.views,
-    duration        = CAST(epoch(excluded.updated_at - session.created_at) AS INTEGER)
-"#,
-        duckdb::params![
-            s.id,
-            s.website_id,
-            s.visitor_id,
-            s.created_at,
-            s.updated_at,
-            s.hostname,
-            s.url,
-            s.title,
-            s.referrer,
-            s.entry_url,
-            s.browser,
-            s.browser_version,
-            s.os,
-            s.os_version,
-            s.device,
-            s.country,
-            s.region,
-            s.city,
-            s.language,
-            s.screen,
-            s.data,
-            s.views,
-        ],
+    // The appender does not apply column defaults, so the id is assigned here:
+    // one query per batch, not per row.
+    let mut next_id: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(id), 0) + 1 FROM event",
+        [],
+        |row| row.get(0),
     )?;
+
+    let mut appender = conn.appender("event")?;
+    for hit in kept {
+        appender.append_row(duckdb::params![
+            next_id,
+            hit.website_id,
+            hit.session_id,
+            hit.visitor_id,
+            hit.created_at,
+            hit.url,
+            hit.url_query,
+            hit.title,
+            hit.referrer,
+            hit.referrer_path,
+            hit.referrer_query,
+            hit.hostname,
+            hit.browser,
+            hit.browser_version,
+            hit.os,
+            hit.os_version,
+            hit.device,
+            hit.screen,
+            hit.language,
+            hit.country,
+            hit.region,
+            hit.city,
+            hit.utm_source,
+            hit.utm_medium,
+            hit.utm_campaign,
+            hit.utm_content,
+            hit.utm_term,
+            hit.gclid,
+            hit.fbclid,
+            hit.msclkid,
+            hit.ttclid,
+            hit.lifatid,
+            hit.twclid,
+            hit.lcp,
+            hit.inp,
+            hit.cls,
+            hit.fcp,
+            hit.ttfb,
+            hit.kind.as_str(),
+            hit.name,
+            hit.tag,
+            hit.data,
+        ])?;
+        next_id += 1;
+    }
+    appender.flush()?;
     Ok(())
 }
 
-/// Insert a custom event row.
-fn insert_event(conn: &Connection, hit: &Hit) -> Result<()> {
-    conn.execute(
-        "INSERT INTO event (id, website_id, session_id, created_at, name, url, hostname, data)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        duckdb::params![
-            uuid::Uuid::new_v4().to_string(),
-            hit.website_id,
-            hit.session_id,
-            hit.created_at,
-            hit.name,
-            hit.url,
-            hit.hostname,
-            hit.data,
-        ],
+/// Append revenue records.
+fn write_revenue(conn: &Connection, records: &[crate::models::Revenue]) -> Result<()> {
+    if records.is_empty() {
+        return Ok(());
+    }
+    let mut next_id: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(id), 0) + 1 FROM revenue",
+        [],
+        |row| row.get(0),
     )?;
+
+    let mut appender = conn.appender("revenue")?;
+    for record in records {
+        appender.append_row(duckdb::params![
+            next_id,
+            record.website_id,
+            record.session_id,
+            record.event_id,
+            record.event_name,
+            record.currency,
+            record.revenue,
+            record.created_at,
+        ])?;
+        next_id += 1;
+    }
+    appender.flush()?;
     Ok(())
 }
 
@@ -775,12 +875,12 @@ fn delete_before(
     before: chrono::NaiveDateTime,
     website: Option<&str>,
 ) -> Result<(u64, u64)> {
-    let mut sessions = 0u64;
     let mut events = 0u64;
+    let mut revenue = 0u64;
     match website {
         Some(id) => {
-            sessions += conn.execute(
-                "DELETE FROM session WHERE website_id = ? AND created_at < ?",
+            revenue += conn.execute(
+                "DELETE FROM revenue WHERE website_id = ? AND created_at < ?",
                 duckdb::params![id, before],
             )? as u64;
             events += conn.execute(
@@ -789,8 +889,8 @@ fn delete_before(
             )? as u64;
         }
         None => {
-            sessions += conn.execute(
-                "DELETE FROM session WHERE created_at < ?",
+            revenue += conn.execute(
+                "DELETE FROM revenue WHERE created_at < ?",
                 duckdb::params![before],
             )? as u64;
             events += conn.execute(
@@ -799,13 +899,13 @@ fn delete_before(
             )? as u64;
         }
     }
-    Ok((sessions, events))
+    Ok((events, revenue))
 }
 
 /// Delete data that is older than the retention window of its website.
 fn prune(conn: &Connection, website: Option<&str>) -> Result<(u64, u64)> {
-    let mut sessions = 0u64;
     let mut events = 0u64;
+    let mut revenue = 0u64;
     let now = crate::db::now();
 
     // Collect the (website, cutoff) pairs first: the deletion itself must not run
@@ -826,8 +926,8 @@ fn prune(conn: &Connection, website: Option<&str>) -> Result<(u64, u64)> {
     }
 
     for (id, cutoff) in &cutoffs {
-        sessions += conn.execute(
-            "DELETE FROM session WHERE website_id = ? AND created_at < ?",
+        revenue += conn.execute(
+            "DELETE FROM revenue WHERE website_id = ? AND created_at < ?",
             duckdb::params![id, *cutoff],
         )? as u64;
         events += conn.execute(
@@ -835,6 +935,5 @@ fn prune(conn: &Connection, website: Option<&str>) -> Result<(u64, u64)> {
             duckdb::params![id, *cutoff],
         )? as u64;
     }
-
-    Ok((sessions, events))
+    Ok((events, revenue))
 }

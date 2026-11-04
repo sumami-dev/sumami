@@ -33,30 +33,38 @@ fn the_archive_answers_the_same_as_the_database() {
         // One set-based insert: 50 000 individual prepares would take minutes.
         conn.execute_batch(
             r#"
-INSERT INTO session (
-    id, website_id, visitor_id, created_at, updated_at, hostname, url, title, referrer,
-    entry_url, browser, browser_version, os, os_version, device, country, region, city,
-    language, screen, data, views, duration)
+INSERT INTO event (
+    id, website_id, session_id, visitor_id, created_at, url, url_query, title,
+    referrer, referrer_path, referrer_query, hostname,
+    browser, browser_version, os, os_version, device, screen, language,
+    country, region, city,
+    utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+    gclid, fbclid, msclkid, ttclid, lifatid, twclid,
+    lcp, inp, cls, fcp, ttfb,
+    event_type, event_name, tag, data)
 SELECT
-  's' || i::VARCHAR,
+  i,
   'w1',
+  's' || (1 + (i / 2))::VARCHAR,
   'v' || (i % 120)::VARCHAR,
   now()::TIMESTAMP - INTERVAL (i % 20000) MINUTE,
-  now()::TIMESTAMP - INTERVAL (i % 20000) MINUTE + INTERVAL 45 SECOND,
-  'example.com',
   '/page/' || (i % 7)::VARCHAR,
-  NULL,
-  'news.ycombinator.com',
-  '/',
-  'Chrome', '120', 'macOS', '10', 'desktop', 'DE', NULL, NULL,
-  'en-US', '1920x1080', NULL,
-  2, 45
+  'utm_source=twitter', 'A page title',
+  'news.ycombinator.com', '/item/1', '?id=1', 'example.com',
+  'Chrome', '120', 'macOS', '10', 'desktop', 'en-US', '1920x1080',
+  'DE', NULL, NULL,
+  'twitter', 'social', 'spring', 'cta', 'analytics',
+  NULL, NULL, NULL, NULL, NULL, NULL,
+  1200.0, 80.0, 0.02, 700.0, 90.0,
+  'pageview', NULL, NULL, NULL
 FROM generate_series(1, 50000) t(i);
 "#,
         )?;
         conn.execute(
-            "INSERT INTO event (id, website_id, session_id, created_at, name, url, hostname, data)
-             VALUES ('e1', 'w1', 's1', now()::TIMESTAMP, 'signup', '/signup', 'example.com', '{}')",
+            "INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url, hostname,
+                    event_type, event_name, tag, data)
+             VALUES (999999, 'w1', 's1', 'v1', now()::TIMESTAMP, '/signup', 'example.com',
+                     'event', 'signup', 'cta', '{}')",
             [],
         )?;
         Ok(())
@@ -103,7 +111,7 @@ FROM generate_series(1, 50000) t(i);
 
     // The archive is smaller than the database it came from (per-day Parquet files
     // with ZSTD beat DuckDB's row-group layout once there is real data in them).
-    let archive_size: u64 = std::fs::read_dir(archive.join("sessions"))
+    let archive_size: u64 = std::fs::read_dir(archive.join("events"))
         .unwrap()
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| entry.metadata().ok())

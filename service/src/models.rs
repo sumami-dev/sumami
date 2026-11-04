@@ -2,39 +2,121 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A collected hit, normalised from any of the accepted wire formats.
-#[derive(Debug, Clone)]
+/// A collected hit — one row in the `event` table.
+///
+/// The field set mirrors Umami's `website_event`: we store everything Umami stores, so a
+/// user who switches from Umami does not lose a single dimension. The storage engine
+/// (DuckDB) is what makes that affordable.
+///
+/// Every field is optional except the identity of the hit: `website_id`, `session_id`,
+/// `visitor_id` and `created_at`.
+#[derive(Debug, Clone, Default)]
 pub struct Hit {
+    /// The website the hit belongs to.
     pub website_id: String,
+    /// The session the hit belongs to.
     pub session_id: String,
-    /// Daily-rotating, non-reversible visitor id (unique visitors per day).
+    /// The visitor, stable across days (Umami's `distinct_id`).
     pub visitor_id: String,
     /// Retention window of the website in days (`0` = keep forever).
     pub retention_days: i32,
+    /// What kind of hit this is.
     pub kind: HitKind,
+    /// When it happened.
     pub created_at: chrono::NaiveDateTime,
+
+    // --- the page ---
+    /// The path of the page.
     pub url: Option<String>,
-    pub referrer: Option<String>,
-    pub hostname: Option<String>,
+    /// The query string of the page.
+    pub url_query: Option<String>,
+    /// The title of the page.
     pub title: Option<String>,
-    pub name: Option<String>,
-    pub data: Option<String>,
-    pub language: Option<String>,
-    pub screen: Option<String>,
+
+    // --- where it came from ---
+    /// The host of the referrer.
+    pub referrer: Option<String>,
+    /// The path of the referrer.
+    pub referrer_path: Option<String>,
+    /// The query string of the referrer.
+    pub referrer_query: Option<String>,
+    /// The hostname of the site.
+    pub hostname: Option<String>,
+
+    // --- the visitor's environment ---
+    /// The browser family.
     pub browser: Option<String>,
+    /// The browser version.
     pub browser_version: Option<String>,
+    /// The operating system family.
     pub os: Option<String>,
+    /// The operating system version.
     pub os_version: Option<String>,
+    /// The device class.
     pub device: Option<String>,
+    /// The viewport size.
+    pub screen: Option<String>,
+    /// The interface language.
+    pub language: Option<String>,
+    /// The country.
     pub country: Option<String>,
+    /// The region.
     pub region: Option<String>,
+    /// The city.
     pub city: Option<String>,
+
+    // --- marketing ---
+    /// `utm_source`.
+    pub utm_source: Option<String>,
+    /// `utm_medium`.
+    pub utm_medium: Option<String>,
+    /// `utm_campaign`.
+    pub utm_campaign: Option<String>,
+    /// `utm_content`.
+    pub utm_content: Option<String>,
+    /// `utm_term`.
+    pub utm_term: Option<String>,
+
+    // --- ad click ids ---
+    /// Google's click id.
+    pub gclid: Option<String>,
+    /// Facebook's click id.
+    pub fbclid: Option<String>,
+    /// Microsoft's click id.
+    pub msclkid: Option<String>,
+    /// TikTok's click id.
+    pub ttclid: Option<String>,
+    /// LinkedIn's click id.
+    pub lifatid: Option<String>,
+    /// X's (Twitter's) click id.
+    pub twclid: Option<String>,
+
+    // --- how fast the page was ---
+    /// Largest Contentful Paint, in milliseconds.
+    pub lcp: Option<f64>,
+    /// Interaction to Next Paint, in milliseconds.
+    pub inp: Option<f64>,
+    /// Cumulative Layout Shift.
+    pub cls: Option<f64>,
+    /// First Contentful Paint, in milliseconds.
+    pub fcp: Option<f64>,
+    /// Time to First Byte, in milliseconds.
+    pub ttfb: Option<f64>,
+
+    // --- custom events ---
+    /// The event name.
+    pub name: Option<String>,
+    /// The event tag.
+    pub tag: Option<String>,
+    /// Free-form event data.
+    pub data: Option<String>,
 }
 
 /// What kind of hit this is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HitKind {
     /// A page view.
+    #[default]
     Pageview,
     /// A custom event.
     Event,
@@ -54,6 +136,35 @@ impl HitKind {
             _ => None,
         }
     }
+
+    /// The value stored in `event_type`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HitKind::Pageview => "pageview",
+            HitKind::Event => "event",
+            HitKind::Screenview => "screenview",
+            HitKind::Identify => "identify",
+        }
+    }
+}
+
+/// A revenue record: what a session or an event earned.
+#[derive(Debug, Clone)]
+pub struct Revenue {
+    /// The website the revenue belongs to.
+    pub website_id: String,
+    /// The session that earned it.
+    pub session_id: Option<String>,
+    /// The event that earned it.
+    pub event_id: Option<i64>,
+    /// The name of the revenue source (`carbon`, `adsense`, …).
+    pub event_name: Option<String>,
+    /// The currency the amount is in.
+    pub currency: String,
+    /// The amount.
+    pub revenue: f64,
+    /// When it was earned.
+    pub created_at: chrono::NaiveDateTime,
 }
 
 /// Body of `POST /api/send` (Umami v2 shape).
@@ -109,6 +220,15 @@ impl RawPayload {
             serde_json::Value::String(s) => Some(s.clone()),
             serde_json::Value::Null => None,
             other => Some(other.to_string()),
+        }
+    }
+
+    /// A number, whether it arrived as a JSON number or as a string.
+    pub fn number(&self, key: &str) -> Option<f64> {
+        match self.fields.get(key) {
+            Some(serde_json::Value::Number(number)) => number.as_f64(),
+            Some(serde_json::Value::String(text)) => text.trim().parse::<f64>().ok(),
+            _ => None,
         }
     }
 }
@@ -205,43 +325,100 @@ pub struct BreakdownRow {
     pub date: Option<String>,
 }
 
-/// A session row.
+/// A session row — derived from the page views of that session.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionRow {
+    /// The session id.
     pub id: String,
+    /// The website it belongs to.
     pub website_id: String,
+    /// When the session started.
     pub created_at: chrono::NaiveDateTime,
+    /// When the session was last seen.
     pub updated_at: chrono::NaiveDateTime,
+    /// The hostname of the site.
     pub hostname: Option<String>,
+    /// The last page of the session.
     pub url: Option<String>,
+    /// The title of the last page.
     pub title: Option<String>,
+    /// The referrer host.
     pub referrer: Option<String>,
+    /// The referrer path.
+    pub referrer_path: Option<String>,
+    /// The first page of the session.
     pub entry_url: Option<String>,
+    /// The browser family.
     pub browser: Option<String>,
+    /// The operating system.
     pub os: Option<String>,
+    /// The device class.
     pub device: Option<String>,
+    /// The country.
     pub country: Option<String>,
+    /// The region.
     pub region: Option<String>,
+    /// The city.
     pub city: Option<String>,
+    /// The interface language.
     pub language: Option<String>,
+    /// The viewport size.
     pub screen: Option<String>,
+    /// How many page views the session had.
     pub views: i64,
+    /// How long the session lasted, in seconds.
     pub duration: i64,
 }
 
-/// A custom event row.
+/// One row of the event log.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventRow {
+    /// The event id.
     pub id: String,
+    /// The website it belongs to.
     pub website_id: String,
+    /// The session it belongs to.
     pub session_id: Option<String>,
+    /// When it happened.
     pub created_at: chrono::NaiveDateTime,
+    /// The event name (`pageview` for a plain page view).
     pub name: Option<String>,
+    /// The page.
     pub url: Option<String>,
+    /// The hostname of the site.
     pub hostname: Option<String>,
+    /// Free-form event data.
     pub data: Option<String>,
+    /// The referrer host.
+    pub referrer: Option<String>,
+    /// The referrer path.
+    pub referrer_path: Option<String>,
+    /// The referrer query.
+    pub referrer_query: Option<String>,
+    /// The country.
+    pub country: Option<String>,
+    /// The city.
+    pub city: Option<String>,
+    /// The browser family.
+    pub browser: Option<String>,
+    /// The operating system.
+    pub os: Option<String>,
+    /// The device class.
+    pub device: Option<String>,
+    /// `utm_source`.
+    pub utm_source: Option<String>,
+    /// `utm_medium`.
+    pub utm_medium: Option<String>,
+    /// `utm_campaign`.
+    pub utm_campaign: Option<String>,
+    /// Largest Contentful Paint, in milliseconds.
+    pub lcp: Option<f64>,
+    /// Interaction to Next Paint, in milliseconds.
+    pub inp: Option<f64>,
+    /// Cumulative Layout Shift.
+    pub cls: Option<f64>,
 }
 
 /// Heartbeat / health payload.

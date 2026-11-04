@@ -338,41 +338,52 @@ annotations, comments, share links, user management UI, plugin marketplace, real
 service*; the official Umami dashboard is expected to work against it, but we do not fork it —
 see §6).
 
-### 4.3 Data model (DuckDB)
+### 4.3 Data model: one fact table (DuckDB)
+
+**Every page view is one row in `event`**, carrying the same fields Umami carries.
+Sessions, visitors and page views are all *derived* from it — nothing is stored twice,
+so nothing can drift apart, and the page attribution is exact.
 
 ```sql
-website(id UUID PK, name, domain, created_at, updated_at,
-        retention_days INT,           -- 0 = keep forever
-        country_header VARCHAR)       -- e.g. "CF-IPCountry"; NULL = no geo
+event(
+    id BIGINT PK,            -- monotonic, assigned by the writer
+    website_id, session_id, visitor_id, created_at,
 
-session(id UUID PK, website_id, visitor_id, created_at, updated_at,
-        hostname, url, title, referrer, entry_url,
-        browser, browser_version, os, os_version, device,
-        country, region, city, language, screen, data,
-        views INT, duration INT)
+    url, url_query, title,                       -- the page
+    referrer, referrer_path, referrer_query,     -- where it came from
+    hostname,
 
-event(id UUID PK, website_id, session_id, created_at,
-      name, url, hostname, data)
+    browser, browser_version, os, os_version, device, screen, language,
+    country, region, city,
+
+    utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+
+    gclid, fbclid, msclkid, ttclid, lifatid, twclid,   -- ad click ids
+
+    lcp, inp, cls, fcp, ttfb,                     -- Core Web Vitals
+
+    event_type, event_name, tag, data
+)
+
+revenue(                    -- what the owner earned, imported (not tracked)
+    id BIGINT PK, website_id, session_id, event_id,
+    event_name, currency, revenue, created_at
+)
 ```
 
-`session` holds the *latest* view of a session (updated in place); `event` is append-only.
-Queries use `website_id` + `created_at` ranges; DuckDB's zonemaps make the time filter
-nearly free.
+**The baseline is Umami.** We store everything Umami stores — plus the browser and OS
+*versions*, which Umami does not keep. Two consequences worth stating plainly:
 
-**Identifiers.** `session.id` is a 30-minute bucket HMAC over (server secret, coarse IP
-prefix, user agent, website). `session.visitor_id` is the same construction with a daily
-bucket, so "unique visitors" means unique visitors *per day* without keeping a durable
-identifier. Neither can be reversed into an IP address.
+* **The visitor id survives across days** (Umami's `distinct_id`). It is derived from a
+  hash of the coarse IP prefix and the user agent; the raw IP is never stored.
+* **The query string is stored**, because the UTM parameters and the ad click ids live
+  in it. The server does the splitting — the browser sends the whole URL.
 
-**Metric semantics** (what the API returns, and what the CLI shows):
-
-| Metric         | Meaning                                                  |
-| -------------- | -------------------------------------------------------- |
-| `pageviews`    | total page views                                         |
-| `visitors`     | unique visitors (daily-rotating id)                      |
-| `views`        | number of sessions (visits)                              |
-| `bounces`      | sessions with exactly one page view                      |
-| `visitDuration`| average session duration in seconds                      |
+**Why one table and not a session table**: an earlier design kept one row per session
+and counted the page views in a column. It was smaller and it was **wrong**: a session's
+views were all attributed to the page it happened to end on. With one row per view the
+attribution is exact by construction, the write is an append (the fastest path the
+engine has), and the extra rows cost a fraction of what they save.
 
 ### 4.4 cli/ — the analyzer (two sources, one UX)
 
@@ -421,13 +432,21 @@ Two independent, **dependency-free** files (no build step, no npm, no bundler):
 **`js/sumami.js` — the tracker** (embedded in the binary, served at `/sumami.js`):
 
 * sends pageviews and custom events to `/api/send` via `sendBeacon` (fallback `fetch`
-  with `keepalive`);
+  with `keepalive`), as `application/json`;
 * is self-hosted by default (`<script defer src="https://sumami.example/sumami.js"
   data-website-id="...">`) — **the service serves it from its own origin**;
 * sets no cookies, uses no `localStorage`, honours DNT/GPC;
-* never sends the query string unless `data-allow-query` is set;
-* exposes `window.sumami.track(name, props)` and `window.sumami.identify(data)`
-  (with `window.umami` as an alias for existing snippets);
+* reports **Umami's full field set**: the website, the full URL and referrer, the title,
+  the hostname, the language, the screen, the event name, tag and data, and the five web
+  vitals (`lcp`, `inp`, `cls`, `fcp`, `ttfb` — sent as strings, the server parses them);
+* sends the query string: the server parses the UTM parameters and the ad click ids
+  (`gclid`, `fbclid`, `msclkid`, `ttclid`, `lifatid`, `twclid`) out of it;
+* measures the web vitals with `PerformanceObserver` and sends the page view on
+  `visibilitychange`/`pagehide` (the metrics are only known after the page is painted);
+* patches `history.pushState`/`replaceState` and listens for `popstate`, so a single page
+  application records every route change as its own page view;
+* exposes `window.sumami.track(name, props)`, `window.sumami.identify(data)` and
+  `window.sumami.pageview()` (with `window.umami` as an alias for existing snippets);
 * is byte-for-byte reproducible: the file in the repo is the file that gets served.
 
 **`js/sumami-app.js` + `js/sumami.css` — the dashboard frontend** (served from disk at

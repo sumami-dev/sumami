@@ -48,7 +48,7 @@ pub fn export(
         ..Default::default()
     };
 
-    for (table, sub) in [("session", "sessions"), ("event", "events")] {
+    for (table, sub) in [("event", "events"), ("revenue", "revenue")] {
         let directory = out.join(sub);
         std::fs::create_dir_all(&directory)?;
 
@@ -218,9 +218,9 @@ pub fn open_archive(pattern: &str) -> Result<sumami_service::pool::Db> {
 
     let escape = |value: &str| value.replace('\'', "''");
 
-    // The archive layout: <root>/sessions/*.parquet, <root>/events/*.parquet.
+    // The archive layout: <root>/events/*.parquet, <root>/revenue/*.parquet.
     let root = pattern.trim_end_matches("/*").trim_end_matches('/');
-    for (table, sub) in [("session", "sessions"), ("event", "events")] {
+    for (table, sub) in [("event", "events"), ("revenue", "revenue")] {
         let directory = format!("{root}/{sub}");
         // A table with no rows has no file at all — read_parquet would fail on an
         // empty glob, so the view is only created when there is something to read.

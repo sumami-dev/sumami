@@ -73,12 +73,12 @@
           <tr>
             <td>Page URL</td>
             <td>The tracker</td>
-            <td>The <em>path</em> only. The query string and fragment are stripped unless you opt in with <code>data-allow-query</code>.</td>
+            <td>The path <em>and</em> the query string. The server splits the two apart and parses the marketing parameters out of the query.</td>
           </tr>
           <tr>
             <td>Referrer</td>
             <td>The tracker</td>
-            <td>Cleaned the same way. Same-origin referrers are reduced to their path.</td>
+            <td>The full referring URL. The server splits it into its host, its path and its query.</td>
           </tr>
           <tr>
             <td>Page title</td>
@@ -225,26 +225,30 @@
 
     <h2>URLs and query strings</h2>
     <p>
-      Query strings routinely carry session tokens, email addresses, search terms and other
-      personal data, so the query string and fragment are stripped from every collected URL
-      and referrer.
+      The tracker sends the page URL and the referrer in full, and the server splits them
+      apart: it stores the path, the query string and the referrer's host, path and query.
+      The query string is kept because it is where the marketing parameters live.
     </p>
     <pre class="shell"><code><span class="cmt"># what the visitor visits</span>
 https://blog.example.com/posts/hello?utm_source=newsletter&amp;email=ada@example.com
 
 <span class="cmt"># what is stored</span>
-/posts/hello</code></pre>
+url      = /posts/hello
+query    = utm_source=newsletter&amp;email=ada@example.com
+utm_source = newsletter</code></pre>
     <p>
-      There are two ways to change this, and both are opt-in:
+      The server parses the marketing parameters (<code>utm_source</code>,
+      <code>utm_medium</code>, <code>utm_campaign</code>, <code>utm_content</code>,
+      <code>utm_term</code>) and the ad click ids (<code>gclid</code>,
+      <code>fbclid</code>, <code>msclkid</code>, <code>ttclid</code>,
+      <code>lifatid</code>, <code>twclid</code>) out of it and stores them as their own
+      columns.
     </p>
-    <ul>
-      <li>Per site: <code>data-allow-query="true"</code> on the tracker script tag.</li>
-      <li>Per server: <code>SUMAMI_KEEP_QUERY=1</code> in the environment.</li>
-    </ul>
     <p>
-      If you enable either, you are asking Sumami to store personal data that your visitors
-      put in their address bar. Do that only if you have thought about it and you can defend
-      the choice.
+      This does mean the query string is personal data: it routinely carries session
+      tokens, email addresses and search terms. If you do not want it, run your own
+      Sumami behind a reverse proxy that strips the query string before it reaches
+      <code>POST /api/send</code>.
     </p>
 
     <h2>Geography</h2>

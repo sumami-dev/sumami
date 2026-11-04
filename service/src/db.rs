@@ -1,17 +1,89 @@
-//! DuckDB schema and connection helpers.
+//! The schema.
+//!
+//! **One fact table.** Every page view is one row in `event`, carrying the same fields
+//! Umami carries — that is the baseline, and the storage engine is what makes it
+//! affordable. Sessions, visitors and page views are all *derived* from it, so nothing
+//! is stored twice and nothing can drift apart.
+//!
+//! `revenue` is a separate table because it is written by the owner (imported from
+//! Carbon Ads, AdSense, …), not by the tracker.
 
 use anyhow::Result;
+
 use duckdb::Connection;
 
-/// Schema version of the database. Bump when adding migrations.
-pub const SCHEMA_VERSION: i64 = 1;
+/// Schema version of the database.
+pub const SCHEMA_VERSION: i64 = 2;
 
-/// Create the schema if it does not exist yet.
-///
-/// v1 has no migration runner: the schema is additive and `IF NOT EXISTS` throughout.
+/// Create the schema if it does not exist.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
+-- One row per page view (or custom event). The field set mirrors Umami's
+-- `website_event` row for row.
+CREATE TABLE IF NOT EXISTS event (
+    id              BIGINT PRIMARY KEY,
+    website_id      VARCHAR NOT NULL,
+    session_id      VARCHAR NOT NULL,
+    visitor_id      VARCHAR NOT NULL,
+    created_at      TIMESTAMP NOT NULL,
+
+    url             VARCHAR,
+    url_query       VARCHAR,
+    title           VARCHAR,
+
+    referrer        VARCHAR,
+    referrer_path   VARCHAR,
+    referrer_query  VARCHAR,
+    hostname        VARCHAR,
+
+    browser         VARCHAR,
+    browser_version VARCHAR,
+    os              VARCHAR,
+    os_version      VARCHAR,
+    device          VARCHAR,
+    screen          VARCHAR,
+    language        VARCHAR,
+    country         VARCHAR,
+    region          VARCHAR,
+    city            VARCHAR,
+
+    utm_source      VARCHAR,
+    utm_medium      VARCHAR,
+    utm_campaign    VARCHAR,
+    utm_content     VARCHAR,
+    utm_term        VARCHAR,
+
+    gclid           VARCHAR,
+    fbclid          VARCHAR,
+    msclkid         VARCHAR,
+    ttclid          VARCHAR,
+    lifatid         VARCHAR,
+    twclid          VARCHAR,
+
+    lcp             DOUBLE,
+    inp             DOUBLE,
+    cls             DOUBLE,
+    fcp             DOUBLE,
+    ttfb            DOUBLE,
+
+    event_type      VARCHAR,
+    event_name      VARCHAR,
+    tag             VARCHAR,
+    data            VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS revenue (
+    id          BIGINT PRIMARY KEY,
+    website_id  VARCHAR NOT NULL,
+    session_id  VARCHAR,
+    event_id    BIGINT,
+    event_name  VARCHAR,
+    currency    VARCHAR NOT NULL DEFAULT 'USD',
+    revenue     DOUBLE NOT NULL,
+    created_at  TIMESTAMP NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS website (
     id                VARCHAR PRIMARY KEY,
     name              VARCHAR NOT NULL,
@@ -22,89 +94,31 @@ CREATE TABLE IF NOT EXISTS website (
     country_header    VARCHAR
 );
 
-CREATE TABLE IF NOT EXISTS session (
-    id                VARCHAR PRIMARY KEY,
-    website_id        VARCHAR NOT NULL,
-    visitor_id        VARCHAR,
-    created_at        TIMESTAMP NOT NULL,
-    updated_at        TIMESTAMP NOT NULL,
-    hostname          VARCHAR,
-    url               VARCHAR,
-    title             VARCHAR,
-    referrer          VARCHAR,
-    entry_url         VARCHAR,
-    browser           VARCHAR,
-    browser_version   VARCHAR,
-    os                VARCHAR,
-    os_version        VARCHAR,
-    device            VARCHAR,
-    country           VARCHAR,
-    region            VARCHAR,
-    city              VARCHAR,
-    language          VARCHAR,
-    screen            VARCHAR,
-    data              VARCHAR,
-    views             INTEGER NOT NULL DEFAULT 0,
-    duration          INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS event (
-    id                VARCHAR PRIMARY KEY,
-    website_id        VARCHAR NOT NULL,
-    session_id        VARCHAR,
-    created_at        TIMESTAMP NOT NULL,
-    name              VARCHAR,
-    url               VARCHAR,
-    hostname          VARCHAR,
-    data              VARCHAR
+CREATE TABLE IF NOT EXISTS meta (
+    key   VARCHAR PRIMARY KEY,
+    value VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS "user" (
-    id                VARCHAR PRIMARY KEY,
-    username          VARCHAR NOT NULL UNIQUE,
-    password_hash     VARCHAR NOT NULL,
-    created_at        TIMESTAMP NOT NULL,
-    role              VARCHAR NOT NULL DEFAULT 'admin'
-);
-
-CREATE TABLE IF NOT EXISTS meta (
-    key               VARCHAR PRIMARY KEY,
-    value             VARCHAR
+    id            VARCHAR PRIMARY KEY,
+    username      VARCHAR NOT NULL UNIQUE,
+    password_hash VARCHAR NOT NULL,
+    created_at    TIMESTAMP NOT NULL,
+    role          VARCHAR NOT NULL DEFAULT 'admin'
 );
 "#,
     )?;
 
     conn.execute(
-        "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        "INSERT INTO meta (key, value) VALUES ('schema_version', ?) \
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         [SCHEMA_VERSION.to_string()],
     )?;
 
     Ok(())
 }
 
-/// Read a meta value.
-#[allow(dead_code)]
-pub fn meta_get(conn: &Connection, key: &str) -> Result<Option<String>> {
-    let mut stmt = conn.prepare("SELECT value FROM meta WHERE key = ?")?;
-    let mut rows = stmt.query([key])?;
-    if let Some(row) = rows.next()? {
-        Ok(Some(row.get(0)?))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Write a meta value.
-#[allow(dead_code)]
-pub fn meta_set(conn: &Connection, key: &str, value: &str) -> Result<()> {
-    conn.execute(
-        "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        [key, value],
-    )?;
-    Ok(())
-}
-
-/// Current UTC timestamp as a `chrono::NaiveDateTime` (DuckDB TIMESTAMP has no timezone).
+/// Now, as a naive UTC timestamp.
 pub fn now() -> chrono::NaiveDateTime {
     chrono::Utc::now().naive_utc()
 }

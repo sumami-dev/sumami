@@ -1,12 +1,50 @@
 /*!
- * Sumami tracker — a single, dependency-free file.
+ * Sumami tracker — one file, no dependencies, no build step.
  *
- * Privacy defaults (see AGENTS.md §2):
+ * What this file is
+ * -----------------
+ * A privacy-first web analytics tracker with the same field set as Umami v2.
+ * It is plain ES5 JavaScript (no bundler, no npm, no polyfills) and it is served
+ * by the Sumami backend itself at `GET /sumami.js` — the file in this repository
+ * is byte-for-byte the file that gets served.
+ *
+ * What it reports
+ * ---------------
+ * Every page view is stored as one row with Umami's field set:
+ *
+ *   website   the website id (data-website-id) or domain (data-website)
+ *   url       the full current URL: pathname + search (the server splits it)
+ *   referrer  document.referrer, the full URL (the server splits it)
+ *   title     document.title
+ *   hostname  location.hostname
+ *   language  navigator.language
+ *   screen    "<width>x<height>" of the screen
+ *   name      the custom event name
+ *   tag       an optional custom event tag
+ *   data      the custom event payload (object or string)
+ *   lcp       Largest Contentful Paint, in milliseconds
+ *   inp       Interaction to Next Paint, in milliseconds
+ *   cls       Cumulative Layout Shift, as a ratio
+ *   fcp       First Contentful Paint, in milliseconds
+ *   ttfb      Time to First Byte, in milliseconds
+ *
+ * The five metrics are sent as strings (the server parses them itself); every
+ * other field is sent as the browser reported it.
+ *
+ * The web vitals are collected with PerformanceObserver and are sent together
+ * with the page view, once the page has been painted.
+ *
+ * Privacy
+ * -------
  *   - no cookies, no localStorage, no fingerprinting
- *   - the query string is never sent (opt in with data-allow-query)
- *   - DNT / GPC are honoured: nothing is sent when the visitor opted out
+ *   - Do Not Track and Global Privacy Control are honoured: nothing is sent
+ *   - the query string IS sent, because the server parses the UTM parameters
+ *     and the ad click ids (gclid, fbclid, msclkid, ttclid, lifatid, twclid)
+ *     out of it. The referrer and the page URL are sent in full for the same
+ *     reason — the server, not the browser, does the splitting.
  *
- * Usage:
+ * Usage
+ * -----
  *   <script defer src="https://sumami.example/sumami.js"
  *           data-website-id="<website-uuid>"></script>
  *
@@ -14,8 +52,11 @@
  *   data-website-id   the website id (required unless data-website is given)
  *   data-website      the website domain, instead of an id
  *   data-api-url      the API base URL (default: the script's own origin)
- *   data-allow-query  set to "true" to include the query string in the URL
- *   data-collect-pii  never used; custom event properties are sent as given
+ *
+ * Public API (window.sumami, aliased as window.umami):
+ *   sumami.track(name, data)   a custom event
+ *   sumami.identify(data)      attach data to the current session
+ *   sumami.pageview()          a manual page view
  */
 (function () {
   'use strict';
@@ -26,7 +67,6 @@
   var WEBSITE_ID = script.getAttribute('data-website-id') || '';
   var WEBSITE = script.getAttribute('data-website') || '';
   var API_URL = (script.getAttribute('data-api-url') || '').replace(/\/$/, '');
-  var ALLOW_QUERY = script.getAttribute('data-allow-query') === 'true';
 
   if (!WEBSITE_ID && !WEBSITE) return;
 
@@ -39,60 +79,236 @@
 
   if (!API_URL) {
     // Derive the API origin from the script URL: <origin>/sumami.js -> <origin>
-    var current = document.currentScript;
-    var src = current && current.src ? current.src : '';
+    var src = script.src || '';
     var match = src.match(/^(https?:\/\/[^\/]+)/);
     API_URL = match ? match[1] : '';
   }
   if (!API_URL) return;
 
-  var screen = window.screen ? window.screen.width + 'x' + window.screen.height : '';
-  var language = navigatorRef.language || '';
-
-  /** Strip the query string and fragment unless the site opted in. */
-  function cleanUrl(url) {
-    if (ALLOW_QUERY) return url;
-    var hash = url.indexOf('#');
-    var withoutHash = hash === -1 ? url : url.slice(0, hash);
-    var query = withoutHash.indexOf('?');
-    return query === -1 ? withoutHash : withoutHash.slice(0, query);
+  /** The whole tracker must never break the host page. */
+  function guard(fn) {
+    return function () {
+      try {
+        return fn.apply(this, arguments);
+      } catch (e) {
+        return undefined;
+      }
+    };
   }
 
-  /** Current page path (and query, if allowed). */
-  function currentUrl() {
-    var url = window.location.pathname || '/';
-    if (ALLOW_QUERY && window.location.search) url += window.location.search;
-    return url;
+  // ---------------------------------------------------------------------------
+  // The web vitals
+  // ---------------------------------------------------------------------------
+
+  var vitals = {
+    lcp: 0, // Largest Contentful Paint, ms
+    inp: 0, // Interaction to Next Paint, ms
+    cls: 0, // Cumulative Layout Shift
+    fcp: 0, // First Contentful Paint, ms
+    ttfb: 0 // Time to First Byte, ms
+  };
+
+  /** The current layout-shift session window and its accumulated score. */
+  var clsSession = { value: 0, entries: [] };
+
+  /**
+   * The CLS of a page is the worst *session window*: a burst of shifts counts
+   * as one, and the gaps between two bursts are ignored.
+   */
+  function updateCls() {
+    var entries = clsSession.entries;
+    var max = 0;
+    var sessionValue = 0;
+    var sessionEntries = [];
+
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i];
+      var first = sessionEntries.length === 0;
+      var last = sessionEntries[sessionEntries.length - 1];
+
+      if (
+        !first &&
+        entry.startTime - last.startTime < 1000 &&
+        entry.startTime - last.startTime < 5000
+      ) {
+        // Still the same session window.
+      } else {
+        // A new window starts: the previous one is final.
+        if (sessionValue > max) max = sessionValue;
+        sessionValue = 0;
+        sessionEntries = [];
+      }
+
+      sessionValue += entry.value;
+      sessionEntries.push(entry);
+    }
+
+    if (sessionValue > max) max = sessionValue;
+
+    clsSession.value = max;
+    vitals.cls = max;
   }
 
-  /** The referring page, cleaned the same way. */
-  function referrer() {
-    var ref = document.referrer;
-    if (!ref) return undefined;
+  /** Observe one performance entry type and hand it to a callback. */
+  function observe(type, callback) {
+    if (typeof PerformanceObserver === 'undefined') return;
+    if (!PerformanceObserver.supportedEntryTypes) return;
+    if (PerformanceObserver.supportedEntryTypes.indexOf(type) === -1) return;
+
     try {
-      var parsed = new URL(ref, window.location.href);
-      return cleanUrl(parsed.origin === window.location.origin ? parsed.pathname : parsed.href);
+      var observer = new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        for (var i = 0; i < entries.length; i++) callback(entries[i]);
+      });
+      observer.observe({ type: type, buffered: true });
     } catch (e) {
-      return undefined;
+      /* an unsupported option — ignore the metric */
     }
   }
 
+  /** Largest Contentful Paint: the last candidate wins. */
+  observe('largest-contentful-paint', function (entry) {
+    var value = entry.renderTime || entry.loadTime || entry.startTime;
+    if (value > vitals.lcp) vitals.lcp = value;
+  });
+
+  /** First Contentful Paint: the first paint entry with the right name. */
+  observe('paint', function (entry) {
+    if (entry.name === 'first-contentful-paint' && entry.startTime > 0) {
+      vitals.fcp = entry.startTime;
+    }
+  });
+
+  /** Layout shifts: ignore the ones that follow a user interaction. */
+  observe('layout-shift', function (entry) {
+    if (entry.hadRecentInput) return;
+    clsSession.entries.push({ value: entry.value, startTime: entry.startTime });
+    updateCls();
+  });
+
+  /**
+   * Interaction to Next Paint: the longest interaction of the page.
+   * `durationThreshold` keeps the observer from reporting every tiny event.
+   */
+  try {
+    if (typeof PerformanceObserver !== 'undefined') {
+      var eventObserver = new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        for (var i = 0; i < entries.length; i++) {
+          var duration = entries[i].duration || 0;
+          if (duration > vitals.inp) vitals.inp = duration;
+        }
+      });
+      eventObserver.observe({ type: 'event', durationThreshold: 40, buffered: true });
+    }
+  } catch (e) {
+    /* INP is not available here */
+  }
+
+  /** Time to First Byte: the navigation timing's response start. */
+  function readTtfb() {
+    try {
+      var nav = window.performance && window.performance.getEntriesByType
+        ? window.performance.getEntriesByType('navigation')[0]
+        : null;
+      if (nav && nav.responseStart > 0) {
+        vitals.ttfb = nav.responseStart;
+        return;
+      }
+      if (nav && nav.responseStart === 0 && nav.responseEnd > 0) {
+        // A cached response: the browser still reports a response start.
+        vitals.ttfb = nav.responseEnd;
+        return;
+      }
+      var timing = window.performance && window.performance.timing;
+      if (timing && timing.responseStart > 0) {
+        vitals.ttfb = timing.responseStart - timing.navigationStart;
+      }
+    } catch (e) {
+      /* no navigation timing */
+    }
+  }
+  readTtfb();
+
+  // ---------------------------------------------------------------------------
+  // The payload
+  // ---------------------------------------------------------------------------
+
+  /** The full current URL: the server splits the path from the query. */
+  function currentUrl() {
+    var loc = window.location;
+    var url = loc.pathname || '/';
+    if (loc.search) url += loc.search;
+    return url;
+  }
+
+  /** The referring page, in full. */
+  function currentReferrer() {
+    return document.referrer || '';
+  }
+
+  /** "<width>x<height>" of the screen. */
+  function screenSize() {
+    var scr = window.screen;
+    if (!scr) return '';
+    return scr.width + 'x' + scr.height;
+  }
+
+  /**
+   * The fields every hit carries.
+   *
+   * `withVitals` is false for the custom events: the web vitals describe the
+   * page, and they are sent once — with the page view.
+   */
+  function basePayload(withVitals) {
+    var payload = {
+      website: WEBSITE_ID || WEBSITE,
+      url: currentUrl(),
+      referrer: currentReferrer(),
+      title: document.title,
+      hostname: window.location.hostname,
+      language: navigatorRef.language || '',
+      screen: screenSize()
+    };
+
+    if (withVitals) {
+      // The server reads the metrics as strings and parses them itself
+      // (`raw.str(name).parse::<f64>()`), so they are sent as strings.
+      payload.lcp = String(vitals.lcp);
+      payload.inp = String(vitals.inp);
+      payload.cls = String(vitals.cls);
+      payload.fcp = String(vitals.fcp);
+      payload.ttfb = String(vitals.ttfb);
+    }
+
+    return payload;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sending
+  // ---------------------------------------------------------------------------
+
   /**
    * Send one hit.
-   * @param {string} type  'event' | 'screenview' | 'identify'
+   *
+   * @param {string} type    'event' | 'identify'
    * @param {object} payload
    */
   function send(type, payload) {
-    var body = JSON.stringify({
-      type: type,
-      payload: payload
-    });
+    var body;
+    try {
+      body = JSON.stringify({ type: type, payload: payload });
+    } catch (e) {
+      return;
+    }
 
     var url = API_URL + '/api/send';
 
+    // `sendBeacon` survives the page being unloaded — it is the only way to
+    // get a page view out of a tab that is being closed.
     if (navigatorRef.sendBeacon) {
       try {
-        var blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
+        var blob = new Blob([body], { type: 'application/json' });
         if (navigatorRef.sendBeacon(url, blob)) return;
       } catch (e) {
         /* fall through to fetch */
@@ -104,7 +320,7 @@
         window.fetch(url, {
           method: 'POST',
           body: body,
-          headers: { 'Content-Type': 'text/json;charset=UTF-8' },
+          headers: { 'Content-Type': 'application/json' },
           keepalive: true,
           mode: 'cors',
           credentials: 'omit'
@@ -115,36 +331,22 @@
     }
   }
 
-  /** The payload shared by every hit. */
-  function basePayload() {
-    var payload = {
-      website: WEBSITE_ID || WEBSITE,
-      url: currentUrl(),
-      hostname: window.location.hostname,
-      language: language,
-      screen: screen,
-      title: document.title
-    };
-    var ref = referrer();
-    if (ref) payload.referrer = ref;
-    return payload;
-  }
-
-  /** Track a pageview (automatic on load). */
-  function trackPageview() {
-    send('event', basePayload());
-  }
+  // ---------------------------------------------------------------------------
+  // The public API
+  // ---------------------------------------------------------------------------
 
   /**
    * Track a custom event.
    * @param {string} name
-   * @param {object} [data]
+   * @param {object|string} [data]
+   * @param {string} [tag]
    */
-  function track(name, data) {
+  function track(name, data, tag) {
     if (!name) return;
-    var payload = basePayload();
+    var payload = basePayload(false);
     payload.name = name;
-    if (data) payload.data = data;
+    if (tag) payload.tag = tag;
+    if (data !== undefined && data !== null) payload.data = data;
     send('event', payload);
   }
 
@@ -153,19 +355,75 @@
    * @param {object} data
    */
   function identify(data) {
-    var payload = basePayload();
+    var payload = basePayload(false);
     payload.data = data || {};
     send('identify', payload);
   }
 
+  /**
+   * Track a page view by hand (the tracker sends one on its own).
+   */
+  function pageview() {
+    send('event', basePayload(true));
+  }
+
   // The public API. `umami` is an alias for compatibility with existing snippets.
-  var api = { track: track, identify: identify, pageview: trackPageview };
+  var api = { track: guard(track), identify: guard(identify), pageview: guard(pageview) };
   window.sumami = api;
   window.umami = api;
 
-  if (document.readyState === 'complete') {
-    trackPageview();
-  } else {
-    window.addEventListener('load', trackPageview);
+  // ---------------------------------------------------------------------------
+  // When to send the page view
+  // ---------------------------------------------------------------------------
+
+  // The web vitals are only known after the page has been painted, so the page
+  // view is sent when the document goes away — with `sendBeacon`, so it
+  // survives the unload.
+  var sent = false;
+
+  /** Send the page view of the current page, once. */
+  function sendPageview() {
+    if (sent) return;
+    sent = true;
+    readTtfb();
+    pageview();
+  }
+
+  if (document.addEventListener) {
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') sendPageview();
+    });
+    window.addEventListener('pagehide', sendPageview);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Single page applications
+  // ---------------------------------------------------------------------------
+
+  // A history navigation is a new page: its hit is sent right away, without
+  // waiting for the tab to be closed. The guard is set again afterwards, so
+  // the page view of the new page is not sent a second time on unload.
+  function onNavigation() {
+    sent = false;
+    pageview();
+    sent = true;
+  }
+
+  if (window.history && typeof window.history.pushState === 'function') {
+    var pushState = window.history.pushState;
+    var replaceState = window.history.replaceState;
+
+    window.history.pushState = function () {
+      var result = pushState.apply(this, arguments);
+      onNavigation();
+      return result;
+    };
+    window.history.replaceState = function () {
+      var result = replaceState.apply(this, arguments);
+      onNavigation();
+      return result;
+    };
+
+    window.addEventListener('popstate', onNavigation);
   }
 })();
