@@ -5,6 +5,10 @@
 Sumimi is a **self-hosted web analytics service** that fits on a cheap VPS: one small
 binary, one directory, no external database, no cloud account, no telemetry.
 
+> It was called **sumami** until v0.2.0. The old tracker URL (`/sumami.js`), the old
+> environment variables (`SUMAMI_*`) and the old crates all still work — but the name
+> is Sumimi now.
+
 - **Rust + Axum + Tokio** — one self-contained binary, ~50 MB of RAM at rest.
 - **DuckDB 2.0.0** embedded — columnar analytics in a single file you can copy around.
   SQLite is there too, for the teams that want an ordinary database file.

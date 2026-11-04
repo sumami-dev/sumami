@@ -278,6 +278,13 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
         buffered in memory before the oldest are dropped.</li>
       <li><code>SUMIMI_FLUSH_INTERVAL_SECS</code> (default <code>2</code>) — how often the
         writer commits a batch to disk.</li>
+      <li>
+        <p>
+          The settings were called <code>SUMAMI_*</code> until v0.2.0. The old names still
+          work — they are in people's <code>.env</code> files and systemd units — but the
+          new names win when both are set. Rename them the next time you touch the file.
+        </p>
+      </li>
       <li><code>SUMIMI_UPTIME_INTERVAL_SECS</code> (default <code>300</code>) — how often the
         uptime of the websites is checked. <code>0</code> turns the checker off.</li>
       <li><code>SUMIMI_UPTIME_TIMEOUT_SECS</code> (default <code>10</code>) — how long a website
