@@ -38,7 +38,11 @@ pub enum Command {
 
 #[derive(Debug, clap::Args)]
 pub struct ServeArgs {
-    /// Path of the database file.
+    /// The instance directory: everything the instance owns lives inside it.
+    #[arg(long, env = "SUMAMI_DIR", default_value = "sumami")]
+    dir: std::path::PathBuf,
+    /// The data file, when it should not be the default one inside the instance
+    /// directory — for keeping the events on a bigger disk than the rest.
     #[arg(long, env = "SUMAMI_DB")]
     db: Option<std::path::PathBuf>,
     /// The data engine: `duckdb` (the default) or `sqlite`.
@@ -94,7 +98,10 @@ pub struct AdminArgs {
     /// Admin password (generated and printed when omitted).
     #[arg(long, env = "SUMAMI_ADMIN_PASSWORD")]
     password: Option<String>,
-    /// Path of the DuckDB database file.
+    /// The instance directory.
+    #[arg(long, env = "SUMAMI_DIR", default_value = "sumami")]
+    dir: std::path::PathBuf,
+    /// The data file, when it should not be the default one.
     #[arg(long, env = "SUMAMI_DB")]
     db: Option<std::path::PathBuf>,
     /// The data engine: `duckdb` (the default) or `sqlite`.
@@ -117,7 +124,15 @@ pub async fn run() -> Result<()> {
         Command::Serve(args) => serve(args).await,
         Command::Admin(args) => admin(args),
         Command::Config => {
-            let config = Config::from_env_and_flags(None, None, None, None, None, None, None)?;
+            let config = Config::from_env_and_flags(
+                crate::config::Paths::new(None, None, "duckdb"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )?;
             println!("{config:#?}");
             Ok(())
         }
@@ -136,13 +151,13 @@ pub async fn serve_on_runtime(args: ServeArgs) -> Result<()> {
 fn open_storage(config: &Config, backend: &str) -> Result<Arc<dyn Storage>> {
     let storage: Arc<dyn Storage> = match backend.to_ascii_lowercase().as_str() {
         "duckdb" => Arc::new(Db::open_with(
-            &config.db_path,
+            &config.paths.data,
             &config.duckdb_memory_limit,
             &config.duckdb_flush_threshold,
             &config.duckdb_temp_limit,
             config.duckdb_threads,
         )?),
-        "sqlite" => Arc::new(crate::sqlite::SqliteBackend::open(&config.db_path)?),
+        "sqlite" => Arc::new(crate::sqlite::SqliteBackend::open(&config.paths.data)?),
         other => anyhow::bail!("unknown backend '{other}' (duckdb, sqlite)"),
     };
     Ok(storage)
@@ -152,30 +167,21 @@ fn open_storage(config: &Config, backend: &str) -> Result<Arc<dyn Storage>> {
 ///
 /// It lives in its own small file next to the data, so the accounts survive an
 /// analytics rebuild and can be backed up in a second.
-fn open_instance(
-    config: &Config,
-    _backend: &str,
-) -> Result<Arc<dyn crate::instance::Instance>> {
-    let path = instance_path(&config.db_path);
+fn open_instance(config: &Config) -> Result<Arc<dyn crate::instance::Instance>> {
     let instance: Arc<dyn crate::instance::Instance> =
-        Arc::new(crate::instance::SqliteInstance::open(&path)?);
+        Arc::new(crate::instance::SqliteInstance::open(&config.paths.instance)?);
     Ok(instance)
-}
-
-/// Where the instance store lives, given the path of the data file.
-pub fn instance_path(db_path: &std::path::Path) -> std::path::PathBuf {
-    let mut name = db_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "sumami.duckdb".to_string());
-    name.push_str(".instance");
-    db_path.with_file_name(name)
 }
 
 /// Build the configuration from the serve arguments.
 fn config_from(args: &ServeArgs) -> Result<Config> {
-    let mut config = Config::from_env_and_flags(
+    let paths = crate::config::Paths::new(
+        Some(args.dir.clone()),
         args.db.clone(),
+        &args.backend,
+    );
+    let config = Config::from_env_and_flags(
+        paths,
         args.host.clone(),
         args.port,
         args.jwt_secret.clone(),
@@ -183,22 +189,17 @@ fn config_from(args: &ServeArgs) -> Result<Config> {
         args.country_header.clone(),
         args.docs_dir.clone(),
     )?;
-
-    // The default file name follows the engine, so `--backend sqlite` with no
-    // `--db` does not create a file called `sumami.duckdb`.
-    if args.db.is_none()
-        && std::env::var("SUMAMI_DB").is_err()
-        && args.backend.eq_ignore_ascii_case("sqlite")
-    {
-        config.db_path = std::path::PathBuf::from("sumami.sqlite");
-    }
     Ok(config)
 }
 
 /// Create (or update) the admin user.
 fn admin(args: AdminArgs) -> Result<()> {
     let config = Config::from_env_and_flags(
-        args.db.clone(),
+        crate::config::Paths::new(
+            Some(args.dir.clone()),
+            args.db.clone(),
+            &args.backend,
+        ),
         None,
         None,
         None,
@@ -207,7 +208,8 @@ fn admin(args: AdminArgs) -> Result<()> {
         None,
     )?;
 
-    let instance = open_instance(&config, &args.backend)?;
+    config.paths.prepare()?;
+    let instance = open_instance(&config)?;
     let password = args
         .password
         .clone()
@@ -244,8 +246,9 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
     }
     config.ssl_port = args.ssl_port;
 
+    config.paths.prepare()?;
     let storage = open_storage(&config, &args.backend)?;
-    let instance = open_instance(&config, &args.backend)?;
+    let instance = open_instance(&config)?;
     serve_with(Arc::new(config), storage, instance).await
 }
 
@@ -258,10 +261,11 @@ pub async fn serve_with(
     storage: Arc<dyn Storage>,
     instance: Arc<dyn crate::instance::Instance>,
 ) -> Result<()> {
-    let jwt_secret = config::resolve_jwt_secret(&config.jwt_secret, &config.db_path)?;
+    let jwt_secret = config::resolve_jwt_secret(&config.jwt_secret, &config.paths.secret)?;
     let jwt_secret = Arc::new(jwt_secret);
 
-    config::restrict_permissions(&config.db_path);
+    // The instance directory holds the accounts and the events: nobody else reads it.
+    config::restrict_permissions(&config.paths.dir);
 
     // Make sure there is always an admin account to log in with. The accounts live
     // in the instance store, not in the analytics file.
@@ -305,10 +309,13 @@ pub async fn serve_with(
 
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
-        db = %config.db_path.display(),
+        dir = %config.paths.dir.display(),
         "sumami is listening on http://{addr}"
     );
-    println!("[sumami] listening on http://{addr} (db: {})", config.db_path.display());
+    println!(
+        "[sumami] listening on http://{addr} (instance: {})",
+        config.paths.dir.display()
+    );
 
     // Make sure the writer thread is told to stop when the server does.
     let writer_for_shutdown = state.writer.clone();

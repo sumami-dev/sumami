@@ -260,7 +260,7 @@ pub fn run() -> Result<()> {
             let path = cli
                 .db
                 .clone()
-                .unwrap_or_else(|| PathBuf::from("sumami.duckdb"));
+                .unwrap_or_else(|| sumami_service::config::Paths::new(None, None, "duckdb").data);
 
             let options = seed::SeedOptions {
                 website,
@@ -291,7 +291,7 @@ pub fn run() -> Result<()> {
             let path = cli
                 .db
                 .clone()
-                .unwrap_or_else(|| PathBuf::from("sumami.duckdb"));
+                .unwrap_or_else(|| sumami_service::config::Paths::new(None, None, "duckdb").data);
 
             // The backup reads the database, so the server must be stopped (DuckDB
             // allows a single writer per file). `--url` is not supported here for the
@@ -489,7 +489,7 @@ fn open_source(cli: &Cli, writable: bool) -> Result<Source> {
     let path = cli
         .db
         .clone()
-        .unwrap_or_else(|| PathBuf::from("sumami.duckdb"));
+        .unwrap_or_else(|| sumami_service::config::Paths::new(None, None, "duckdb").data);
 
     if writable {
         Source::local_writable(&path)

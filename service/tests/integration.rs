@@ -252,7 +252,7 @@ async fn api_matches_the_shared_report_layer() {
     .unwrap();
 
     let mut config = Config::from_env_and_flags(
-        Some(path.clone()),
+        sumami_service::config::Paths::new(Some(path.clone().parent().unwrap().to_path_buf()), Some(path.clone()), "duckdb"),
         None,
         None,
         None,

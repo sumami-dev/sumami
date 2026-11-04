@@ -13,11 +13,93 @@ use anyhow::Context;
 /// updated (or pinned to a release tag) without touching the backend.
 pub const CDN_APP_URL: &str = "https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js";
 
+/// Where an instance keeps its files.
+///
+/// An instance is a **directory**. Everything it owns lives inside it, so backing it
+/// up, moving it and deleting it are all one operation on one path:
+///
+/// ```text
+/// sumami/
+///   data.duckdb      the data plane — the events
+///   instance.sqlite  the control plane — the accounts, the log, the cache, the chat
+///   logs/            the server's log files
+///   acme/            the TLS certificate cache
+///   jwt-secret       the signing secret
+/// ```
+#[derive(Debug, Clone)]
+pub struct Paths {
+    /// The instance directory.
+    pub dir: PathBuf,
+    /// The data plane: the DuckDB file, or the SQLite file.
+    pub data: PathBuf,
+    /// The control plane: the accounts, the log, the cache, the snapshots, the chat.
+    pub instance: PathBuf,
+    /// The server's log files.
+    pub logs: PathBuf,
+    /// The TLS certificate cache.
+    pub acme: PathBuf,
+    /// The file the signing secret is kept in.
+    pub secret: PathBuf,
+}
+
+impl Paths {
+    /// Work out where everything lives.
+    ///
+    /// `dir` is the instance directory. `data` overrides the data file — for the
+    /// rare case of keeping the events on a bigger disk than the rest.
+    pub fn new(dir: Option<PathBuf>, data: Option<PathBuf>, backend: &str) -> Self {
+        let default_name = match backend.to_ascii_lowercase().as_str() {
+            "sqlite" => "data.sqlite",
+            _ => "data.duckdb",
+        };
+
+        let (dir, data) = match (dir, data) {
+            (Some(dir), data) => {
+                let data = data.unwrap_or_else(|| dir.join(default_name));
+                (dir, data)
+            }
+            (None, Some(data)) => {
+                // The old way of asking for a file: the instance lives next to it.
+                let dir = data
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("."));
+                (dir, data)
+            }
+            (None, None) => {
+                let dir = PathBuf::from("sumami");
+                let data = dir.join(default_name);
+                (dir, data)
+            }
+        };
+
+        Self {
+            instance: dir.join("instance.sqlite"),
+            logs: dir.join("logs"),
+            acme: dir.join("acme"),
+            secret: dir.join("jwt-secret"),
+            dir,
+            data,
+        }
+    }
+
+    /// Create the directories the instance needs.
+    pub fn prepare(&self) -> anyhow::Result<()> {
+        for path in [&self.dir, &self.logs, &self.acme] {
+            std::fs::create_dir_all(path).map_err(|e| {
+                anyhow::anyhow!("creating the directory {}: {e}", path.display())
+            })?;
+        }
+        Ok(())
+    }
+}
+
 /// Runtime configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Path of the embedded DuckDB database file.
-    pub db_path: PathBuf,
+    /// Where the instance keeps its files.
+    pub paths: Paths,
     /// Address to bind the HTTP server to.
     pub host: String,
     /// Port to bind the HTTP server to.
@@ -85,7 +167,7 @@ pub struct Config {
 impl Config {
     /// Build the configuration from CLI flags + environment.
     pub fn from_env_and_flags(
-        db_path: Option<PathBuf>,
+        paths: Paths,
         host: Option<String>,
         port: Option<u16>,
         jwt_secret: Option<String>,
@@ -93,10 +175,6 @@ impl Config {
         country_header: Option<String>,
         docs_dir: Option<PathBuf>,
     ) -> anyhow::Result<Self> {
-        let db_path = db_path
-            .or_else(|| env_path("SUMAMI_DB"))
-            .unwrap_or_else(|| PathBuf::from("sumami.duckdb"));
-
         let host = host
             .or_else(|| std::env::var("SUMAMI_HOST").ok())
             .unwrap_or_else(|| "0.0.0.0".to_string());
@@ -180,22 +258,15 @@ impl Config {
 
         let ssl_domain = std::env::var("SUMAMI_SSL_DOMAIN").ok().filter(|s| !s.is_empty());
         let ssl_email = std::env::var("SUMAMI_SSL_EMAIL").ok().filter(|s| !s.is_empty());
-        // Keep the ACME cache next to the database by default: an absolute path is
-        // easier to reason about under systemd than a relative one.
-        let ssl_cache_dir = env_path("SUMAMI_SSL_CACHE_DIR").unwrap_or_else(|| {
-            db_path
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-                .map(|parent| parent.join("acme"))
-                .unwrap_or_else(|| PathBuf::from("acme"))
-        });
+        // The ACME cache lives inside the instance directory by default.
+        let ssl_cache_dir = env_path("SUMAMI_SSL_CACHE_DIR").unwrap_or_else(|| paths.acme.clone());
         let ssl_port = std::env::var("SUMAMI_SSL_PORT")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(443);
 
         Ok(Config {
-            db_path,
+            paths,
             host,
             port,
             jwt_secret,
@@ -309,7 +380,7 @@ fn env_path(key: &str) -> Option<PathBuf> {
 ///
 /// A random per-install secret is better than a hard-coded default: a leaked default would
 /// let anybody mint admin tokens.
-pub fn resolve_jwt_secret(configured: &str, db_path: &std::path::Path) -> anyhow::Result<String> {
+pub fn resolve_jwt_secret(configured: &str, secret_path: &std::path::Path) -> anyhow::Result<String> {
     if !configured.is_empty() {
         return Ok(configured.to_string());
     }
@@ -325,7 +396,7 @@ pub fn resolve_jwt_secret(configured: &str, db_path: &std::path::Path) -> anyhow
         }
     }
     // Fall back to a secret file next to the database.
-    let path = db_path.with_extension("jwt-secret");
+    let path = secret_path.to_path_buf();
     if path.exists() {
         let s = std::fs::read_to_string(&path)
             .with_context(|| format!("reading jwt secret file {}", path.display()))?;
