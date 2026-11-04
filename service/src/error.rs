@@ -62,3 +62,9 @@ impl From<anyhow::Error> for ApiError {
         ApiError::internal(err)
     }
 }
+
+impl From<serde_json::Error> for ApiError {
+    fn from(err: serde_json::Error) -> Self {
+        ApiError::internal(err)
+    }
+}

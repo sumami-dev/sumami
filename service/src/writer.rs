@@ -75,6 +75,13 @@ impl Buffer {
 pub struct Writer {
     buffer: Arc<Buffer>,
     capacity: usize,
+    /// The version of the data.
+    ///
+    /// It changes whenever a batch is written, and the report cache carries it:
+    /// a cached answer from an older version is a miss. That is what keeps the
+    /// dashboard from showing numbers from before the last write, while two
+    /// people looking at the same dashboard only run the query once.
+    version: Arc<AtomicU64>,
 }
 
 impl Writer {
@@ -88,10 +95,17 @@ impl Writer {
         let writer = Writer {
             buffer: buffer.clone(),
             capacity,
+            // The clock, so a restart invalidates the cache that is still on disk.
+            version: Arc::new(AtomicU64::new(
+                chrono::Utc::now().timestamp_millis().max(0) as u64,
+            )),
         };
 
-        let handle = tokio::task::spawn_blocking(move || {
-            writer_loop(storage, buffer, flush_interval, capacity);
+        let handle = tokio::task::spawn_blocking({
+            let writer = writer.clone();
+            move || {
+                writer_loop(storage, buffer, flush_interval, capacity, writer);
+            }
         });
 
         (writer, handle)
@@ -112,6 +126,13 @@ impl Writer {
         self.buffer.dropped.load(Ordering::Relaxed)
     }
 
+    /// The version of the data.
+    ///
+    /// It changes whenever a batch is written.
+    pub fn version(&self) -> &AtomicU64 {
+        &self.version
+    }
+
     /// Stop the writer thread.
     ///
     /// The thread flushes whatever is still buffered and returns, so the process (and
@@ -130,6 +151,7 @@ fn writer_loop(
     buffer: Arc<Buffer>,
     flush_interval: Duration,
     _capacity: usize,
+    writer: Writer,
 ) {
     loop {
         if buffer.is_stopped() {
@@ -141,7 +163,7 @@ fn writer_loop(
             tracing::debug!("sumami writer stopped");
             break;
         }
-        if let Err(err) = write_loop_step(&storage, &buffer, flush_interval) {
+        if let Err(err) = write_loop_step(&storage, &buffer, flush_interval, &writer) {
             tracing::error!(error = %err, "sumami writer thread stopped");
             break;
         }
@@ -152,6 +174,7 @@ fn write_loop_step(
     storage: &Arc<dyn Storage>,
     buffer: &Arc<Buffer>,
     flush_interval: Duration,
+    writer: &Writer,
 ) -> Result<()> {
     // Block until something arrives or the flush interval elapses.
     {
@@ -175,6 +198,8 @@ fn write_loop_step(
         tracing::error!(error = %err, count, "failed to write batch");
         return Err(err);
     }
+    // The data changed: every cached report is stale now.
+    writer.version().fetch_add(1, Ordering::Relaxed);
     tracing::debug!(count, "flushed batch");
     Ok(())
 }

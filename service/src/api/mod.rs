@@ -3,6 +3,7 @@
 //! Layout mirrors the Umami v2 API so the existing dashboard (and the Sumami frontend)
 //! can talk to it unchanged.
 
+pub mod admin;
 pub mod auth;
 pub mod collect;
 pub mod health;
@@ -18,7 +19,7 @@ use std::time::Instant;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::Router;
 
 use crate::config::Config;
@@ -236,6 +237,36 @@ pub fn router(state: AppState) -> Router {
         // --- raw data ---
         .route("/api/websites/{id}/sessions", get(sessions::list))
         .route("/api/websites/{id}/events", get(sessions::events))
+        // --- the control plane ---
+        .route(
+            "/api/logs",
+            get(admin::logs).post(admin::write_log),
+        )
+        .route("/api/gsc/import", post(admin::import_gsc))
+        .route("/api/websites/{id}/gsc", get(admin::gsc_rows))
+        .route("/api/websites/{id}/gsc/imports", get(admin::gsc_imports))
+        .route(
+            "/api/snapshots",
+            get(admin::snapshots).post(admin::save_snapshot),
+        )
+        .route(
+            "/api/snapshots/{name}",
+            delete(admin::delete_snapshot),
+        )
+        .route("/api/snapshots/{name}/run", post(admin::run_snapshot))
+        .route(
+            "/api/chat/sessions",
+            get(admin::chat_sessions).post(admin::start_chat),
+        )
+        .route("/api/chat/sessions/{id}", get(admin::chat_messages))
+        .route(
+            "/api/chat/sessions/{id}/messages",
+            post(admin::say),
+        )
+        .route(
+            "/api/cache",
+            get(admin::cache_stats).delete(admin::purge_cache),
+        )
         // --- static ---
         .route("/sumami.js", get(crate::static_files::tracker))
         .route("/app/{*path}", get(crate::static_files::app_asset))

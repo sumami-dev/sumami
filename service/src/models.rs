@@ -445,7 +445,7 @@ pub struct Heartbeat {
 }
 
 /// Query parameters shared by the stats endpoints (Umami-compatible names).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatsQuery {
     /// Unix milliseconds, inclusive.
@@ -474,4 +474,75 @@ pub struct StatsQuery {
     pub limit: Option<i64>,
     #[serde(default)]
     pub offset: Option<i64>,
+}
+
+/// Which report to run.
+///
+/// The names are the ones the API uses (`pages`, `referrers`, …), so a saved
+/// report is readable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReportKind {
+    /// The summary metrics.
+    Summary,
+    /// The page views over time.
+    Timeseries,
+    /// The top pages.
+    Pages,
+    /// The traffic sources.
+    Referrers,
+    /// The browser breakdown.
+    Browsers,
+    /// The operating system breakdown.
+    Os,
+    /// The device breakdown.
+    Devices,
+    /// The country breakdown.
+    Countries,
+    /// The language breakdown.
+    Languages,
+    /// The screen size breakdown.
+    Screens,
+    /// The custom events.
+    Events,
+    /// The session log.
+    Sessions,
+    /// The raw event log.
+    EventLog,
+}
+
+impl ReportKind {
+    /// Every report, in the order the API lists them.
+    pub fn all() -> [ReportKind; 12] {
+        [
+            ReportKind::Summary,
+            ReportKind::Timeseries,
+            ReportKind::Pages,
+            ReportKind::Referrers,
+            ReportKind::Browsers,
+            ReportKind::Os,
+            ReportKind::Devices,
+            ReportKind::Countries,
+            ReportKind::Languages,
+            ReportKind::Screens,
+            ReportKind::Events,
+            ReportKind::Sessions,
+        ]
+    }
+}
+
+/// A report to run: which website, which report, and the window and the filters.
+///
+/// This is what the stats endpoints take, what the cache keys on, and what a
+/// **snapshot** stores — so a saved report can be run again later.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSpec {
+    /// The website the report is about.
+    pub website: String,
+    /// Which report to run.
+    pub report: ReportKind,
+    /// The window and the filters.
+    #[serde(flatten)]
+    pub query: StatsQuery,
 }

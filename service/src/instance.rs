@@ -268,7 +268,8 @@ CREATE INDEX IF NOT EXISTS chat_message_session ON chat_message (session_id, at)
 // --------------------------------------------------------------------------------------
 
 /// An account.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Account {
     /// The account id.
     pub id: String,
@@ -285,7 +286,8 @@ pub struct Account {
 }
 
 /// A sign-in attempt.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LoginRecord {
     /// When it happened.
     pub at: chrono::NaiveDateTime,
@@ -448,7 +450,8 @@ impl SqliteInstance {
 // --------------------------------------------------------------------------------------
 
 /// One line of the instance log.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LogEntry {
     /// When it happened.
     pub at: chrono::NaiveDateTime,
@@ -518,7 +521,8 @@ impl SqliteInstance {
 // --------------------------------------------------------------------------------------
 
 /// One row of a Search Console export.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GscRow {
     /// The day (`YYYY-MM-DD`).
     pub date: String,
@@ -537,7 +541,8 @@ pub struct GscRow {
 }
 
 /// What an import did.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportReport {
     /// The import id.
     pub id: i64,
@@ -700,7 +705,8 @@ impl SqliteInstance {
 // --------------------------------------------------------------------------------------
 
 /// A saved report.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     /// The snapshot id.
     pub id: String,
@@ -780,7 +786,8 @@ impl SqliteInstance {
 // --------------------------------------------------------------------------------------
 
 /// One message of a conversation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
     /// The message id.
     pub id: i64,
@@ -795,7 +802,8 @@ pub struct ChatMessage {
 }
 
 /// One conversation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatSession {
     /// The session id.
     pub id: String,
