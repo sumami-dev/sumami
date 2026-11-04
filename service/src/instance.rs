@@ -113,6 +113,11 @@ pub trait Instance: Send + Sync {
     /// Put an account in a team, or take it out of it.
     fn set_account_team(&self, username: &str, team_id: Option<&str>) -> Result<Account>;
 
+    /// Record an uptime check.
+    fn record_uptime(&self, check: &crate::uptime::UptimeCheck) -> Result<()>;
+    /// The uptime checks of a website, newest first.
+    fn uptime_checks(&self, website_id: &str, limit: i64) -> Result<Vec<crate::uptime::UptimeCheck>>;
+
     /// Make sure everything is in the file itself.
     ///
     /// SQLite keeps the newest writes in a **write-ahead log** next to the
@@ -297,6 +302,19 @@ CREATE TABLE IF NOT EXISTS chat_message (
     data        TEXT
 );
 CREATE INDEX IF NOT EXISTS chat_message_session ON chat_message (session_id, at);
+
+-- The uptime checks: was the website answering? One row per check.
+CREATE TABLE IF NOT EXISTS uptime_check (
+    id          INTEGER PRIMARY KEY,
+    website_id  TEXT NOT NULL,
+    at          INTEGER NOT NULL,
+    ok          INTEGER NOT NULL,
+    status      INTEGER,
+    latency_ms  INTEGER,
+    error       TEXT,
+    network_ok  INTEGER
+);
+CREATE INDEX IF NOT EXISTS uptime_check_website_at ON uptime_check (website_id, at);
 "#,
         )?;
         Ok(())
@@ -969,6 +987,62 @@ impl SqliteInstance {
 }
 
 // --------------------------------------------------------------------------------------
+// The uptime checks
+// --------------------------------------------------------------------------------------
+
+impl SqliteInstance {
+    /// Record an uptime check.
+    pub fn record_uptime(&self, check: &crate::uptime::UptimeCheck) -> Result<()> {
+        let at = ts(check.at);
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO uptime_check (website_id, at, ok, status, latency_ms, error, network_ok)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    check.website_id,
+                    at,
+                    check.ok as i64,
+                    check.status.map(|status| status as i64),
+                    check.latency_ms.map(|latency| latency as i64),
+                    check.error,
+                    check.network_ok.map(|ok| ok as i64),
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// The uptime checks of a website, newest first.
+    pub fn uptime_checks(
+        &self,
+        website_id: &str,
+        limit: i64,
+    ) -> Result<Vec<crate::uptime::UptimeCheck>> {
+        self.with_connection(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT website_id, at, ok, status, latency_ms, error, network_ok
+                 FROM uptime_check WHERE website_id = ?1
+                 ORDER BY at DESC, id DESC LIMIT ?2",
+            )?;
+            let mut rows = stmt.query(params![website_id, limit.clamp(1, 10_000)])?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                out.push(crate::uptime::UptimeCheck {
+                    website_id: row.get(0)?,
+                    at: from_ts(row.get(1)?),
+                    ok: row.get::<_, i64>(2)? != 0,
+                    status: row.get::<_, Option<i64>>(3)?.map(|status| status as u16),
+                    latency_ms: row.get::<_, Option<i64>>(4)?.map(|latency| latency as u64),
+                    error: row.get(5)?,
+                    network_ok: row.get::<_, Option<i64>>(6)?.map(|ok| ok != 0),
+                });
+            }
+            Ok(out)
+        })
+    }
+}
+
+// --------------------------------------------------------------------------------------
 // The teams
 // --------------------------------------------------------------------------------------
 
@@ -1385,6 +1459,18 @@ impl Instance for SqliteInstance {
 
     fn set_account_team(&self, username: &str, team_id: Option<&str>) -> Result<Account> {
         SqliteInstance::set_account_team(self, username, team_id)
+    }
+
+    fn record_uptime(&self, check: &crate::uptime::UptimeCheck) -> Result<()> {
+        SqliteInstance::record_uptime(self, check)
+    }
+
+    fn uptime_checks(
+        &self,
+        website_id: &str,
+        limit: i64,
+    ) -> Result<Vec<crate::uptime::UptimeCheck>> {
+        SqliteInstance::uptime_checks(self, website_id, limit)
     }
 
     fn checkpoint(&self) -> Result<()> {

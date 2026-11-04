@@ -185,7 +185,7 @@ fn post(port: u16, path: &str, body: &str, token: Option<&str>) -> String {
 }
 
 /// How many rows the data file holds.
-fn count_rows(path: &PathBuf) -> i64 {
+fn count_rows(path: &std::path::Path) -> i64 {
     use sumami_service::pool::Db;
 
     let db = Db::open(path, "256MB").expect("the data file opens");

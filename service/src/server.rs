@@ -356,6 +356,20 @@ pub async fn serve_with(
         config.paths.dir.display()
     );
 
+    // The uptime checker: every website, every few minutes.
+    if config.uptime_interval_secs > 0 {
+        let state = state.clone();
+        let interval = std::time::Duration::from_secs(config.uptime_interval_secs);
+        let timeout = std::time::Duration::from_secs(config.uptime_timeout_secs.clamp(1, 60));
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(interval);
+            loop {
+                ticker.tick().await;
+                check_the_websites(&state, timeout).await;
+            }
+        });
+    }
+
     // Make sure the writer thread is told to stop when the server does, and that
     // the instance store puts everything into its file — so a backup taken
     // right after the server stops is complete.
@@ -400,6 +414,40 @@ pub async fn serve_with(
 }
 
 
+/// Check every website and record the answers.
+///
+/// The check is a blocking HTTP call, so it happens on a thread that is allowed
+/// to block. A website that cannot be reached is recorded too — with the note
+/// that **our** network was the problem, when that is what it was.
+async fn check_the_websites(state: &AppState, timeout: std::time::Duration) {
+    let websites = state.storage.websites().unwrap_or_default();
+    for website in websites {
+        let Some(domain) = website.domain.clone() else {
+            continue;
+        };
+        let domain = domain.trim();
+        if domain.is_empty() {
+            continue;
+        }
+        let url = if domain.starts_with("http://") || domain.starts_with("https://") {
+            domain.to_string()
+        } else {
+            format!("https://{domain}")
+        };
+
+        let checker = crate::uptime::Checker::with_timeout(timeout);
+        let id = website.id.clone();
+        let checked = tokio::task::spawn_blocking(move || checker.record(&id, &url)).await;
+        let Ok(check) = checked else {
+            continue;
+        };
+
+        if let Err(err) = state.instance.record_uptime(&check) {
+            tracing::error!(error = %err, "could not record the uptime check");
+        }
+    }
+}
+
 /// Wait for Ctrl-C (or SIGTERM) and shut down gracefully.
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -412,7 +460,6 @@ async fn shutdown_signal() {
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         {
             signal.recv().await;
-        } else {
         }
     };
 

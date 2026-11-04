@@ -389,3 +389,31 @@ async fn a_team_is_created_filled_and_emptied() {
     assert_eq!(status, StatusCode::OK);
     assert!(teams.as_array().unwrap().is_empty());
 }
+
+/// An uptime check is recorded, and the history comes back.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_uptime_check_is_recorded() {
+    let (app, _db, _writer, _guard) = app("uptime").await;
+
+    // Check the website. The domain of "w1" is example.com, which is not
+    // reachable from the test — what matters is that a check is recorded and
+    // that the history comes back.
+    let (status, checked) = call(
+        &app,
+        "POST",
+        "/api/websites/w1/uptime",
+        Some(r#"{"url": "http://127.0.0.1:1/", "timeout": 1}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the check should be recorded");
+    assert_eq!(checked["check"]["websiteId"], "w1");
+    assert!(checked["check"]["ok"].as_bool().is_some());
+
+    // The history holds it.
+    let (status, history) = call(&app, "GET", "/api/websites/w1/uptime", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let checks = history["checks"].as_array().unwrap();
+    assert_eq!(checks.len(), 1, "the check is in the history");
+    assert_eq!(checks[0]["websiteId"], "w1");
+    assert_eq!(history["availability"]["checks"], 1);
+}

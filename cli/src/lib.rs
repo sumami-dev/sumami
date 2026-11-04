@@ -128,6 +128,20 @@ enum Command {
         #[arg(long)]
         skip_existing: bool,
     },
+    /// Check whether a website is up.
+    ///
+    /// When the site does not answer, two references are asked as well, so
+    /// "the site is down" and "this machine has no internet" are not confused.
+    Uptime {
+        /// The URL to check.
+        url: String,
+        /// How long to wait for an answer, in seconds.
+        #[arg(long, default_value_t = 10)]
+        timeout: u64,
+        /// The website the check belongs to — it is recorded.
+        #[arg(long)]
+        website: Option<String>,
+    },
     /// Delete data that is older than the retention window.
     Prune {
         /// The website id (default: every website).
@@ -461,6 +475,86 @@ pub fn run() -> Result<()> {
                 stats.directory.display()
             );
             println!("read it back with:  sumami --parquet '{}/' summary <website-id>", stats.directory.display());
+            Ok(())
+        }
+        Command::Uptime {
+            url,
+            timeout,
+            website,
+        } => {
+            let checker = sumami_service::uptime::Checker::with_timeout(
+                std::time::Duration::from_secs(timeout.clamp(1, 60)),
+            );
+            let verdict = checker.check(&url);
+
+            if cli.json {
+                let value = match &verdict {
+                    sumami_service::uptime::Verdict::Up {
+                        status,
+                        latency_ms,
+                    } => serde_json::json!({
+                        "url": url,
+                        "up": true,
+                        "status": status,
+                        "latencyMs": latency_ms,
+                    }),
+                    sumami_service::uptime::Verdict::Down { error } => serde_json::json!({
+                        "url": url,
+                        "up": false,
+                        "error": error,
+                        "networkOk": true,
+                    }),
+                    sumami_service::uptime::Verdict::NetworkDown { error, references } => {
+                        serde_json::json!({
+                            "url": url,
+                            "up": false,
+                            "error": error,
+                            "networkOk": false,
+                            "references": references,
+                        })
+                    }
+                };
+                println!("{}", serde_json::to_string_pretty(&value)?);
+            } else {
+                println!("{url}: {}", verdict.summary());
+            }
+
+            // The check is recorded when it belongs to a website.
+            if let Some(website) = website {
+                let check = checker.record(&website, &url);
+
+                if let Some(base) = &cli.url {
+                    // Against a running server, the check goes through the API.
+                    let source = Source::remote(
+                        base,
+                        cli.token.as_deref(),
+                        cli.username.as_deref(),
+                        cli.password.as_deref(),
+                    )?;
+                    if let Source::Remote { base, token } = &source {
+                        let agent = ureq::Agent::new_with_defaults();
+                        let _: serde_json::Value = agent
+                            .post(&format!("{base}/api/websites/{website}/uptime"))
+                            .header("authorization", &format!("Bearer {token}"))
+                            .send_json(serde_json::json!({ "url": url }))?
+                            .body_mut()
+                            .read_json()?;
+                        println!("recorded for {website}");
+                        return Ok(());
+                    }
+                }
+
+                // Offline: straight into the instance store.
+                let paths = sumami_service::config::Paths::new(
+                    Some(cli.dir.clone()),
+                    cli.db.clone(),
+                    &cli.backend,
+                );
+                let instance = sumami_service::instance::SqliteInstance::open(&paths.instance)
+                    .map_err(|err| anyhow!("opening the instance store: {err}"))?;
+                instance.record_uptime(&check)?;
+                println!("recorded for {website}");
+            }
             Ok(())
         }
         Command::Prune { website } => {

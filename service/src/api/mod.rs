@@ -271,6 +271,11 @@ pub fn router(state: AppState) -> Router {
             "/api/cache",
             get(admin::cache_stats).delete(admin::purge_cache),
         )
+        // --- the uptime ---
+        .route(
+            "/api/websites/{id}/uptime",
+            get(admin::uptime_history).post(admin::check_uptime),
+        )
         // --- the teams ---
         .route(
             "/api/teams",

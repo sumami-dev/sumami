@@ -129,6 +129,13 @@ pub struct Config {
     pub max_queue: usize,
     /// Seconds between writer flushes.
     pub flush_interval_secs: u64,
+    /// How often the uptime of the websites is checked, in seconds.
+    ///
+    /// `0` turns the checker off. The default is every five minutes: often
+    /// enough to see an outage, rare enough not to be a nuisance.
+    pub uptime_interval_secs: u64,
+    /// How long a website has to answer before it counts as down, in seconds.
+    pub uptime_timeout_secs: u64,
     /// How old a cached report may be, in seconds.
     ///
     /// The cache is thrown away whenever the data changes, and the writer
@@ -240,6 +247,16 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(2);
 
+        // The uptime checker: every five minutes, with ten seconds to answer.
+        let uptime_interval_secs = std::env::var("SUMAMI_UPTIME_INTERVAL_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300);
+        let uptime_timeout_secs = std::env::var("SUMAMI_UPTIME_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
+
         // How old a cached report may be. Thirty seconds is invisible on a
         // dashboard and turns a hundred queries into one.
         let cache_stale_secs = std::env::var("SUMAMI_CACHE_STALE_SECS")
@@ -299,6 +316,8 @@ impl Config {
             max_queue,
             flush_interval_secs,
             cache_stale_secs,
+            uptime_interval_secs,
+            uptime_timeout_secs,
             retention_days,
             country_header,
             keep_query,

@@ -448,6 +448,86 @@ pub async fn remove_member(
 }
 
 // --------------------------------------------------------------------------------------
+// The uptime
+// --------------------------------------------------------------------------------------
+
+/// The body of an uptime check.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UptimeRequest {
+    /// The URL to check. Defaults to the website's own domain.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// How long to wait for an answer, in seconds.
+    #[serde(default)]
+    pub timeout: Option<u64>,
+}
+
+/// `POST /api/websites/{id}/uptime` — check the website and record the answer.
+///
+/// The check rules out **our** network: when the site does not answer, two
+/// references are asked as well, so "the site is down" and "we are offline"
+/// are not confused.
+pub async fn check_uptime(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<UptimeRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let website = state
+        .storage
+        .website(&id)?
+        .ok_or_else(|| ApiError::NotFound(format!("no website '{id}'")))?;
+
+    let url = match request.url {
+        Some(url) => url,
+        None => website_url(website.domain.as_deref().unwrap_or_default()),
+    };
+
+    let timeout = std::time::Duration::from_secs(request.timeout.unwrap_or(10).clamp(1, 60));
+    let checker = crate::uptime::Checker::with_timeout(timeout);
+
+    // The check is a blocking HTTP call: it happens on a thread that is allowed
+    // to block, never on the request path.
+    let check = tokio::task::spawn_blocking(move || checker.record(&id, &url))
+        .await
+        .map_err(|err| ApiError::BadRequest(format!("the check failed: {err}")))?;
+
+    state.instance.record_uptime(&check)?;
+
+    Ok(Json(serde_json::json!({
+        "check": check,
+        "availability": crate::uptime::Availability::of(std::slice::from_ref(&check)),
+    })))
+}
+
+/// `GET /api/websites/{id}/uptime` — the uptime history and the availability.
+pub async fn uptime_history(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<LogQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let limit = query.limit.unwrap_or(100).clamp(1, 10_000);
+    let checks = state.instance.uptime_checks(&id, limit)?;
+    Ok(Json(serde_json::json!({
+        "checks": checks,
+        "availability": crate::uptime::Availability::of(&checks),
+    })))
+}
+
+/// The URL of a website's domain.
+fn website_url(domain: &str) -> String {
+    let domain = domain.trim();
+    if domain.is_empty() {
+        return String::new();
+    }
+    if domain.starts_with("http://") || domain.starts_with("https://") {
+        domain.to_string()
+    } else {
+        format!("https://{domain}")
+    }
+}
+
+// --------------------------------------------------------------------------------------
 // The cache
 // --------------------------------------------------------------------------------------
 

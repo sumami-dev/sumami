@@ -44,6 +44,12 @@ duckdb.workspace = true
 # the AI chat history — is small, mutable and transactional, which SQLite does
 # better. The two live in separate files for exactly that reason.
 #
+# The uptime checker needs an HTTP client, and it needs one that does not pull
+# a whole async stack into the process: `ureq` is blocking, small, and already
+# in the tree (the CLI uses it for the HTTP mode). The checker runs on a
+# blocking thread, never on the request path.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+
 # The `functions` feature is the one thing rusqlite keeps behind a flag: it lets
 # SQLite call back into Rust. The migration from schema v3 to v4 needs it —
 # SQLite has no hash of its own, so the old text ids are turned into UUIDs by a

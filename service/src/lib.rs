@@ -21,5 +21,6 @@ pub mod storage;
 pub mod static_files;
 #[cfg(feature = "tls")]
 pub mod tls;
+pub mod uptime;
 pub mod ua;
 pub mod writer;
