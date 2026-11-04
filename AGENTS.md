@@ -136,31 +136,49 @@ internal credentials, or personal notes belongs in `mneme` only. The public repo
 Analytics software handles data that identifies people. These rules are not stylistic —
 they are **acceptance criteria**. A change that violates them does not merge.
 
-### 2.1 The data we collect (and what we refuse to collect)
+### 2.1 The data we collect
 
-Collected, all of it optional, all of it coarse:
+**The baseline is Umami's field set.** We do not store less than Umami does — a feature
+Umami has and we lack is a feature we owe our users. The list below is what the session
+and event rows carry.
 
-* page URL (path; query string stripped by default), referrer, page title
-* coarse device class, browser family, OS family, viewport size
-* country/region/city — **only** if an edge/geolocation header is present
-  (`CF-IPCountry`, `X-Country`, …); never derived from a geo-IP database
-* session id: a **random, non-reversible** id generated server-side
+| Group | Fields |
+| --- | --- |
+| Page | `url`, `url_query`, `title` |
+| Referrer | `referrer` (host), `referrer_path`, `referrer_query` |
+| Site | `hostname` |
+| Environment | `browser`, `browser_version`, `os`, `os_version`, `device`, `screen`, `language`, `country`, `region`, `city` |
+| Marketing | `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` |
+| Ad click ids | `gclid`, `fbclid`, `msclkid`, `ttclid`, `lifatid`, `twclid` |
+| Performance | `lcp`, `inp`, `cls`, `fcp`, `ttfb` (Core Web Vitals) |
+| Events | `event_name`, `event_type`, `tag`, `data` |
+| Revenue | `revenue` per session/event, with `currency` |
+| Visitors | a visitor id that survives across days |
 
-**Never collected, ever:**
+**What we never collect** — the same short list Umami keeps:
 
-* raw IP addresses — not stored, not logged, not hashed into a stable identifier
+* raw IP addresses — not stored, not logged (a hash is used to derive the visitor id)
 * cookies, `localStorage` identifiers, fingerprinting (canvas, audio, fonts, hardware)
-* precise geolocation, precise viewport, installed fonts, plugin lists
-* any account credential, form content, keystrokes, page text
+* precise geolocation (country comes from an edge header, not a GeoIP database)
+* form contents, keystrokes, page text
 
-If a feature requires storing something from the "never" list, the feature is out of scope.
-Say so in the issue; do not implement it quietly.
+### 2.1a The customer is a site owner
+
+Our user is the person who **runs the site**, not the person who visits it. They care
+about two things: **making money** and **what it costs**. Every design decision is
+measured against those two questions:
+
+* does this help them earn more (where did the money come from — which post, which
+  referrer, which campaign, which page)?
+* what does it cost them (disk, memory, CPU, operations)?
+
+Privacy is not the selling point. *"You can see where the money came from"* is.
 
 ### 2.2 Rules that apply to every component
 
-1. **Cookieless by default.** The tracker sets no cookies and no persistent storage identifiers.
-   Honour `navigator.doNotTrack` and Global Privacy Control (`navigator.globalPrivacyControl`)
-   by not sending anything.
+1. **Cookieless by default.** The tracker sets no cookies and no persistent storage
+   identifiers. Honour `navigator.doNotTrack` and Global Privacy Control
+   (`navigator.globalPrivacyControl`) by not sending anything.
 2. **No raw IPs in logs.** Access logs record method, path, status, duration. Query strings are
    stripped from logged paths (they routinely carry session tokens and PII).
 3. **No request bodies in logs.** Payloads are validated and discarded, never logged verbatim.
@@ -174,6 +192,9 @@ Say so in the issue; do not implement it quietly.
 7. **Secrets never enter the repo.** JWT secret, admin password, DB path with credentials come
    from the environment or a file with `0600`. `.env` is git-ignored; `*.duckdb` and `*.duckdb.wal`
    are git-ignored.
+7a. **Never trade away a feature for storage.** The engine's job is to make the full
+   Umami field set cheap to keep. If a schema change would drop a field we do not have
+   an equivalent for, fix the schema — not the field list.
 8. **Access control is default-deny.** Statistics and website management require a valid token
    except for the deliberately public endpoints (`/api/send`, `/api/collect`, `/sumami.js`,
    `/api/heartbeat`).
