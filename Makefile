@@ -7,6 +7,9 @@
 CARGO ?= cargo
 CARGO_HTTP_TIMEOUT ?= 600
 TARGET ?= target/release
+# The version of the release: the crate version, not DuckDB's.
+VERSION ?= 0.1.0
+# The DuckDB release the dynamic build downloads.
 DUCKDB_VERSION ?= v2.0.0
 
 .PHONY: all build release test lint fmt run clean package build-small
@@ -49,7 +52,7 @@ run:
 
 ## Build the release artefact.
 ##
-##   sumami-<ver>-<os>-<arch>.tar.gz
+##   sumami-v<ver>-<os>-<arch>.tar.gz
 ##       the `sumami` binary (server + client) + js/ + docs/
 ##
 ## One binary: the server and the client share the schema, the metric definitions and
@@ -61,8 +64,8 @@ package: release
 	ln -sf sumami dist/bundle/sumami-server; \
 	ln -sf sumami dist/bundle/sumami-client; \
 	cp -r js dist/bundle/js; cp -r docs dist/bundle/docs; \
-	tar czf sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz -C dist/bundle .; \
-	echo "wrote sumami-$(DUCKDB_VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
+	tar czf sumami-v$(VERSION)-$$(uname -s)-$$(uname -m).tar.gz -C dist/bundle .; \
+	echo "wrote sumami-v$(VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
 
 ## Remove the build artefacts.
 clean:

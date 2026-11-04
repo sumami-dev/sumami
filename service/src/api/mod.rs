@@ -297,6 +297,8 @@ pub fn router(state: AppState) -> Router {
         .route("/sumami.js", get(crate::static_files::tracker))
         .route("/app/{*path}", get(crate::static_files::app_asset))
         .route("/docs/{*path}", get(crate::static_files::docs_asset))
+        // The directory itself: "/docs/" is what a link to the folder looks like.
+        .route("/docs/", get(crate::static_files::docs_index))
         .route("/docs", get(crate::static_files::docs_index))
         .route("/", get(crate::static_files::index))
         .fallback(get(crate::static_files::not_found))
