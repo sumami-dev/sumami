@@ -38,9 +38,19 @@ pub enum Command {
 
 #[derive(Debug, clap::Args)]
 pub struct ServeArgs {
-    /// Path of the DuckDB database file.
+    /// Path of the database file.
     #[arg(long, env = "SUMAMI_DB")]
     db: Option<std::path::PathBuf>,
+    /// The data engine: `duckdb` (the default) or `sqlite`.
+    ///
+    /// Both store the same tables and answer the same reports; they differ in
+    /// everything else. DuckDB is a column store: it stores the events in far fewer
+    /// bytes and aggregates them faster. SQLite is a row store in a single ordinary
+    /// file: it takes more space and is slower on the heavy aggregations, but it
+    /// allows many readers next to one writer and it is what most other tools
+    /// already know how to open.
+    #[arg(long, env = "SUMAMI_BACKEND", default_value = "duckdb")]
+    backend: String,
     /// Address to bind to.
     #[arg(long, env = "SUMAMI_HOST")]
     host: Option<String>,
@@ -87,6 +97,9 @@ pub struct AdminArgs {
     /// Path of the DuckDB database file.
     #[arg(long, env = "SUMAMI_DB")]
     db: Option<std::path::PathBuf>,
+    /// The data engine: `duckdb` (the default) or `sqlite`.
+    #[arg(long, env = "SUMAMI_BACKEND", default_value = "duckdb")]
+    backend: String,
 }
 
 /// Parse the command line and run the server.
@@ -118,22 +131,26 @@ pub async fn serve_on_runtime(args: ServeArgs) -> Result<()> {
 
 /// Open the storage backend the configuration asks for.
 ///
-/// The open-source build only has DuckDB. The private `sumami-pro` build adds SQLite
-/// and PostgreSQL; see `pro/backend.rs`.
-fn open_storage(config: &Config) -> Result<Arc<dyn Storage>> {
-    let storage: Arc<dyn Storage> = Arc::new(Db::open_with(
-        &config.db_path,
-        &config.duckdb_memory_limit,
-        &config.duckdb_flush_threshold,
-        &config.duckdb_temp_limit,
-        config.duckdb_threads,
-    )?);
+/// The open-source build has DuckDB and SQLite. The private `sumami-pro` build adds
+/// PostgreSQL; see `pro/backend.rs`.
+fn open_storage(config: &Config, backend: &str) -> Result<Arc<dyn Storage>> {
+    let storage: Arc<dyn Storage> = match backend.to_ascii_lowercase().as_str() {
+        "duckdb" => Arc::new(Db::open_with(
+            &config.db_path,
+            &config.duckdb_memory_limit,
+            &config.duckdb_flush_threshold,
+            &config.duckdb_temp_limit,
+            config.duckdb_threads,
+        )?),
+        "sqlite" => Arc::new(crate::sqlite::SqliteBackend::open(&config.db_path)?),
+        other => anyhow::bail!("unknown backend '{other}' (duckdb, sqlite)"),
+    };
     Ok(storage)
 }
 
 /// Build the configuration from the serve arguments.
 fn config_from(args: &ServeArgs) -> Result<Config> {
-    Config::from_env_and_flags(
+    let mut config = Config::from_env_and_flags(
         args.db.clone(),
         args.host.clone(),
         args.port,
@@ -141,7 +158,16 @@ fn config_from(args: &ServeArgs) -> Result<Config> {
         args.retention_days,
         args.country_header.clone(),
         args.docs_dir.clone(),
-    )
+    )?;
+
+    // The default file name follows the engine, so `--backend sqlite` with no
+    // `--db` does not create a file called `sumami.duckdb`.
+    if args.db.is_none() && std::env::var("SUMAMI_DB").is_err() {
+        if args.backend.eq_ignore_ascii_case("sqlite") {
+            config.db_path = std::path::PathBuf::from("sumami.sqlite");
+        }
+    }
+    Ok(config)
 }
 
 /// Create (or update) the admin user.
@@ -156,7 +182,7 @@ fn admin(args: AdminArgs) -> Result<()> {
         None,
     )?;
 
-    let storage = open_storage(&config)?;
+    let storage = open_storage(&config, &args.backend)?;
     let password = args
         .password
         .clone()
@@ -193,7 +219,7 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
     }
     config.ssl_port = args.ssl_port;
 
-    let storage = open_storage(&config)?;
+    let storage = open_storage(&config, &args.backend)?;
     serve_with(Arc::new(config), storage).await
 }
 

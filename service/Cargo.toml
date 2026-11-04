@@ -28,6 +28,16 @@ axum.workspace = true
 chrono.workspace = true
 clap.workspace = true
 duckdb.workspace = true
+
+# The alternative data engine. SQLite is bundled (compiled in), so the release is
+# still one self-contained file — it grows by about 1.2 MB.
+#
+# Why a second engine: the data plane (the events) is append-only and read as
+# aggregations, which DuckDB does cheaper and faster; but everything else an
+# instance keeps — logins, logs, the GSC import, the cache, query snapshots,
+# the AI chat history — is small, mutable and transactional, which SQLite does
+# better. The two live in separate files for exactly that reason.
+rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
