@@ -61,6 +61,24 @@
       default the tracker and the API are the same host and no CORS configuration is needed.
     </p>
 
+    <h2>From TypeScript</h2>
+    <p>
+      There is a typed package on <a href="https://jsr.io/@sumimi/tracker">JSR</a> (and on
+      npm): it injects the script and gives the calls types.
+    </p>
+    <pre class="shell"><code><span class="cmt"># deno</span>
+deno add jsr:@sumimi/tracker
+
+<span class="cmt"># npm</span>
+npm install @sumimi/tracker</code></pre>
+    <pre class="shell"><code>import { init } from "@sumimi/tracker";
+
+<span class="cmt">// The calls made before the script has loaded are queued.</span>
+const sumimi = init({ website: "&lt;website-uuid&gt;" });
+
+sumimi.track("signup", { plan: "pro" });
+sumimi.identify({ plan: "pro" });</code></pre>
+
     <h2>Attributes</h2>
     <div class="table-wrap">
       <table>

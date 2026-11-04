@@ -33,6 +33,22 @@ An open-source, high-performance alternative to Umami.
 [`AGENTS.md`](AGENTS.md) is the design document: architecture, API contract, privacy
 rules, and the conventions every change has to follow.
 
+## The tracker, typed
+
+```bash
+deno add jsr:@sumimi/tracker     # or: npm install @sumimi/tracker
+```
+
+```ts
+import { init } from "@sumimi/tracker";
+
+const sumimi = init({ website: "<website-uuid>" });
+sumimi.track("signup", { plan: "pro" });
+```
+
+The tracker itself is still one file of plain JavaScript, served by the server
+at `/sumimi.js` — the package injects it and hands the calls over.
+
 ## Install
 
 ```bash
