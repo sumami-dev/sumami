@@ -294,3 +294,49 @@ fn numbers(text: &str) -> Vec<String> {
     }
     out
 }
+
+/// "page views" is a metric, not a question about the pages.
+#[test]
+fn the_metric_is_not_mistaken_for_a_dimension() {
+    let now = now();
+
+    // "how many page views" asks for a number, not for the breakdown.
+    let intent = analyst::parse("how many page views last 7 days", now);
+    assert_eq!(intent.metric, Metric::Pageviews);
+    assert_eq!(intent.dimension, None, "not a question about the pages");
+
+    // "top pages" is a question about the pages.
+    let intent = analyst::parse("top pages", now);
+    assert_eq!(intent.dimension, Some(Dimension::Url));
+
+    // The same in Chinese: "浏览量" is the metric, "页面" is the dimension.
+    let intent = analyst::parse("最近 30 天的浏览量", now);
+    assert_eq!(intent.metric, Metric::Pageviews);
+    assert_eq!(intent.dimension, None);
+}
+
+/// One is one.
+#[test]
+fn one_is_not_plural() {
+    // A database with exactly one page view.
+    let path = temp_db("plural");
+    let db = Db::open(&path, "256MB").unwrap();
+    let website = db
+        .create_website("Example", Some("example.com"), 0, None)
+        .unwrap()
+        .id;
+    db.write_batch(&[hit(&website, "s1", "v1", "/one", 1)])
+        .unwrap();
+
+    let answer = analyst::ask(&db, &website, "how many page views", now()).unwrap();
+    assert!(
+        answer.text.contains("1 page view"),
+        "the answer should be singular: {}",
+        answer.text
+    );
+    assert!(
+        !answer.text.contains("1 page views"),
+        "the answer should be singular: {}",
+        answer.text
+    );
+}

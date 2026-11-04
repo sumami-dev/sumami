@@ -86,6 +86,20 @@ impl Metric {
         }
     }
 
+    /// The name of the metric, in English, for **one** of them.
+    ///
+    /// "1 page views" is the kind of thing that makes a person stop trusting
+    /// the rest of the sentence.
+    pub fn english_one(self) -> &'static str {
+        match self {
+            Metric::Pageviews => "page view",
+            Metric::Visitors => "visitor",
+            Metric::Sessions => "session",
+            Metric::Bounces => "bounce",
+            Metric::Duration => "average visit",
+        }
+    }
+
     /// The name of the metric, in Chinese.
     pub fn chinese(self) -> &'static str {
         match self {
@@ -553,6 +567,14 @@ fn metric(text: &str, chinese: bool) -> Metric {
 
 /// The dimension the question breaks the traffic down by.
 fn dimension(text: &str, chinese: bool) -> Option<Dimension> {
+    // "page views" is a **metric**, not a dimension: "how many page views" is
+    // not a question about the pages. The metric phrases are taken out before
+    // the dimensions are looked for.
+    let text = &text
+        .replace("page views", " ")
+        .replace("pageviews", " ")
+        .replace("page view", " ");
+
     if chinese {
         if text.contains("来源") || text.contains("引荐") || text.contains("referer") || text.contains("referrer") {
             return Some(Dimension::Referrer);
@@ -671,7 +693,12 @@ pub fn compose(facts: &Facts, intent: &Intent) -> String {
                 "Over the last {}: {} {}.",
                 period(facts, chinese),
                 number(value),
-                metric.english()
+                // One is one.
+                if value == 1 {
+                    metric.english_one()
+                } else {
+                    metric.english()
+                }
             )
         });
 

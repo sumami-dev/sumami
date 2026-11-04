@@ -33,7 +33,40 @@ pub enum Command {
     /// Create or update the admin user, then exit.
     Admin(AdminArgs),
     /// Print the resolved configuration, then exit.
-    Config,
+    Config(ConfigArgs),
+}
+
+/// The flags of the `config` command — the same ones `serve` takes, so the
+/// printed configuration is the one that would be used.
+#[derive(Debug, clap::Args)]
+pub struct ConfigArgs {
+    /// Address to bind to.
+    #[arg(long, env = "SUMAMI_HOST")]
+    host: Option<String>,
+    /// Port to bind to.
+    #[arg(long, env = "SUMAMI_PORT")]
+    port: Option<u16>,
+    /// Secret used to sign tokens (generated and stored on first run when omitted).
+    #[arg(long, env = "SUMAMI_JWT_SECRET")]
+    jwt_secret: Option<String>,
+    /// Default retention window in days (0 = keep forever).
+    #[arg(long, env = "SUMAMI_RETENTION_DAYS")]
+    retention_days: Option<i32>,
+    /// Header carrying the country code (e.g. `CF-IPCountry`).
+    #[arg(long, env = "SUMAMI_COUNTRY_HEADER")]
+    country_header: Option<String>,
+    /// Directory holding the documentation site.
+    #[arg(long, env = "SUMAMI_DOCS_DIR")]
+    docs_dir: Option<std::path::PathBuf>,
+    /// The instance directory.
+    #[arg(long, env = "SUMAMI_DIR", default_value = "sumami")]
+    dir: std::path::PathBuf,
+    /// The data file, when it should not be the default one.
+    #[arg(long, env = "SUMAMI_DB")]
+    db: Option<std::path::PathBuf>,
+    /// The data engine: `duckdb` (the default) or `sqlite`.
+    #[arg(long, env = "SUMAMI_BACKEND", default_value = "duckdb")]
+    backend: String,
 }
 
 #[derive(Debug, clap::Args)]
@@ -123,15 +156,19 @@ pub async fn run() -> Result<()> {
     match cli.command {
         Command::Serve(args) => serve(args).await,
         Command::Admin(args) => admin(args),
-        Command::Config => {
+        Command::Config(args) => {
             let config = Config::from_env_and_flags(
-                crate::config::Paths::new(None, None, "duckdb"),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
+                crate::config::Paths::new(
+                    Some(args.dir),
+                    args.db,
+                    &args.backend,
+                ),
+                args.host,
+                args.port,
+                args.jwt_secret,
+                args.retention_days,
+                args.country_header,
+                args.docs_dir,
             )?;
             println!("{config:#?}");
             Ok(())

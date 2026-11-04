@@ -8,7 +8,7 @@
 pub mod backup;
 mod gsc;
 mod output;
-mod seed;
+pub mod seed;
 mod source;
 
 use std::path::PathBuf;
@@ -421,10 +421,16 @@ pub fn run() -> Result<()> {
             to,
             skip_existing,
         } => {
-            let path = cli
-                .db
-                .clone()
-                .unwrap_or_else(|| sumami_service::config::Paths::new(None, None, "duckdb").data);
+            // The data file lives **inside the instance directory**. (Using the
+            // default path here meant `sumami backup --dir <dir>` archived an
+            // **empty** database — and said it had archived 0 rows, which looks
+            // like a successful backup of an empty site.)
+            let path = sumami_service::config::Paths::new(
+                Some(cli.dir.clone()),
+                cli.db.clone(),
+                &cli.backend,
+            )
+            .data;
 
             // The backup reads the database, so the server must be stopped (DuckDB
             // allows a single writer per file). `--url` is not supported here for the
@@ -459,8 +465,8 @@ pub fn run() -> Result<()> {
         }
         Command::Prune { website } => {
             let source = open_source(&cli, true)?;
-            let (sessions, events) = source.prune(website.as_deref())?;
-            println!("removed {sessions} sessions and {events} events");
+            let (events, revenue) = source.prune(website.as_deref())?;
+            println!("removed {events} events and {revenue} revenue records");
             Ok(())
         }
         Command::Erase { website, yes } => {
@@ -619,10 +625,16 @@ fn open_source(cli: &Cli, writable: bool) -> Result<Source> {
         );
     }
 
-    let path = cli
-        .db
-        .clone()
-        .unwrap_or_else(|| sumami_service::config::Paths::new(None, None, "duckdb").data);
+    // The data file lives **inside the instance directory** — the same place
+    // the seed writes it and the server reads it. (Using the default path here
+    // meant `--dir` was ignored on the read path: the CLI seeded one directory
+    // and then looked in another.)
+    let paths = sumami_service::config::Paths::new(
+        Some(cli.dir.clone()),
+        cli.db.clone(),
+        &cli.backend,
+    );
+    let path = paths.data;
 
     if writable {
         Source::local_writable(&path)
