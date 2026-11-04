@@ -23,11 +23,30 @@ An open-source, high-performance alternative to Umami.
 | `service/` | The server: collection API, stats API, auth, the writer, TLS.     |
 | `cli/`     | `sumami` — read and analyse a database, locally or over HTTP.     |
 | `sumami/`  | The facade crate: the server and the client as one library.       |
-| `js/`      | The tracker (`sumami.js`) and the dashboard frontend.              |
+| `js/`      | The dashboard frontend. The tracker is in `service/js/`.            |
 | `docs/`    | The website and documentation.                                     |
 
 [`AGENTS.md`](AGENTS.md) is the design document: architecture, API contract, privacy
 rules, and the conventions every change has to follow.
+
+## Install
+
+```bash
+cargo install sumami            # the server and the client, one binary
+sumami serve --dir ./sumami --port 3000
+```
+
+Or download the release archive (it ships the dashboard frontend and the
+documentation next to the executable):
+
+```bash
+curl -LO https://github.com/sumami-dev/sumami/releases/download/v0.1.0/sumami-v0.1.0-Darwin-arm64.tar.gz
+tar xzf sumami-v0.1.0-Darwin-arm64.tar.gz && cd sumami-v0.1.0-Darwin-arm64
+./sumami serve --dir ./sumami --port 3000
+```
+
+The crates are `sumami` (the binary), `sumami-service` (the library) and
+`sumami-cli` (the client). They are Apache-2.0.
 
 ## Quick start
 
