@@ -490,6 +490,9 @@ systemctl stop sumami
 <span class="cmt"># the events, the accounts and the signing secret</span>
 cp -a /var/lib/sumami/data.duckdb "$DEST/data-$STAMP.duckdb"
 cp -a /var/lib/sumami/instance.sqlite "$DEST/instance-$STAMP.sqlite"
+<span class="cmt"># the write-ahead log, if the server was killed instead of stopped —</span>
+<span class="cmt"># it holds whatever was written since the last checkpoint</span>
+cp -a /var/lib/sumami/instance.sqlite-wal "$DEST/" 2>/dev/null || true
 cp -a /var/lib/sumami/jwt-secret "$DEST/" 2>/dev/null || true
 <span class="cmt"># the ACME account and certificates, if Sumami manages TLS itself</span>
 cp -a /var/lib/sumami/acme "$DEST/" 2>/dev/null || true

@@ -302,7 +302,9 @@ pub async fn serve_with(
     let jwt_secret = Arc::new(jwt_secret);
 
     // The instance directory holds the accounts and the events: nobody else reads it.
-    config::restrict_permissions(&config.paths.dir);
+    // (A **directory** — 0700, not 0600: without the execute bit nobody could
+    // open the files inside it, and the server could not start a second time.)
+    config::restrict_directory(&config.paths.dir);
 
     // Make sure there is always an admin account to log in with. The accounts live
     // in the instance store, not in the analytics file.
@@ -354,8 +356,11 @@ pub async fn serve_with(
         config.paths.dir.display()
     );
 
-    // Make sure the writer thread is told to stop when the server does.
+    // Make sure the writer thread is told to stop when the server does, and that
+    // the instance store puts everything into its file — so a backup taken
+    // right after the server stops is complete.
     let writer_for_shutdown = state.writer.clone();
+    let instance_for_shutdown = state.instance.clone();
 
     // HTTPS with an automatically managed certificate, or plain HTTP.
     #[cfg(feature = "tls")]
@@ -376,6 +381,7 @@ pub async fn serve_with(
             _ = shutdown_signal() => {}
         }
         writer_for_shutdown.shutdown();
+        let _ = instance_for_shutdown.checkpoint();
         return Ok(());
     }
 
@@ -387,6 +393,9 @@ pub async fn serve_with(
     .await?;
 
     writer_for_shutdown.shutdown();
+    // The instance store keeps its newest writes in a write-ahead log: put them
+    // into the file, so a backup of that file is the whole instance.
+    let _ = instance_for_shutdown.checkpoint();
     Ok(())
 }
 
@@ -403,6 +412,7 @@ async fn shutdown_signal() {
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         {
             signal.recv().await;
+        } else {
         }
     };
 

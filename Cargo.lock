@@ -2323,6 +2323,8 @@ name = "sumami"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "libc",
+ "serde_json",
  "sumami-cli",
  "sumami-service",
  "tokio",

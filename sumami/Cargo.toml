@@ -36,3 +36,8 @@ tokio.workspace = true
 # The two halves of the open-source build.
 sumami-service = { path = "../service" }
 sumami-cli = { path = "../cli" }
+
+[dev-dependencies]
+# The shutdown test sends a real SIGTERM to the real executable.
+libc = "0.2"
+serde_json.workspace = true

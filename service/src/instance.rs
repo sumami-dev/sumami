@@ -112,6 +112,18 @@ pub trait Instance: Send + Sync {
     fn remove_member(&self, team_id: &str, username: &str) -> Result<bool>;
     /// Put an account in a team, or take it out of it.
     fn set_account_team(&self, username: &str, team_id: Option<&str>) -> Result<Account>;
+
+    /// Make sure everything is in the file itself.
+    ///
+    /// SQLite keeps the newest writes in a **write-ahead log** next to the
+    /// database, and PostgreSQL keeps them in the server's memory. A backup
+    /// that copies only the database file would miss them — so the store is
+    /// asked to put everything back into the file before it is copied.
+    ///
+    /// Doing nothing is the right answer for a store that has no such file.
+    fn checkpoint(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// The instance store, in SQLite.
@@ -155,6 +167,17 @@ impl SqliteInstance {
     pub fn with_connection<T>(&self, f: impl FnOnce(&mut Connection) -> Result<T>) -> Result<T> {
         let mut conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         f(&mut conn)
+    }
+
+    /// Move the write-ahead log into the database file.
+    ///
+    /// Without this, the file on disk is missing whatever was written since the
+    /// last checkpoint — and a backup of that file is missing it too.
+    pub fn checkpoint(&self) -> Result<()> {
+        self.with_connection(|conn| {
+            conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+            Ok(())
+        })
     }
 
     /// The schema.
@@ -1362,5 +1385,9 @@ impl Instance for SqliteInstance {
 
     fn set_account_team(&self, username: &str, team_id: Option<&str>) -> Result<Account> {
         SqliteInstance::set_account_team(self, username, team_id)
+    }
+
+    fn checkpoint(&self) -> Result<()> {
+        SqliteInstance::checkpoint(self)
     }
 }

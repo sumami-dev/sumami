@@ -438,12 +438,30 @@ pub fn resolve_jwt_secret(configured: &str, secret_path: &std::path::Path) -> an
     Ok(secret)
 }
 
-/// Best-effort `chmod 0600`.
+/// Best-effort `chmod 0600` — for a **file**.
 pub fn restrict_permissions(path: &std::path::Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+/// Best-effort `chmod 0700` — for a **directory**.
+///
+/// A directory needs the **execute** bit: without it the directory cannot be
+/// entered, and the files inside it cannot be opened — not even by the owner.
+///
+/// (The instance directory was set to `0600`, which is right for a file and
+/// wrong for a directory: the server started, ran, and then **could not start
+/// again** — the data file was unreachable.)
+pub fn restrict_directory(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
     }
     #[cfg(not(unix))]
     let _ = path;

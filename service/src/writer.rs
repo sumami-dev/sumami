@@ -9,14 +9,12 @@
 //!     one thread removes all locking from the request path.
 //!   * **Bounded memory.** If the buffer overflows (a traffic spike, a slow disk), the
 //!     *oldest* hits are dropped and counted. Analytics may lose a few samples; the server
-//!     must not die.
+//!     must not die — and it says so in the log, because a lost hit is a lost hit.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
-
-use anyhow::Result;
 
 use crate::models::Hit;
 use crate::storage::Storage;
@@ -146,6 +144,12 @@ impl Writer {
 ///
 /// The event table is **append only**, so this is a bulk append — the fastest path the
 /// engine has (measured 641x faster than an upsert, see issue #17).
+///
+/// **A failed write does not end the thread.** A hiccup — a locked file, a disk that
+/// hiccups, a database that is briefly busy — must not cost the site owner the
+/// traffic. The batch that failed is **kept** and written again, with a pause
+/// between the attempts. The thread only gives up when it is told to stop, and
+/// then it writes what is left before it leaves.
 fn writer_loop(
     storage: Arc<dyn Storage>,
     buffer: Arc<Buffer>,
@@ -153,53 +157,80 @@ fn writer_loop(
     _capacity: usize,
     writer: Writer,
 ) {
+    // The batch that could not be written yet. It stays here until it is.
+    let mut pending: Vec<Hit> = Vec::new();
+    let mut failures = 0u32;
+    let mut reported_dropped = 0u64;
+
     loop {
         if buffer.is_stopped() {
-            // Flush what is left, then leave.
-            let batch = buffer.drain();
+            // Flush what is left — and what could not be written — then leave.
+            let mut batch = std::mem::take(&mut pending);
+            batch.extend(buffer.drain());
             if !batch.is_empty() {
-                let _ = storage.write_batch(&batch);
+                if let Err(err) = storage.write_batch(&batch) {
+                    tracing::error!(
+                        error = %err,
+                        count = batch.len(),
+                        "the last batch could not be written — it is lost"
+                    );
+                }
             }
             tracing::debug!("sumami writer stopped");
             break;
         }
-        if let Err(err) = write_loop_step(&storage, &buffer, flush_interval, &writer) {
-            tracing::error!(error = %err, "sumami writer thread stopped");
-            break;
+
+        // Block until something arrives or the flush interval elapses.
+        {
+            let queue = buffer.queue.lock().unwrap_or_else(|e| e.into_inner());
+            if queue.is_empty() && pending.is_empty() {
+                let _ = buffer
+                    .signal
+                    .wait_timeout(queue, flush_interval)
+                    .unwrap_or_else(|e| e.into_inner());
+            }
+        }
+
+        let mut batch = std::mem::take(&mut pending);
+        batch.extend(buffer.drain());
+        if batch.is_empty() {
+            continue;
+        }
+
+        let count = batch.len();
+        match storage.write_batch(&batch) {
+            Ok(()) => {
+                failures = 0;
+                // The data changed: every cached report is stale now.
+                writer.version().fetch_add(1, Ordering::Relaxed);
+                tracing::debug!(count, "flushed batch");
+            }
+            Err(err) => {
+                // Keep the batch and try again. The pause grows with the number of
+                // failures, so a database that is down is not hammered.
+                failures += 1;
+                let pause = Duration::from_millis(250u64.saturating_mul(failures as u64).min(8_000));
+                tracing::error!(
+                    error = %err,
+                    count,
+                    failures,
+                    "failed to write batch — keeping it and trying again"
+                );
+                pending = batch;
+                std::thread::sleep(pause);
+            }
+        }
+
+        // Say it when hits are dropped: the buffer was full, so the **oldest**
+        // hits are gone. That is data the owner cannot get back — it is said
+        // once per batch, not once per hit.
+        let dropped = writer.dropped();
+        if dropped > reported_dropped {
+            tracing::warn!(
+                dropped,
+                "hits were dropped — the queue was full (raise SUMAMI_MAX_QUEUE)"
+            );
+            reported_dropped = dropped;
         }
     }
-}
-
-fn write_loop_step(
-    storage: &Arc<dyn Storage>,
-    buffer: &Arc<Buffer>,
-    flush_interval: Duration,
-    writer: &Writer,
-) -> Result<()> {
-    // Block until something arrives or the flush interval elapses.
-    {
-        let queue = buffer.queue.lock().unwrap_or_else(|e| e.into_inner());
-        if queue.is_empty() {
-            let _ = buffer
-                .signal
-                .wait_timeout(queue, flush_interval)
-                .unwrap_or_else(|e| e.into_inner());
-        }
-    }
-
-    let batch = buffer.drain();
-    if batch.is_empty() {
-        return Ok(());
-    }
-
-    let count = batch.len();
-    let written = storage.write_batch(&batch);
-    if let Err(err) = written {
-        tracing::error!(error = %err, count, "failed to write batch");
-        return Err(err);
-    }
-    // The data changed: every cached report is stale now.
-    writer.version().fetch_add(1, Ordering::Relaxed);
-    tracing::debug!(count, "flushed batch");
-    Ok(())
 }
