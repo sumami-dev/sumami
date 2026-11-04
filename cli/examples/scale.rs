@@ -14,6 +14,15 @@ use duckdb::Connection;
 use sumami_service::pool::Db;
 use sumami_service::storage::{Dimension, ReportQuery, Storage, TimeRange};
 
+/// A UUID from a text expression — the same shape the server hands out.
+fn uuid(text: &str) -> String {
+    format!(
+        "CAST(substr(md5({text}), 1, 8) || '-' || substr(md5({text}), 9, 4) || '-' || \
+         substr(md5({text}), 13, 4) || '-' || substr(md5({text}), 17, 4) || '-' || \
+         substr(md5({text}), 21, 12) AS UUID)"
+    )
+}
+
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let rows: i64 = args.get(1).and_then(|v| v.parse().ok()).unwrap_or(10_000_000);
@@ -93,8 +102,8 @@ INSERT INTO event (
 SELECT
   i,
   'w1',
-  'session-' || (i / 3)::VARCHAR,
-  'visitor-' || (i % 3000000)::VARCHAR,
+  {session},
+  {visitor},
   TIMESTAMP '2024-01-01' + to_seconds((i * 7919) % 31536000),
   {url_expr},
   {title_expr},
@@ -116,7 +125,10 @@ SELECT
   400.0 + (i % 900), 60.0 + (i % 220),
   'pageview'
 FROM generate_series(1, {rows}) t(i);
-"#
+"#,
+        // The ids are 128-bit UUIDs, the way the server hands them out.
+        session = uuid("'session-' || (i / 3)::VARCHAR"),
+        visitor = uuid("'visitor-' || (i % 3000000)::VARCHAR"),
     ))?;
     conn.execute_batch("CHECKPOINT")?;
     // The report layer works on the backend, not on the raw connection.
