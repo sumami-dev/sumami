@@ -279,7 +279,11 @@ impl Config {
 
         let keep_query = env_flag("SUMAMI_KEEP_QUERY", true);
 
-        let js_dir = env_path("SUMAMI_JS_DIR").unwrap_or_else(|| PathBuf::from("js"));
+        // The frontend and the documentation site live next to the executable
+        // when they are shipped with it — that is where the release archive puts
+        // them, and where a `cargo install`ed binary finds them. The working
+        // directory comes first, so running from a checkout still works.
+        let js_dir = env_path("SUMAMI_JS_DIR").unwrap_or_else(|| next_to_executable("js"));
 
         // The dashboard frontend is published on a CDN (jsDelivr serves this public
         // repository directly), so the backend never ships it. Point this at `/app`
@@ -291,7 +295,7 @@ impl Config {
 
         let docs_dir = docs_dir
             .or_else(|| env_path("SUMAMI_DOCS_DIR"))
-            .unwrap_or_else(|| PathBuf::from("docs"));
+            .unwrap_or_else(|| next_to_executable("docs"));
 
         let ssl_domain = std::env::var("SUMAMI_SSL_DOMAIN").ok().filter(|s| !s.is_empty());
         let ssl_email = std::env::var("SUMAMI_SSL_EMAIL").ok().filter(|s| !s.is_empty());
@@ -455,6 +459,22 @@ pub fn resolve_jwt_secret(configured: &str, secret_path: &std::path::Path) -> an
         .with_context(|| format!("writing jwt secret file {}", path.display()))?;
     restrict_permissions(&path);
     Ok(secret)
+}
+
+/// A directory next to the executable, or next to the working directory.
+///
+/// The release archive ships the frontend and the documentation site next to
+/// the binary, so a `cargo install`ed Sumami finds them wherever it was put.
+pub fn next_to_executable(name: &str) -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(directory) = exe.parent() {
+            let candidate = directory.join(name);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+    PathBuf::from(name)
 }
 
 /// Best-effort `chmod 0600` — for a **file**.
