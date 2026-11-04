@@ -546,11 +546,16 @@ pub trait Storage: Send + Sync {
     /// The revenue of a website over a window.
     fn revenue(&self, query: &ReportQuery) -> Result<Vec<crate::models::Revenue>>;
 
-    /// Delete data that is older than the retention window.
+    /// Delete data that is older than the retention window of its website.
+    ///
+    /// Returns how many **events** and how many **revenue records** were removed.
+    /// The two numbers mean the same thing on every backend.
     fn prune(&self, website: Option<&str>) -> Result<(u64, u64)>;
 
     /// Delete everything older than a moment. Used by the archival job once the cold
     /// tier holds the data.
+    ///
+    /// Returns how many **events** and how many **revenue records** were removed.
     fn delete_before(
         &self,
         before: NaiveDateTime,

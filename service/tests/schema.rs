@@ -2,6 +2,7 @@
 //! append-only fact tables carry no index.
 
 use sumami_service::db::SCHEMA_VERSION;
+use sumami_service::models::HitKind;
 use sumami_service::pool::Db;
 use sumami_service::storage::Storage;
 
@@ -462,6 +463,113 @@ fn a_v3_sqlite_database_is_migrated_to_uuids() {
     for id in &ids {
         assert!(uuid::Uuid::parse_str(id).is_ok(), "the id must be a UUID: {id}");
     }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The row ids must stay unique when the server restarts.
+///
+/// The ids are handed out from a counter in memory (the database is asked once,
+/// when it is opened), so the counter has to start at the right place — and it
+/// has to stay right when the process that wrote the rows is gone.
+#[test]
+fn the_row_ids_stay_unique_across_a_restart() {
+    let dir = std::env::temp_dir().join(format!("sumami-ids-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("sumami.duckdb");
+
+    let hit = |url: &str| sumami_service::models::Hit {
+        website_id: "w1".to_string(),
+        session_id: sumami_service::ua::uuid_from_text("s1"),
+        visitor_id: sumami_service::ua::uuid_from_text("v1"),
+        retention_days: 0,
+        kind: HitKind::Pageview,
+        created_at: chrono::Utc::now().naive_utc(),
+        url: Some(url.to_string()),
+        ..Default::default()
+    };
+
+    // The first run writes three rows.
+    {
+        let db = Db::open(&path, "256MB").unwrap();
+        db.write_batch(&[hit("/one"), hit("/two"), hit("/three")]).unwrap();
+    }
+
+    // The second run — a restart — writes three more.
+    {
+        let db = Db::open(&path, "256MB").unwrap();
+        db.write_batch(&[hit("/four"), hit("/five"), hit("/six")]).unwrap();
+    }
+
+    // The ids are unique, and there are six of them.
+    let db = Db::open(&path, "256MB").unwrap();
+    let (count, distinct, smallest, largest) = db
+        .with_connection(|conn| -> anyhow::Result<(i64, i64, i64, i64)> {
+            let mut stmt = conn.prepare(
+                "SELECT count(*), count(DISTINCT id), min(id), max(id) FROM event",
+            )?;
+            let mut rows = stmt.query([])?;
+            let row = rows.next()?.unwrap();
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .unwrap();
+
+    assert_eq!(count, 6, "every row is there");
+    assert_eq!(distinct, 6, "every row has its own id");
+    assert_eq!(smallest, 1, "the ids start at one");
+    assert_eq!(largest, 6, "the ids are consecutive");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The ids must stay unique when the database is opened by the CLI, which
+/// brings its own connection.
+#[test]
+fn the_row_ids_stay_unique_when_the_cli_opens_the_database() {
+    let dir = std::env::temp_dir().join(format!("sumami-ids-cli-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("sumami.duckdb");
+
+    let hit = |url: &str| sumami_service::models::Hit {
+        website_id: "w1".to_string(),
+        session_id: sumami_service::ua::uuid_from_text("s1"),
+        visitor_id: sumami_service::ua::uuid_from_text("v1"),
+        retention_days: 0,
+        kind: HitKind::Pageview,
+        created_at: chrono::Utc::now().naive_utc(),
+        url: Some(url.to_string()),
+        ..Default::default()
+    };
+
+    // The CLI opens the file with its own connection — the schema is already
+    // there, because the server created it.
+    {
+        let conn = duckdb::Connection::open(&path).unwrap();
+        sumami_service::db::init_schema(&conn).unwrap();
+        let db = Db::from_connection(&path, conn);
+        db.write_batch(&[hit("/one"), hit("/two")]).unwrap();
+    }
+    {
+        let conn = duckdb::Connection::open(&path).unwrap();
+        let db = Db::from_connection(&path, conn);
+        db.write_batch(&[hit("/three")]).unwrap();
+    }
+
+    let conn = duckdb::Connection::open(&path).unwrap();
+    let db = Db::from_connection(&path, conn);
+    let (count, distinct) = db
+        .with_connection(|conn| -> anyhow::Result<(i64, i64)> {
+            let mut stmt = conn.prepare("SELECT count(*), count(DISTINCT id) FROM event")?;
+            let mut rows = stmt.query([])?;
+            let row = rows.next()?.unwrap();
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+
+    assert_eq!(count, 3);
+    assert_eq!(distinct, 3, "the ids do not collide after a reopen");
 
     let _ = std::fs::remove_dir_all(&dir);
 }

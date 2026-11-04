@@ -512,7 +512,11 @@ impl Storage for SqliteBackend {
                 website.name = name.clone();
             }
             if let Some(domain) = patch.domain.as_ref() {
-                website.domain = Some(domain.clone());
+                // The domain is trimmed and lowercased, exactly like the other
+                // backends: a domain is case insensitive, and the tracker
+                // matches it case insensitively.
+                let value = domain.trim().to_lowercase();
+                website.domain = if value.is_empty() { None } else { Some(value) };
             }
             if let Some(retention_days) = patch.retention_days {
                 website.retention_days = retention_days;
@@ -737,22 +741,23 @@ INSERT INTO event (
                 .collect::<Result<Vec<_>, _>>()?;
             drop(stmt);
 
-            let mut removed = 0u64;
+            let mut events = 0u64;
+            let mut revenue = 0u64;
             for (id, retention_days) in rows {
                 if retention_days <= 0 {
                     continue;
                 }
                 let cutoff = now - chrono::Duration::days(retention_days);
-                removed += conn.execute(
+                events += conn.execute(
                     "DELETE FROM event WHERE website_id = ?1 AND created_at < ?2",
                     params![id, ts(cutoff)],
                 )? as u64;
-                removed += conn.execute(
+                revenue += conn.execute(
                     "DELETE FROM revenue WHERE website_id = ?1 AND created_at < ?2",
                     params![id, ts(cutoff)],
                 )? as u64;
             }
-            Ok((removed, 0))
+            Ok((events, revenue))
         })
     }
 
@@ -762,27 +767,28 @@ INSERT INTO event (
         website: Option<&str>,
     ) -> Result<(u64, u64)> {
         self.with(|conn| {
-            let mut removed = 0u64;
+            let mut events = 0u64;
+            let mut revenue = 0u64;
             if let Some(website) = website {
-                removed += conn.execute(
+                events += conn.execute(
                     "DELETE FROM event WHERE website_id = ?1 AND created_at < ?2",
                     params![website, ts(before)],
                 )? as u64;
-                removed += conn.execute(
+                revenue += conn.execute(
                     "DELETE FROM revenue WHERE website_id = ?1 AND created_at < ?2",
                     params![website, ts(before)],
                 )? as u64;
             } else {
-                removed += conn.execute(
+                events += conn.execute(
                     "DELETE FROM event WHERE created_at < ?1",
                     params![ts(before)],
                 )? as u64;
-                removed += conn.execute(
+                revenue += conn.execute(
                     "DELETE FROM revenue WHERE created_at < ?1",
                     params![ts(before)],
                 )? as u64;
             }
-            Ok((removed, 0))
+            Ok((events, revenue))
         })
     }
 
