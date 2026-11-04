@@ -1,0 +1,44 @@
+# Publish the tracker to JSR (jsr.io).
+#
+# The authentication is OIDC: JSR trusts this workflow because the repository
+# asked for it once (Settings → Applications → JSR → Install). There is no token
+# in this repository, and none is needed.
+#
+# To publish:
+#   git tag jsr-v0.2.0 && git push origin jsr-v0.2.0
+# or press "Run workflow" here.
+name: Publish to JSR
+
+on:
+  push:
+    tags:
+      - 'jsr-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # The package has to be sound before it goes out: the types have to
+      # check, the tests have to pass, and the "slow types" check (JSR refuses
+      # a public API whose types it cannot infer) has to pass too.
+      - name: Check and test
+        working-directory: jsr
+        run: |
+          deno check src/mod.ts
+          deno test --allow-env src/
+          deno publish --dry-run --allow-dirty
+
+      - name: Publish
+        working-directory: jsr
+        run: npx jsr publish
