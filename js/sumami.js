@@ -362,9 +362,13 @@
 
   /**
    * Track a page view by hand (the tracker sends one on its own).
+   *
+   * @param {string} [url] the URL to report, when it is not the current one
    */
-  function pageview() {
-    send('event', basePayload(true));
+  function pageview(url) {
+    var payload = basePayload(true);
+    if (url) payload.url = url;
+    send('event', payload);
   }
 
   // The public API. `umami` is an alias for compatibility with existing snippets.
@@ -380,6 +384,9 @@
   // view is sent when the document goes away — with `sendBeacon`, so it
   // survives the unload.
   var sent = false;
+
+  /** The URL of the page we are on. Tracked across single page navigations. */
+  var lastUrl = currentUrl();
 
   /** Send the page view of the current page, once. */
   function sendPageview() {
@@ -400,13 +407,21 @@
   // Single page applications
   // ---------------------------------------------------------------------------
 
-  // A history navigation is a new page: its hit is sent right away, without
-  // waiting for the tab to be closed. The guard is set again afterwards, so
-  // the page view of the new page is not sent a second time on unload.
+  // A history navigation ends one page and starts another, so **both** get a page
+  // view: the page we are leaving is reported now (with the metrics it had), and
+  // the page we arrive at is reported when we leave *it*.
+  //
+  // Reporting only the arriving route would lose the landing page of every
+  // single page application — the entry page, which is the one a site owner
+  // cares most about.
   function onNavigation() {
+    if (!sent) {
+      sent = true;
+      readTtfb();
+      pageview(lastUrl);
+    }
+    lastUrl = currentUrl();
     sent = false;
-    pageview();
-    sent = true;
   }
 
   if (window.history && typeof window.history.pushState === 'function') {

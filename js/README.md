@@ -124,8 +124,22 @@ never sent twice.
 ### Single page applications
 
 The tracker patches `history.pushState` and `history.replaceState` and listens for
-`popstate`, so every route change of an SPA is recorded as its own page view. The
-page view of the route you are on when you leave is not sent a second time.
+`popstate`, so every route change of an SPA is recorded as its own page view.
+
+**Both sides of a navigation are counted.** When you leave a route, that route's
+page view is sent straight away — with the metrics it had — and the route you
+arrive at is sent when you leave *it*. So a session that visits three routes
+reports three page views, and the landing page is never lost:
+
+```
+/            ← the landing page, sent when the first navigation happens
+/route-1     ← sent when the second navigation happens
+/route-2     ← sent when the tab is closed
+```
+
+A page view is never sent twice: the tracker keeps one flag per page, so a page
+that has been reported is not reported again — not on the next `pagehide`, not on
+the next `visibilitychange`.
 
 ### The query string
 
