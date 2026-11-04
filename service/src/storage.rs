@@ -13,6 +13,7 @@
 
 use anyhow::Result;
 use chrono::NaiveDateTime;
+use uuid::Uuid;
 
 use crate::models::{
     BreakdownRow, EventRow, MetricsSummary, SessionRow, Website,
@@ -203,11 +204,11 @@ pub struct WebsitePatch {
 #[derive(Debug, Clone)]
 pub struct SessionAggregate {
     /// The session id.
-    pub id: String,
+    pub id: Uuid,
     /// The website it belongs to.
     pub website_id: String,
     /// The rotating visitor id.
-    pub visitor_id: Option<String>,
+    pub visitor_id: Option<Uuid>,
     /// When the session started.
     pub created_at: NaiveDateTime,
     /// When the session was last seen.
@@ -252,9 +253,9 @@ impl SessionAggregate {
     /// Start from a hit.
     fn from(hit: &crate::models::Hit) -> Self {
         Self {
-            id: hit.session_id.clone(),
+            id: hit.session_id,
             website_id: hit.website_id.clone(),
-            visitor_id: Some(hit.visitor_id.clone()),
+            visitor_id: Some(hit.visitor_id),
             created_at: hit.created_at,
             updated_at: hit.created_at,
             hostname: hit.hostname.clone(),
@@ -310,6 +311,145 @@ pub struct Batch<'a> {
     pub sessions: Vec<SessionAggregate>,
     /// The custom events to insert.
     pub events: Vec<&'a crate::models::Hit>,
+}
+
+/// One event of the session log: the fields a session row is built from.
+#[derive(Debug, Clone)]
+pub struct SessionEvent {
+    /// The row id — the tiebreaker when two events share a timestamp.
+    pub id: i64,
+    /// The session the event belongs to.
+    pub session_id: Uuid,
+    /// The rotating visitor id.
+    pub visitor_id: Option<Uuid>,
+    /// When it happened.
+    pub created_at: NaiveDateTime,
+    /// The page.
+    pub url: Option<String>,
+    /// The page title.
+    pub title: Option<String>,
+    /// The referring host.
+    pub referrer: Option<String>,
+    /// The referring path.
+    pub referrer_path: Option<String>,
+    /// The hostname of the site.
+    pub hostname: Option<String>,
+    /// The browser family.
+    pub browser: Option<String>,
+    /// The operating system.
+    pub os: Option<String>,
+    /// The device class.
+    pub device: Option<String>,
+    /// The country.
+    pub country: Option<String>,
+    /// The region.
+    pub region: Option<String>,
+    /// The city.
+    pub city: Option<String>,
+    /// The interface language.
+    pub language: Option<String>,
+    /// The viewport size.
+    pub screen: Option<String>,
+}
+
+/// How many events the session log reads.
+///
+/// The session log is a **log**: it shows the most recent sessions, not a
+/// summary of the whole window. Aggregating every event of a month to show the
+/// last fifty sessions is wasted work — the answer only depends on the last
+/// few thousand events.
+///
+/// So the log is derived from the most recent events, and the cost of the log is
+/// the cost of that scan, not the cost of the table. Fifty sessions need about
+/// fifty events each, so the budget is fifty times the number of rows asked
+/// for, with a floor and a ceiling.
+pub fn session_scan_limit(limit: i64) -> i64 {
+    (limit.max(1) * 50).clamp(500, 200_000)
+}
+
+/// Group the most recent events into the rows of the session log.
+///
+/// The rules are the same on every backend, because this is where they live:
+///
+///   * the **last** page of the session is the `url` and the `title`;
+///   * the **first** page is the `entry_url`;
+///   * the referrer is the one the session **started** with;
+///   * the visitor's environment (browser, country, screen, …) is the one of the
+///     **newest** event that carries it — those do not change within a session;
+///   * a session that is only half in the scan is reported with the views it has
+///     in the scan, which is the price of a bounded scan.
+pub fn group_sessions(
+    website_id: &str,
+    events: &[SessionEvent],
+    limit: i64,
+    offset: i64,
+) -> Vec<SessionRow> {
+    // The events arrive newest first; the grouping needs them oldest first.
+    let mut by_session: std::collections::HashMap<Uuid, Vec<&SessionEvent>> =
+        std::collections::HashMap::new();
+    for event in events {
+        by_session
+            .entry(event.session_id)
+            .or_default()
+            .push(event);
+    }
+
+    let mut rows: Vec<SessionRow> = by_session
+        .into_iter()
+        .map(|(session_id, mut group)| {
+            group.sort_by(|a, b| {
+                a.created_at
+                    .cmp(&b.created_at)
+                    .then_with(|| a.id.cmp(&b.id))
+            });
+            let first = group.first().expect("a group is never empty");
+            let last = group.last().expect("a group is never empty");
+
+            let newest_with = |pick: fn(&SessionEvent) -> Option<&String>| -> Option<String> {
+                group
+                    .iter()
+                    .rev()
+                    .find_map(|event| pick(event).cloned())
+            };
+            let oldest_with = |pick: fn(&SessionEvent) -> Option<&String>| -> Option<String> {
+                group.iter().find_map(|event| pick(event).cloned())
+            };
+
+            SessionRow {
+                id: session_id.to_string(),
+                website_id: website_id.to_string(),
+                created_at: first.created_at,
+                updated_at: last.created_at,
+                hostname: newest_with(|event| event.hostname.as_ref()),
+                url: last.url.clone(),
+                title: newest_with(|event| event.title.as_ref()),
+                referrer: oldest_with(|event| event.referrer.as_ref()),
+                referrer_path: oldest_with(|event| event.referrer_path.as_ref()),
+                entry_url: first.url.clone(),
+                browser: newest_with(|event| event.browser.as_ref()),
+                os: newest_with(|event| event.os.as_ref()),
+                device: newest_with(|event| event.device.as_ref()),
+                country: newest_with(|event| event.country.as_ref()),
+                region: newest_with(|event| event.region.as_ref()),
+                city: newest_with(|event| event.city.as_ref()),
+                language: newest_with(|event| event.language.as_ref()),
+                screen: newest_with(|event| event.screen.as_ref()),
+                views: group.len() as i64,
+                duration: (last.created_at - first.created_at).num_seconds(),
+            }
+        })
+        .collect();
+
+    // The newest session first; the id breaks the tie, so the order never
+    // depends on the order the rows came back in.
+    rows.sort_by(|a, b| {
+        b.created_at
+            .cmp(&a.created_at)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    let offset = offset.max(0) as usize;
+    rows.into_iter().skip(offset).take(limit.max(0) as usize).collect()
 }
 
 /// Group a batch of hits into sessions and events.
@@ -390,6 +530,12 @@ pub trait Storage: Send + Sync {
 
     /// The session log.
     fn sessions(&self, query: &ReportQuery) -> Result<Vec<SessionRow>>;
+
+    /// The most recent events of a window, newest first.
+    ///
+    /// The session log is built from these — see [`group_sessions`]. A backend
+    /// only has to read the last few thousand rows, not the whole window.
+    fn recent_events(&self, query: &ReportQuery, limit: i64) -> Result<Vec<SessionEvent>>;
 
     /// Persist a batch of hits.
     fn write_batch(&self, hits: &[crate::models::Hit]) -> Result<()>;

@@ -31,8 +31,16 @@ fn the_archive_answers_the_same_as_the_database() {
             [],
         )?;
         // One set-based insert: 50 000 individual prepares would take minutes.
+        //
+        // The ids are UUIDs (schema v4): a text id is hashed into 16 bytes, the
+        // same way the migration does it.
         conn.execute_batch(
             r#"
+CREATE OR REPLACE MACRO uuid_of(s) AS CAST(
+    substr(sha256(s), 1, 8) || '-' || substr(sha256(s), 9, 4) || '-' ||
+    substr(sha256(s), 13, 4) || '-' || substr(sha256(s), 17, 4) || '-' ||
+    substr(sha256(s), 21, 12) AS UUID);
+
 INSERT INTO event (
     id, website_id, session_id, visitor_id, created_at, url, url_query, title,
     referrer, referrer_path, referrer_query, hostname,
@@ -45,8 +53,8 @@ INSERT INTO event (
 SELECT
   i,
   'w1',
-  's' || (1 + (i / 2))::VARCHAR,
-  'v' || (i % 120)::VARCHAR,
+  uuid_of('s' || (1 + (i / 2))::VARCHAR),
+  uuid_of('v' || (i % 120)::VARCHAR),
   now()::TIMESTAMP - INTERVAL (i % 20000) MINUTE,
   '/page/' || (i % 7)::VARCHAR,
   'utm_source=twitter', 'A page title',
@@ -63,8 +71,8 @@ FROM generate_series(1, 50000) t(i);
         conn.execute(
             "INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url, hostname,
                     event_type, event_name, tag, data)
-             VALUES (999999, 'w1', 's1', 'v1', now()::TIMESTAMP, '/signup', 'example.com',
-                     'event', 'signup', 'cta', '{}')",
+             VALUES (999999, 'w1', uuid_of('s1'), uuid_of('v1'), now()::TIMESTAMP, '/signup',
+                     'example.com', 'event', 'signup', 'cta', '{}')",
             [],
         )?;
         Ok(())

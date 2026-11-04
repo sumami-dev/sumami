@@ -31,4 +31,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Build with `--no-default-features` for a smaller executable that links the
 # prebuilt libduckdb dynamically (then libduckdb.so has to ship next to it).
 # See AGENTS.md §4.1.
-duckdb = { version = "1", default-features = false, features = ["chrono"] }
+duckdb = { version = "1", default-features = false, features = ["chrono", "uuid"] }

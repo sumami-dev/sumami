@@ -182,8 +182,8 @@ fn generate(views: i64) -> Vec<Hit> {
         let at = base + Duration::seconds(i * 37 % (30 * 86_400));
         out.push(Hit {
             website_id: "w1".to_string(),
-            session_id: format!("session-{session:08x}"),
-            visitor_id: format!("visitor-{:08x}", session % 40_000),
+            session_id: sumami_service::ua::uuid_from_text(&format!("session-{session:08x}")),
+            visitor_id: sumami_service::ua::uuid_from_text(&format!("visitor-{:08x}", session % 40_000)),
             retention_days: 0,
             kind: HitKind::Pageview,
             created_at: at,

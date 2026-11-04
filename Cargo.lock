@@ -925,6 +925,7 @@ dependencies = [
  "libduckdb-sys",
  "num-integer",
  "strum",
+ "uuid",
 ]
 
 [[package]]

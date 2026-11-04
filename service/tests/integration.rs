@@ -15,12 +15,25 @@ fn temp_db(name: &str) -> std::path::PathBuf {
     dir.join("sumami.duckdb")
 }
 
+/// Stops the writer thread when the test ends — **even when it panics**.
+///
+/// The writer owns a blocking thread. If a test panics before it stops the
+/// writer, the thread stays alive, the Tokio runtime never finishes and the
+/// whole test binary hangs instead of failing. A guard makes that impossible.
+struct WriterGuard(sumami_service::writer::Writer);
+
+impl Drop for WriterGuard {
+    fn drop(&mut self) {
+        self.0.shutdown();
+    }
+}
+
 /// A synthetic hit — every field set, so the test can prove nothing is lost.
 fn hit(website_id: &str, url: &str) -> Hit {
     Hit {
         website_id: website_id.to_string(),
-        session_id: "session-1".to_string(),
-        visitor_id: "visitor-1".to_string(),
+        session_id: sumami_service::ua::uuid_from_text("session-1"),
+        visitor_id: sumami_service::ua::uuid_from_text("visitor-1"),
         retention_days: 0,
         kind: HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
@@ -70,6 +83,7 @@ async fn writer_flushes_queued_hits() {
     let db = Arc::new(Db::open(&path, "256MB").unwrap());
 
     let (writer, _handle) = Writer::spawn(db.clone(), Duration::from_millis(200), 1000);
+    let _guard = WriterGuard(writer.clone());
     writer.push(hit("website-1", "/one"));
     writer.push(hit("website-1", "/two"));
 
@@ -128,8 +142,8 @@ async fn writer_flushes_queued_hits() {
                     row.get::<_, Option<f64>>(19)?,
                     row.get::<_, Option<f64>>(20)?,
                     row.get::<_, Option<f64>>(21)?,
-                    row.get::<_, String>(22)?,
-                    row.get::<_, String>(23)?,
+                    row.get::<_, uuid::Uuid>(22)?,
+                    row.get::<_, uuid::Uuid>(23)?,
                 ))),
                 None => Ok(None),
             }
@@ -159,8 +173,8 @@ async fn writer_flushes_queued_hits() {
     assert_eq!(stored.19, Some(0.02));
     assert_eq!(stored.20, Some(700.0));
     assert_eq!(stored.21, Some(90.0));
-    assert_eq!(stored.22, "session-1");
-    assert_eq!(stored.23, "visitor-1");
+    assert_eq!(stored.22, sumami_service::ua::uuid_from_text("session-1"));
+    assert_eq!(stored.23, sumami_service::ua::uuid_from_text("visitor-1"));
 
     writer.shutdown();
     // Stop the writer thread so the test runtime can shut down.
@@ -176,6 +190,7 @@ async fn writer_stores_custom_events() {
     let db = Arc::new(Db::open(&path, "256MB").unwrap());
 
     let (writer, _handle) = Writer::spawn(db.clone(), Duration::from_millis(200), 1000);
+    let _guard = WriterGuard(writer.clone());
 
     let mut event = hit("website-1", "/signup");
     event.kind = HitKind::Event;
@@ -240,6 +255,8 @@ async fn api_matches_the_shared_report_layer() {
             (2, "s1", "v1", "/a"),
             (3, "s2", "v2", "/b"),
         ] {
+            let session = sumami_service::ua::uuid_from_text(session);
+            let visitor = sumami_service::ua::uuid_from_text(visitor);
             conn.execute(
                 "INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url,
                         event_type, browser, os, device)
@@ -268,6 +285,7 @@ async fn api_matches_the_shared_report_layer() {
         std::time::Duration::from_millis(200),
         1000,
     );
+    let _guard = WriterGuard(writer.clone());
 
     let state = AppState::new(
         db.clone(),

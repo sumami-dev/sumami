@@ -1,6 +1,7 @@
 //! Wire types: the Umami-compatible payloads we accept and the shapes we return.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// A collected hit — one row in the `event` table.
 ///
@@ -15,9 +16,9 @@ pub struct Hit {
     /// The website the hit belongs to.
     pub website_id: String,
     /// The session the hit belongs to.
-    pub session_id: String,
+    pub session_id: Uuid,
     /// The visitor, stable across days (Umami's `distinct_id`).
-    pub visitor_id: String,
+    pub visitor_id: Uuid,
     /// Retention window of the website in days (`0` = keep forever).
     pub retention_days: i32,
     /// What kind of hit this is.
@@ -154,7 +155,7 @@ pub struct Revenue {
     /// The website the revenue belongs to.
     pub website_id: String,
     /// The session that earned it.
-    pub session_id: Option<String>,
+    pub session_id: Option<Uuid>,
     /// The event that earned it.
     pub event_id: Option<i64>,
     /// The name of the revenue source (`carbon`, `adsense`, …).

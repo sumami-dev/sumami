@@ -177,8 +177,11 @@ fn build_hit(
 
     // Session id: use the client's when provided (Umami compatibility), otherwise derive
     // a rotating one. The raw IP is never stored — only a prefix feeds the HMAC.
+    //
+    // Either way the id is a **UUID**: 16 bytes on disk, and the client's own
+    // token is hashed rather than stored verbatim.
     let session_id = match raw.str("sessionId") {
-        Some(client_id) if is_safe_session_id(&client_id) => client_id,
+        Some(client_id) if is_safe_session_id(&client_id) => ua::uuid_from_text(&client_id),
         _ => {
             let bucket = (chrono::Utc::now().timestamp() / SESSION_BUCKET_SECONDS) as u64;
             ua::derive_session_id(

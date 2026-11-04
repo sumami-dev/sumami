@@ -14,7 +14,8 @@ use duckdb::Connection;
 use crate::models::{BreakdownRow, EventRow, Hit, MetricsSummary, MetricValue, SessionRow, Website};
 use crate::pool::Db;
 use crate::storage::{
-    Dimension, ReportQuery, Storage, StorageStats, SummaryMetrics, WebsitePatch,
+    group_sessions, session_scan_limit, Dimension, ReportQuery, SessionEvent, Storage, StorageStats,
+    SummaryMetrics, WebsitePatch,
 };
 
 impl Storage for Db {
@@ -91,7 +92,17 @@ impl Storage for Db {
     }
 
     fn sessions(&self, query: &ReportQuery) -> Result<Vec<SessionRow>> {
-        self.with_read(|conn| sessions(conn, query))
+        let events = self.recent_events(query, session_scan_limit(query.limit))?;
+        Ok(group_sessions(
+            &query.website_id,
+            &events,
+            query.limit.clamp(1, 1000),
+            query.offset,
+        ))
+    }
+
+    fn recent_events(&self, query: &ReportQuery, limit: i64) -> Result<Vec<SessionEvent>> {
+        self.with_read(|conn| recent_events(conn, query, limit))
     }
 
     fn write_batch(&self, hits: &[Hit]) -> Result<()> {
@@ -550,7 +561,7 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
         out.push(EventRow {
             id: row.get::<_, i64>(0)?.to_string(),
             website_id: row.get(1)?,
-            session_id: row.get(2)?,
+            session_id: row.get::<_, Option<uuid::Uuid>>(2)?.map(|id| id.to_string()),
             created_at: row.get(3)?,
             name: row.get(4)?,
             url: row.get(5)?,
@@ -575,68 +586,45 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
     Ok(out)
 }
 
-/// The session log: one row per session, derived from its page views.
-fn sessions(conn: &Connection, query: &ReportQuery) -> Result<Vec<SessionRow>> {
+/// The most recent events of a window, newest first.
+///
+/// This is what the session log is built from: the log reads the last few
+/// thousand rows, not the whole window, so its cost does not grow with the size
+/// of the database.
+fn recent_events(conn: &Connection, query: &ReportQuery, limit: i64) -> Result<Vec<SessionEvent>> {
     let filters = Filters::new(query);
     let sql = format!(
-        "SELECT session_id,
-                MIN(created_at),
-                MAX(created_at),
-                COUNT(*),
-                arg_max(url, created_at),
-                arg_min(url, created_at),
-                any_value(title),
-                any_value(referrer),
-                any_value(referrer_path),
-                any_value(hostname),
-                any_value(browser),
-                any_value(os),
-                any_value(device),
-                any_value(country),
-                any_value(region),
-                any_value(city),
-                any_value(language),
-                any_value(screen),
-                any_value(visitor_id),
-                epoch(MAX(created_at) - MIN(created_at))
+        "SELECT id, session_id, visitor_id, created_at, url, title, referrer, referrer_path,
+                hostname, browser, os, device, country, region, city, language, screen
          FROM event WHERE {where_clause}
-         GROUP BY session_id
-         ORDER BY MIN(created_at) DESC, session_id ASC
-         LIMIT {limit} OFFSET {offset}",
+         ORDER BY created_at DESC, id DESC
+         LIMIT {limit}",
         where_clause = filters.clause(),
-        limit = query.limit.clamp(1, 1000),
-        offset = query.offset.max(0),
+        limit = limit.clamp(1, 1_000_000),
     );
 
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query(filters.params().as_slice())?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
-        let created_at: chrono::NaiveDateTime = row.get(1)?;
-        let updated_at: chrono::NaiveDateTime = row.get(2)?;
-        let views: i64 = row.get(3)?;
-        let duration: f64 = row.get(19).unwrap_or(0.0);
-        out.push(SessionRow {
+        out.push(SessionEvent {
             id: row.get(0)?,
-            website_id: query.website_id.clone(),
-            created_at,
-            updated_at,
-            hostname: row.get(9)?,
+            session_id: row.get(1)?,
+            visitor_id: row.get::<_, Option<uuid::Uuid>>(2)?,
+            created_at: row.get(3)?,
             url: row.get(4)?,
-            title: row.get(6)?,
-            referrer: row.get(7)?,
-            referrer_path: row.get(8)?,
-            entry_url: row.get(5)?,
-            browser: row.get(10)?,
-            os: row.get(11)?,
-            device: row.get(12)?,
-            country: row.get(13)?,
-            region: row.get(14)?,
-            city: row.get(15)?,
-            language: row.get(16)?,
-            screen: row.get(17)?,
-            views,
-            duration: duration as i64,
+            title: row.get(5)?,
+            referrer: row.get(6)?,
+            referrer_path: row.get(7)?,
+            hostname: row.get(8)?,
+            browser: row.get(9)?,
+            os: row.get(10)?,
+            device: row.get(11)?,
+            country: row.get(12)?,
+            region: row.get(13)?,
+            city: row.get(14)?,
+            language: row.get(15)?,
+            screen: row.get(16)?,
         });
     }
     Ok(out)
@@ -661,7 +649,7 @@ fn revenue(conn: &Connection, query: &ReportQuery) -> Result<Vec<crate::models::
     while let Some(row) = rows.next()? {
         out.push(crate::models::Revenue {
             website_id: row.get(0)?,
-            session_id: row.get(1)?,
+            session_id: row.get::<_, Option<uuid::Uuid>>(1)?,
             event_id: row.get(2)?,
             event_name: row.get(3)?,
             currency: row.get(4)?,

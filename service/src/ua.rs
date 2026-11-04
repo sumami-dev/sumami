@@ -7,6 +7,7 @@
 //!      never a fingerprint.
 
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 /// Classification of a user-agent string.
 #[derive(Debug, Clone, Default)]
@@ -153,13 +154,16 @@ pub fn ip_prefix(ip: &str) -> String {
 /// The id is a HMAC over (server secret, coarse IP prefix, user agent, website, time
 /// bucket). It cannot be reversed into an IP address, is not stable across time buckets
 /// (so it is not a durable identifier), and is scoped to one website.
+///
+/// The result is a **UUID**: 16 bytes, not a 36-character string. At 60 million page
+/// views that is the difference between 1.1 GB and 2.2 GB of session ids alone.
 pub fn derive_session_id(
     secret: &[u8],
     ip_prefix: &str,
     user_agent: &str,
     website_id: &str,
     bucket: u64,
-) -> String {
+) -> Uuid {
     let mut mac = HmacSha256::new(secret);
     mac.update(ip_prefix.as_bytes());
     mac.update(b"\x1f");
@@ -169,16 +173,26 @@ pub fn derive_session_id(
     mac.update(b"\x1f");
     mac.update(&bucket.to_le_bytes());
     let digest = mac.finalize();
-    // Format as a UUID-ish string so it looks like any other id in the API.
-    let hex: String = digest[..16].iter().map(|b| format!("{:02x}", b)).collect();
-    format!(
-        "{}-{}-{}-{}-{}",
-        &hex[0..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..32]
-    )
+    uuid_from_bytes(&digest[..16])
+}
+
+/// Turn 16 bytes into a UUID.
+pub fn uuid_from_bytes(bytes: &[u8]) -> Uuid {
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&bytes[..16]);
+    Uuid::from_bytes(out)
+}
+
+/// Turn an arbitrary text into a UUID.
+///
+/// The client may send its own session id (Umami compatibility). It is never stored
+/// verbatim: it is hashed into 16 bytes, so the column is always the same size and
+/// the raw token never reaches the disk. The mapping is **deterministic** — the same
+/// token is always the same session — which is also what lets a v3 database be
+/// migrated without splitting anybody's session in two.
+pub fn uuid_from_text(text: &str) -> Uuid {
+    let digest = Sha256::digest(text.as_bytes());
+    uuid_from_bytes(&digest[..16])
 }
 
 /// Minimal HMAC-SHA256 (RFC 2104) so we do not need another dependency.
@@ -268,7 +282,31 @@ mod tests {
         let c = derive_session_id(args.0, args.1, args.2, args.3, 43);
         assert_eq!(a, b);
         assert_ne!(a, c);
-        assert_eq!(a.len(), 36);
+        // 16 bytes, not a 36-character string.
+        assert_eq!(a.as_bytes().len(), 16);
+    }
+
+    #[test]
+    fn a_client_id_becomes_a_uuid_without_changing() {
+        let a = uuid_from_text("abc-123");
+        let b = uuid_from_text("abc-123");
+        let c = uuid_from_text("abc-124");
+        assert_eq!(a, b, "the same token is always the same session");
+        assert_ne!(a, c);
+        assert_eq!(a.as_bytes().len(), 16);
+    }
+
+    #[test]
+    fn a_text_id_matches_what_the_migration_computes() {
+        // The v3 -> v4 migration hashes the old ids with SHA-256 and keeps the
+        // first 16 bytes. This is the same computation, in Rust.
+        let digest = Sha256::digest(b"session-edge-unicode");
+        let expected = Uuid::from_bytes({
+            let mut bytes = [0u8; 16];
+            bytes.copy_from_slice(&digest[..16]);
+            bytes
+        });
+        assert_eq!(uuid_from_text("session-edge-unicode"), expected);
     }
 
     #[test]

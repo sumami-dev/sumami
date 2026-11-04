@@ -198,13 +198,19 @@ pub fn seed(conn: &Connection, options: &SeedOptions) -> Result<(String, u64, u6
 
             // A pool of visitors for the day: some of them come back, so the
             // "visitors" count is lower than the "sessions" count, like a real site.
-            let pool: Vec<String> = (0..visitors)
-                .map(|_| format!("seed-visitor-{:012x}", rng.next() % 0xFFFF_FFFF_FFFF))
+            let pool: Vec<Uuid> = (0..visitors)
+                .map(|_| {
+                    sumami_service::ua::uuid_from_text(&format!(
+                        "seed-visitor-{:012x}",
+                        rng.next() % 0xFFFF_FFFF_FFFF
+                    ))
+                })
                 .collect();
 
             for index in 0..visitors {
-                let session_id = format!("seed-session-{day}-{index}");
-                let visitor_id = pool[rng.below(pool.len())].clone();
+                let session_id =
+                    sumami_service::ua::uuid_from_text(&format!("seed-session-{day}-{index}"));
+                let visitor_id = pool[rng.below(pool.len())];
                 let started = day_start + chrono::Duration::seconds(rng.between(0, 86_399));
 
                 // A session is one to four page views.

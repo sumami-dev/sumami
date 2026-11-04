@@ -21,12 +21,14 @@ use std::sync::Mutex;
 
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
+use uuid::Uuid;
 
 use crate::models::{
     BreakdownRow, EventRow, Hit, MetricsSummary, MetricValue, Revenue, SessionRow, Website,
 };
 use crate::storage::{
-    Dimension, ReportQuery, Storage, StorageStats, SummaryMetrics, WebsitePatch,
+    group_sessions, session_scan_limit, Dimension, ReportQuery, SessionEvent, Storage, StorageStats,
+    SummaryMetrics, WebsitePatch,
 };
 
 /// The SQLite backend.
@@ -70,6 +72,10 @@ impl SqliteBackend {
         conn.pragma_update(None, "busy_timeout", 5_000)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
 
+        // The migration needs to turn the old text ids into 16-byte UUIDs, and
+        // SQLite has no hash of its own — so it borrows one from us.
+        register_uuid_function(conn)?;
+
         conn.execute_batch(
             r#"
 -- One row per page view (or custom event). The field set mirrors Umami's
@@ -78,8 +84,8 @@ impl SqliteBackend {
 CREATE TABLE IF NOT EXISTS event (
     id              INTEGER PRIMARY KEY,
     website_id      TEXT NOT NULL,
-    session_id      TEXT NOT NULL,
-    visitor_id      TEXT NOT NULL,
+    session_id      BLOB NOT NULL,
+    visitor_id      BLOB NOT NULL,
     created_at      INTEGER NOT NULL,
 
     url             TEXT,
@@ -131,7 +137,7 @@ CREATE INDEX IF NOT EXISTS event_website_created ON event (website_id, created_a
 CREATE TABLE IF NOT EXISTS revenue (
     id          INTEGER PRIMARY KEY,
     website_id  TEXT NOT NULL,
-    session_id  TEXT,
+    session_id  BLOB,
     event_id    INTEGER,
     event_name  TEXT,
     currency    TEXT NOT NULL DEFAULT 'USD',
@@ -157,6 +163,8 @@ CREATE TABLE IF NOT EXISTS meta (
 
 "#,
         )?;
+
+        migrate(conn)?;
         Ok(())
     }
 
@@ -175,6 +183,106 @@ CREATE TABLE IF NOT EXISTS meta (
 /// Epoch seconds of a timestamp.
 fn ts(value: chrono::NaiveDateTime) -> i64 {
     value.and_utc().timestamp()
+}
+
+/// Schema version of the SQLite database.
+///
+/// * v3 — the event-row model, the ids as text.
+/// * v4 — the session and visitor ids are **UUIDs**: 16 bytes, not a string.
+const SCHEMA_VERSION: i64 = 4;
+
+/// Teach SQLite how to turn an old text id into a UUID.
+///
+/// SQLite has no hash of its own, so the migration borrows one from us: the same
+/// SHA-256 the DuckDB migration uses, so the two engines agree on what an old id
+/// becomes.
+fn register_uuid_function(conn: &Connection) -> Result<()> {
+    conn.create_scalar_function(
+        "sumami_uuid",
+        1,
+        rusqlite::functions::FunctionFlags::SQLITE_UTF8
+            | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx: &rusqlite::functions::Context<'_>| -> rusqlite::Result<Option<Vec<u8>>> {
+            let value = ctx.get::<Option<rusqlite::types::Value>>(0)?;
+            Ok(match value {
+                None | Some(rusqlite::types::Value::Null) => None,
+                // Already a UUID.
+                Some(rusqlite::types::Value::Blob(bytes)) if bytes.len() == 16 => Some(bytes),
+                Some(rusqlite::types::Value::Text(text)) => {
+                    Some(crate::ua::uuid_from_text(&text).as_bytes().to_vec())
+                }
+                Some(other) => Some(
+                    crate::ua::uuid_from_text(&format!("{other:?}"))
+                        .as_bytes()
+                        .to_vec(),
+                ),
+            })
+        },
+    )?;
+    Ok(())
+}
+
+/// Bring an older database up to date.
+fn migrate(conn: &Connection) -> Result<()> {
+    let version: i64 = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+
+    if version > 0 && version < 4 {
+        // The session and visitor ids were 36-character strings; they are now
+        // 16-byte UUIDs. The conversion is deterministic, so no session is split
+        // in two.
+        conn.execute_batch(
+            "UPDATE event
+                SET session_id = sumami_uuid(session_id),
+                    visitor_id = sumami_uuid(visitor_id);
+             UPDATE revenue
+                SET session_id = sumami_uuid(session_id)
+                WHERE session_id IS NOT NULL;",
+        )?;
+    }
+
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES ('schema_version', ?1) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![SCHEMA_VERSION.to_string()],
+    )?;
+    Ok(())
+}
+
+/// Read a UUID out of a row.
+///
+/// The value is 16 bytes — but a database written before v4 still holds the old
+/// text, so that is read too.
+fn read_uuid(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<Uuid> {
+    Ok(read_uuid_opt(row, index)?.unwrap_or_default())
+}
+
+/// Read a UUID that may be missing.
+fn read_uuid_opt(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<Option<Uuid>> {
+    match row.get_ref(index)? {
+        rusqlite::types::ValueRef::Null => Ok(None),
+        rusqlite::types::ValueRef::Blob(bytes) if bytes.len() == 16 => {
+            let mut out = [0u8; 16];
+            out.copy_from_slice(bytes);
+            Ok(Some(Uuid::from_bytes(out)))
+        }
+        rusqlite::types::ValueRef::Text(text) => Ok(Some(crate::ua::uuid_from_text(
+            &String::from_utf8_lossy(text),
+        ))),
+        _ => Err(rusqlite::Error::InvalidColumnType(
+            index,
+            "session_id".to_string(),
+            rusqlite::types::Type::Blob,
+        )),
+    }
 }
 
 /// A timestamp from epoch seconds.
@@ -425,7 +533,17 @@ impl Storage for SqliteBackend {
     }
 
     fn sessions(&self, query: &ReportQuery) -> Result<Vec<SessionRow>> {
-        self.with(|conn| sessions(conn, query))
+        let events = self.recent_events(query, session_scan_limit(query.limit))?;
+        Ok(group_sessions(
+            &query.website_id,
+            &events,
+            query.limit.clamp(1, 1000),
+            query.offset,
+        ))
+    }
+
+    fn recent_events(&self, query: &ReportQuery, limit: i64) -> Result<Vec<SessionEvent>> {
+        self.with(|conn| recent_events(conn, query, limit))
     }
 
     fn write_batch(&self, hits: &[Hit]) -> Result<()> {
@@ -473,8 +591,8 @@ INSERT INTO event (
             for hit in &kept {
                 insert.execute(params![
                     hit.website_id,
-                    hit.session_id,
-                    hit.visitor_id,
+                    hit.session_id.as_bytes().as_slice(),
+                    hit.visitor_id.as_bytes().as_slice(),
                     ts(hit.created_at),
                     hit.url,
                     hit.url_query,
@@ -535,7 +653,7 @@ INSERT INTO event (
             for record in records {
                 insert.execute(params![
                     record.website_id,
-                    record.session_id,
+                    record.session_id.map(|id| id.as_bytes().to_vec()),
                     record.event_id,
                     record.event_name,
                     record.currency,
@@ -828,7 +946,7 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
         out.push(EventRow {
             id: row.get::<_, i64>(0)?.to_string(),
             website_id: row.get(1)?,
-            session_id: row.get(2)?,
+            session_id: read_uuid_opt(row, 2)?.map(|id| id.to_string()),
             created_at: from_ts(row.get(3)?),
             name: row.get(4)?,
             url: row.get(5)?,
@@ -853,82 +971,45 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
     Ok(out)
 }
 
-/// The session log: one row per session, derived from its page views.
-fn sessions(conn: &Connection, query: &ReportQuery) -> Result<Vec<SessionRow>> {
+/// The most recent events of a window, newest first.
+///
+/// The session log is built from these: the log reads the last few thousand
+/// rows, not the whole window, so its cost does not grow with the size of the
+/// database.
+fn recent_events(conn: &Connection, query: &ReportQuery, limit: i64) -> Result<Vec<SessionEvent>> {
     let filters = Filters::new(query);
-
-    // The landing page and the last page are the first and the last hit of the
-    // session. SQLite has no `arg_min`/`arg_max`, and a correlated subquery per
-    // group is far too slow (it ran for minutes on 200k rows), so the two ends are
-    // picked with window functions in one pass. The device fields are constant
-    // within a session, so `MAX` returns the same value DuckDB's `any_value` does.
     let sql = format!(
-        "WITH w AS (
-            SELECT session_id, created_at, url,
-                   ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at ASC)  AS rn_first,
-                   ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC) AS rn_last,
-                   title, referrer, referrer_path, hostname, browser, os, device,
-                   country, region, city, language, screen, visitor_id
-            FROM event WHERE {where_clause}
-         )
-         SELECT session_id,
-                MIN(created_at),
-                MAX(created_at),
-                COUNT(*),
-                MAX(CASE WHEN rn_last = 1 THEN url END),
-                MAX(CASE WHEN rn_first = 1 THEN url END),
-                MAX(title),
-                MAX(referrer),
-                MAX(referrer_path),
-                MAX(hostname),
-                MAX(browser),
-                MAX(os),
-                MAX(device),
-                MAX(country),
-                MAX(region),
-                MAX(city),
-                MAX(language),
-                MAX(screen),
-                MAX(visitor_id),
-                MAX(created_at) - MIN(created_at)
-         FROM w
-         GROUP BY session_id
-         ORDER BY MIN(created_at) DESC, session_id ASC
-         LIMIT {limit} OFFSET {offset}",
+        "SELECT id, session_id, visitor_id, created_at, url, title, referrer, referrer_path,
+                hostname, browser, os, device, country, region, city, language, screen
+         FROM event WHERE {where_clause}
+         ORDER BY created_at DESC, id DESC
+         LIMIT {limit}",
         where_clause = filters.clause(),
-        limit = query.limit.clamp(1, 1000),
-        offset = query.offset.max(0),
+        limit = limit.clamp(1, 1_000_000),
     );
 
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query(filters.params().as_slice())?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
-        let created_at = from_ts(row.get(1)?);
-        let updated_at = from_ts(row.get(2)?);
-        let views: i64 = row.get(3)?;
-        let duration: i64 = row.get(19).unwrap_or(0);
-        out.push(SessionRow {
+        out.push(SessionEvent {
             id: row.get(0)?,
-            website_id: query.website_id.clone(),
-            created_at,
-            updated_at,
-            hostname: row.get(9)?,
+            session_id: read_uuid(row, 1)?,
+            visitor_id: read_uuid_opt(row, 2)?,
+            created_at: from_ts(row.get(3)?),
             url: row.get(4)?,
-            title: row.get(6)?,
-            referrer: row.get(7)?,
-            referrer_path: row.get(8)?,
-            entry_url: row.get(5)?,
-            browser: row.get(10)?,
-            os: row.get(11)?,
-            device: row.get(12)?,
-            country: row.get(13)?,
-            region: row.get(14)?,
-            city: row.get(15)?,
-            language: row.get(16)?,
-            screen: row.get(17)?,
-            views,
-            duration,
+            title: row.get(5)?,
+            referrer: row.get(6)?,
+            referrer_path: row.get(7)?,
+            hostname: row.get(8)?,
+            browser: row.get(9)?,
+            os: row.get(10)?,
+            device: row.get(11)?,
+            country: row.get(12)?,
+            region: row.get(13)?,
+            city: row.get(14)?,
+            language: row.get(15)?,
+            screen: row.get(16)?,
         });
     }
     Ok(out)
@@ -954,7 +1035,7 @@ fn revenue(conn: &Connection, query: &ReportQuery) -> Result<Vec<Revenue>> {
     while let Some(row) = rows.next()? {
         out.push(Revenue {
             website_id: row.get(1)?,
-            session_id: row.get(2)?,
+            session_id: read_uuid_opt(row, 2)?,
             event_id: row.get(3)?,
             event_name: row.get(4)?,
             currency: row.get(5)?,

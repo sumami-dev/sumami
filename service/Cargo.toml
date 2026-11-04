@@ -37,7 +37,12 @@ duckdb.workspace = true
 # instance keeps — logins, logs, the GSC import, the cache, query snapshots,
 # the AI chat history — is small, mutable and transactional, which SQLite does
 # better. The two live in separate files for exactly that reason.
-rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
+#
+# The `functions` feature is the one thing rusqlite keeps behind a flag: it lets
+# SQLite call back into Rust. The migration from schema v3 to v4 needs it —
+# SQLite has no hash of its own, so the old text ids are turned into UUIDs by a
+# function we register (the same SHA-256 the DuckDB migration uses).
+rusqlite = { version = "0.37", features = ["bundled", "chrono", "functions"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

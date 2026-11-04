@@ -34,7 +34,9 @@ use duckdb::Connection;
 /// * v1 — the original session-table model.
 /// * v2 — the event-row model (one row per page view).
 /// * v3 — the fact tables lost their primary keys (no index on an append-only table).
-pub const SCHEMA_VERSION: i64 = 3;
+/// * v4 — the session and visitor ids are **UUIDs**: 16 bytes instead of a
+///   36-character string.
+pub const SCHEMA_VERSION: i64 = 4;
 
 /// The columns of the `event` table.
 ///
@@ -43,8 +45,8 @@ pub const SCHEMA_VERSION: i64 = 3;
 pub const EVENT_COLUMNS: &str = "
     id              BIGINT NOT NULL,
     website_id      VARCHAR NOT NULL,
-    session_id      VARCHAR NOT NULL,
-    visitor_id      VARCHAR NOT NULL,
+    session_id      UUID NOT NULL,
+    visitor_id      UUID NOT NULL,
     created_at      TIMESTAMP NOT NULL,
 
     url             VARCHAR,
@@ -95,7 +97,7 @@ pub const EVENT_COLUMNS: &str = "
 pub const REVENUE_COLUMNS: &str = "
     id          BIGINT NOT NULL,
     website_id  VARCHAR NOT NULL,
-    session_id  VARCHAR,
+    session_id  UUID,
     event_id    BIGINT,
     event_name  VARCHAR,
     currency    VARCHAR NOT NULL DEFAULT 'USD',
@@ -187,17 +189,24 @@ pub fn rebuild_to_new_file(path: &Path, conn: &Connection) -> Result<PathBuf> {
 
     let escaped = new_path.to_string_lossy().replace('\'', "''");
 
-    // Which tables does the old database actually have? This is checked before the
-    // new database is attached: `information_schema` spans every attached database.
+    // Which tables does the old database actually have, and how is each column
+    // read out of them? This is worked out **before** the new database is
+    // attached: `information_schema` spans every attached database, and the
+    // attached one already has the new columns — so a check made afterwards
+    // would find the *new* table's columns and read them out of the old table.
     let existing: Vec<&str> = TABLES
         .iter()
         .map(|(table, _)| *table)
         .filter(|table| table_exists(conn, table))
         .collect();
+    let selections: Vec<String> = TABLES
+        .iter()
+        .map(|(table, columns)| migration_select_list(conn, table, &column_names(columns)))
+        .collect();
 
     conn.execute_batch(&format!("ATTACH '{escaped}' AS fresh"))?;
 
-    for (table, columns) in TABLES {
+    for ((table, columns), selection) in TABLES.iter().zip(selections.iter()) {
         let quoted = if *table == "user" {
             "\"user\""
         } else {
@@ -207,8 +216,10 @@ pub fn rebuild_to_new_file(path: &Path, conn: &Connection) -> Result<PathBuf> {
         // A table the old database never had (an early v2 file has no `revenue`)
         // stays empty rather than failing the migration.
         if existing.contains(table) {
+            let names = column_names(columns);
             conn.execute_batch(&format!(
-                "INSERT INTO fresh.{quoted} SELECT * FROM main.{quoted};"
+                "INSERT INTO fresh.{quoted} ({names}) SELECT {selection} FROM main.{quoted};",
+                names = names.join(", "),
             ))?;
         }
     }
@@ -223,6 +234,75 @@ pub fn rebuild_to_new_file(path: &Path, conn: &Connection) -> Result<PathBuf> {
 
     conn.execute_batch("DETACH fresh")?;
     Ok(new_path)
+}
+
+/// The columns of a column definition, in order.
+///
+/// The definitions are written one per line, so the first word of each part is the
+/// column name.
+fn column_names(columns: &str) -> Vec<String> {
+    columns
+        .split(',')
+        .filter_map(|part| part.split_whitespace().next())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// How to read each column of a table out of the old database.
+///
+/// Most columns are copied as they are. The session and visitor ids are not: before
+/// v4 they were 36-character strings, and they are now 16-byte UUIDs.
+///
+/// The conversion is **deterministic**: an id that is already UUID-shaped is kept
+/// as it is (the ids the server derived were a hash formatted as a UUID, so they
+/// survive the migration unchanged), and anything else — a session id the client
+/// sent — is hashed with SHA-256 and the first 16 bytes are kept. The same old id
+/// always becomes the same UUID, so no session is split in two.
+fn migration_select_list(conn: &Connection, table: &str, names: &[String]) -> String {
+    names
+        .iter()
+        .map(|name| {
+            // A column the old database never had stays empty.
+            if !column_exists(conn, table, name) {
+                return "NULL".to_string();
+            }
+            let is_id = matches!(
+                (table, name.as_str()),
+                ("event", "session_id") | ("event", "visitor_id") | ("revenue", "session_id")
+            );
+            if is_id {
+                uuid_from_text(name)
+            } else {
+                name.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The SQL that turns an old text id into a UUID.
+fn uuid_from_text(column: &str) -> String {
+    let hash = format!("sha256({column})");
+    format!(
+        "CASE WHEN try_cast({column} AS UUID) IS NOT NULL \
+           THEN try_cast({column} AS UUID) \
+           ELSE CAST(substr({hash}, 1, 8) || '-' || substr({hash}, 9, 4) || '-' \
+                     || substr({hash}, 13, 4) || '-' || substr({hash}, 17, 4) || '-' \
+                     || substr({hash}, 21, 12) AS UUID) END"
+    )
+}
+
+/// Does the table have this column?
+fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+    conn.query_row(
+        "SELECT count(*) FROM information_schema.columns \
+         WHERE table_name = ?1 AND table_schema = 'main' AND column_name = ?2",
+        duckdb::params![table, column],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|n| n > 0)
+    .unwrap_or(false)
 }
 
 /// Where the rebuilt database is written, before it is swapped in.
