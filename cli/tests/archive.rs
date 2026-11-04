@@ -6,12 +6,12 @@
 
 use std::path::PathBuf;
 
-use sumami_cli::backup;
-use sumami_service::pool::Db;
-use sumami_service::storage::{ReportQuery, Storage, TimeRange};
+use sumimi_cli::backup;
+use sumimi_service::pool::Db;
+use sumimi_service::storage::{ReportQuery, Storage, TimeRange};
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-archive-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-archive-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -20,7 +20,7 @@ fn temp_dir(name: &str) -> PathBuf {
 #[test]
 fn the_archive_answers_the_same_as_the_database() {
     let dir = temp_dir("tiering");
-    let db_path = dir.join("sumami.duckdb");
+    let db_path = dir.join("sumimi.duckdb");
     let archive = dir.join("archive");
 
     let db = Db::open(&db_path, "128MB").unwrap();

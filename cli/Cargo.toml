@@ -1,18 +1,19 @@
 [package]
-name = "sumami-cli"
-description = "Sumami CLI — read and analyze a Sumami DuckDB database offline"
+name = "sumimi-cli"
+description = "Sumimi CLI — read and analyze a Sumimi DuckDB database offline"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-# Published as v0.1.0. **A crates.io name is permanent** — a version can be
-# yanked, but a crate cannot be renamed. (The crates were held back while the
-# name was being decided; the decision was to publish them as they are.)
+# The project was called `sumami` until v0.2.0. The crates published under
+# the old names (sumami, sumami-service, sumami-cli v0.1.0) stay there — **a
+# crates.io name is permanent**: a version can be yanked, but a crate cannot be
+# renamed. These are the ones to use.
 
 [lib]
-name = "sumami_cli"
+name = "sumimi_cli"
 path = "src/lib.rs"
 
 [features]
@@ -36,4 +37,4 @@ uuid = { version = "1", features = ["v4"] }
 #
 # The version is needed for publishing: the path is used locally, and the
 # version is what the published crate depends on.
-sumami-service = { path = "../service", version = "0.1.0" }
+sumimi-service = { path = "../service", version = "0.2.0" }

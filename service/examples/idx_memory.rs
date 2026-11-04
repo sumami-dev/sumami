@@ -8,8 +8,8 @@
 //! the peak resident memory, so the two schemas can be compared:
 //!
 //! ```bash
-//! /usr/bin/time -l cargo run --release --example idx_memory -p sumami-service -- 20000000 pk
-//! /usr/bin/time -l cargo run --release --example idx_memory -p sumami-service -- 20000000 nopk
+//! /usr/bin/time -l cargo run --release --example idx_memory -p sumimi-service -- 20000000 pk
+//! /usr/bin/time -l cargo run --release --example idx_memory -p sumimi-service -- 20000000 nopk
 //! ```
 //!
 //! The third argument picks the write path: `appender` (the server) or `bulk`
@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let path = std::env::temp_dir().join(format!(
-        "sumami-idx-memory-{rows}-{}.duckdb",
+        "sumimi-idx-memory-{rows}-{}.duckdb",
         if with_pk { "pk" } else { "nopk" }
     ));
     let _ = std::fs::remove_file(&path);
@@ -42,7 +42,7 @@ fn main() -> anyhow::Result<()> {
     let conn = Connection::open(&path)?;
     conn.execute_batch(&format!("SET memory_limit='{limit}'; SET threads=2;"))?;
 
-    let plain_ddl = sumami_service::db::EVENT_COLUMNS.to_string();
+    let plain_ddl = sumimi_service::db::EVENT_COLUMNS.to_string();
     let pk_ddl = plain_ddl.replace(
         "id              BIGINT NOT NULL",
         "id              BIGINT PRIMARY KEY",
@@ -166,7 +166,7 @@ fn main() -> anyhow::Result<()> {
     if args.get(3).map(|v| v == "buildsrc").unwrap_or(false) {
         // Build the source database (with a primary key) in its own process, so the
         // memory of the migration copy can be measured on its own.
-        let source = std::env::temp_dir().join(format!("sumami-migrate-src-{rows}.duckdb"));
+        let source = std::env::temp_dir().join(format!("sumimi-migrate-src-{rows}.duckdb"));
         let _ = std::fs::remove_file(&source);
         let src = Connection::open(&source)?;
         src.execute_batch("SET memory_limit='2GB';")?;
@@ -191,8 +191,8 @@ fn main() -> anyhow::Result<()> {
     if args.get(3).map(|v| v == "migrate").unwrap_or(false) {
         // The schema migration: the source has a primary key, the destination does
         // not. This is what `db::rebuild_to_new_file` does.
-        let source = std::env::temp_dir().join(format!("sumami-migrate-src-{rows}.duckdb"));
-        let dest = std::env::temp_dir().join(format!("sumami-migrate-dst-{rows}.duckdb"));
+        let source = std::env::temp_dir().join(format!("sumimi-migrate-src-{rows}.duckdb"));
+        let dest = std::env::temp_dir().join(format!("sumimi-migrate-dst-{rows}.duckdb"));
         let _ = std::fs::remove_file(&dest);
         // Exactly what `db::rebuild_to_new_file` does: open the old database,
         // attach the new file, copy across.

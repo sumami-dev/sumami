@@ -1,11 +1,11 @@
 /*!
- * Sumami tracker — one file, no dependencies, no build step.
+ * Sumimi tracker — one file, no dependencies, no build step.
  *
  * What this file is
  * -----------------
  * A privacy-first web analytics tracker with the same field set as Umami v2.
  * It is plain ES5 JavaScript (no bundler, no npm, no polyfills) and it is served
- * by the Sumami backend itself at `GET /sumami.js` — the file in this repository
+ * by the Sumimi backend itself at `GET /sumimi.js` — the file in this repository
  * is byte-for-byte the file that gets served.
  *
  * What it reports
@@ -45,7 +45,7 @@
  *
  * Usage
  * -----
- *   <script defer src="https://sumami.example/sumami.js"
+ *   <script defer src="https://sumimi.example/sumimi.js"
  *           data-website-id="<website-uuid>"></script>
  *
  * Optional attributes:
@@ -53,10 +53,10 @@
  *   data-website      the website domain, instead of an id
  *   data-api-url      the API base URL (default: the script's own origin)
  *
- * Public API (window.sumami, aliased as window.umami):
- *   sumami.track(name, data)   a custom event
- *   sumami.identify(data)      attach data to the current session
- *   sumami.pageview()          a manual page view
+ * Public API (window.sumimi, aliased as window.umami):
+ *   sumimi.track(name, data)   a custom event
+ *   sumimi.identify(data)      attach data to the current session
+ *   sumimi.pageview()          a manual page view
  */
 (function () {
   'use strict';
@@ -78,7 +78,7 @@
   }
 
   if (!API_URL) {
-    // Derive the API origin from the script URL: <origin>/sumami.js -> <origin>
+    // Derive the API origin from the script URL: <origin>/sumimi.js -> <origin>
     var src = script.src || '';
     var match = src.match(/^(https?:\/\/[^\/]+)/);
     API_URL = match ? match[1] : '';
@@ -403,7 +403,7 @@
 
   // The public API. `umami` is an alias for compatibility with existing snippets.
   var api = { track: guard(track), identify: guard(identify), pageview: guard(pageview) };
-  window.sumami = api;
+  window.sumimi = api;
   window.umami = api;
 
   // ---------------------------------------------------------------------------

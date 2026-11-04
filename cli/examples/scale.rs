@@ -1,18 +1,18 @@
 //! Scale benchmark: how big is the data, and is a small memory limit enough?
 //!
 //! ```bash
-//! cargo run --release -p sumami-cli --example scale -- <rows> <memory-limit> [realistic|lean]
+//! cargo run --release -p sumimi-cli --example scale -- <rows> <memory-limit> [realistic|lean]
 //! ```
 //!
 //! Builds a synthetic table with the **real schema** (the one
-//! `sumami_service::db::init_schema` creates, so it never drifts), then runs the
+//! `sumimi_service::db::init_schema` creates, so it never drifts), then runs the
 //! **actual dashboard queries** (the shared report layer) against it and times them.
 
 use std::time::Instant;
 
 use duckdb::Connection;
-use sumami_service::pool::Db;
-use sumami_service::storage::{Dimension, ReportQuery, Storage, TimeRange};
+use sumimi_service::pool::Db;
+use sumimi_service::storage::{Dimension, ReportQuery, Storage, TimeRange};
 
 /// A UUID from a text expression — the same shape the server hands out.
 fn uuid(text: &str) -> String {
@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
     let lean = args.get(3).map(|v| v == "lean").unwrap_or(false);
     // The file name carries the parameters, so two runs never share a database.
     let path = std::env::temp_dir().join(format!(
-        "sumami-scale-{rows}-{memory_limit}-{}.duckdb",
+        "sumimi-scale-{rows}-{memory_limit}-{}.duckdb",
         args.get(3).map(String::as_str).unwrap_or("default")
     ));
     let _ = std::fs::remove_file(&path);
@@ -46,14 +46,14 @@ fn main() -> anyhow::Result<()> {
     conn.execute_batch("SET checkpoint_threshold='256MB'")?;
     // The thread count is derived from the memory budget, exactly like the server
     // does it: a parallel hash aggregate needs one hash table per thread.
-    let threads = sumami_service::config::threads_for(
+    let threads = sumimi_service::config::threads_for(
         &memory_limit,
         std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
     );
     conn.execute_batch(&format!("SET threads={threads}"))?;
 
     // The real schema: one row per page view, no index on the fact table.
-    sumami_service::db::init_schema(&conn)?;
+    sumimi_service::db::init_schema(&conn)?;
 
     let (url_expr, title_expr, referrer_expr, referrer_path_expr) = if lean {
         (

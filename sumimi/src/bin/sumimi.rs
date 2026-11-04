@@ -1,14 +1,14 @@
-//! The `sumami` executable — the server and the client in one binary.
+//! The `sumimi` executable — the server and the client in one binary.
 //!
 //! ```text
-//! sumami serve --db ./sumami.duckdb --port 3000   # the server
-//! sumami summary <website-id> --from 7d           # the client
+//! sumimi serve --db ./sumimi.duckdb --port 3000   # the server
+//! sumimi summary <website-id> --from 7d           # the client
 //! ```
 //!
 //! The program decides what to do from its arguments: `serve`, `server`, `admin`
 //! and `config` start the server, everything else is a client report.
 //!
-//! Installing the binary under another name (`sumami-server`, `sumami-client`)
+//! Installing the binary under another name (`sumimi-server`, `sumimi-client`)
 //! also works: the name decides the default mode.
 
 fn main() -> anyhow::Result<()> {
@@ -16,15 +16,15 @@ fn main() -> anyhow::Result<()> {
     let program = args
         .first()
         .map(String::as_str)
-        .unwrap_or("sumami")
+        .unwrap_or("sumimi")
         .rsplit('/')
         .next()
-        .unwrap_or("sumami");
+        .unwrap_or("sumimi");
 
     // The name decides the default mode.
     let by_name = match program {
-        "sumami-server" => Some(true),
-        "sumami-client" => Some(false),
+        "sumimi-server" => Some(true),
+        "sumimi-client" => Some(false),
         _ => None,
     };
 
@@ -35,8 +35,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     if wants_server && !matches!(first, "summary" | "websites" | "pages" | "referrers" | "browsers" | "os" | "devices" | "countries" | "languages" | "screens" | "events" | "sessions" | "timeseries" | "export" | "prune" | "erase" | "login" | "seed" | "help" | "--help" | "-h") {
-        tokio::runtime::Runtime::new()?.block_on(sumami::service::server::run())
+        tokio::runtime::Runtime::new()?.block_on(sumimi::service::server::run())
     } else {
-        sumami::cli::run()
+        sumimi::cli::run()
     }
 }

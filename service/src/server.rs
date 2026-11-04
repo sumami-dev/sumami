@@ -1,7 +1,7 @@
 //! The server entry point: argument parsing and startup.
 //!
-//! Lives in the library so that the combined `sumami` binary can offer the same
-//! `serve` / `admin` / `config` commands as the standalone `sumami-server`.
+//! Lives in the library so that the combined `sumimi` binary can offer the same
+//! `serve` / `admin` / `config` commands as the standalone `sumimi-server`.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -18,9 +18,9 @@ use crate::pool::Db;
 use crate::storage::Storage;
 use crate::writer::Writer;
 
-/// The Sumami analytics service.
+/// The Sumimi analytics service.
 #[derive(Debug, Parser)]
-#[command(name = "sumami-server", version, about = "Sumami analytics service")]
+#[command(name = "sumimi-server", version, about = "Sumimi analytics service")]
 pub struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -41,42 +41,42 @@ pub enum Command {
 #[derive(Debug, clap::Args)]
 pub struct ConfigArgs {
     /// Address to bind to.
-    #[arg(long, env = "SUMAMI_HOST")]
+    #[arg(long, env = "SUMIMI_HOST")]
     host: Option<String>,
     /// Port to bind to.
-    #[arg(long, env = "SUMAMI_PORT")]
+    #[arg(long, env = "SUMIMI_PORT")]
     port: Option<u16>,
     /// Secret used to sign tokens (generated and stored on first run when omitted).
-    #[arg(long, env = "SUMAMI_JWT_SECRET")]
+    #[arg(long, env = "SUMIMI_JWT_SECRET")]
     jwt_secret: Option<String>,
     /// Default retention window in days (0 = keep forever).
-    #[arg(long, env = "SUMAMI_RETENTION_DAYS")]
+    #[arg(long, env = "SUMIMI_RETENTION_DAYS")]
     retention_days: Option<i32>,
     /// Header carrying the country code (e.g. `CF-IPCountry`).
-    #[arg(long, env = "SUMAMI_COUNTRY_HEADER")]
+    #[arg(long, env = "SUMIMI_COUNTRY_HEADER")]
     country_header: Option<String>,
     /// Directory holding the documentation site.
-    #[arg(long, env = "SUMAMI_DOCS_DIR")]
+    #[arg(long, env = "SUMIMI_DOCS_DIR")]
     docs_dir: Option<std::path::PathBuf>,
     /// The instance directory.
-    #[arg(long, env = "SUMAMI_DIR", default_value = "sumami")]
+    #[arg(long, env = "SUMIMI_DIR", default_value = "sumimi")]
     dir: std::path::PathBuf,
     /// The data file, when it should not be the default one.
-    #[arg(long, env = "SUMAMI_DB")]
+    #[arg(long, env = "SUMIMI_DB")]
     db: Option<std::path::PathBuf>,
     /// The data engine: `duckdb` (the default) or `sqlite`.
-    #[arg(long, env = "SUMAMI_BACKEND", default_value = "duckdb")]
+    #[arg(long, env = "SUMIMI_BACKEND", default_value = "duckdb")]
     backend: String,
 }
 
 #[derive(Debug, clap::Args)]
 pub struct ServeArgs {
     /// The instance directory: everything the instance owns lives inside it.
-    #[arg(long, env = "SUMAMI_DIR", default_value = "sumami")]
+    #[arg(long, env = "SUMIMI_DIR", default_value = "sumimi")]
     dir: std::path::PathBuf,
     /// The data file, when it should not be the default one inside the instance
     /// directory — for keeping the events on a bigger disk than the rest.
-    #[arg(long, env = "SUMAMI_DB")]
+    #[arg(long, env = "SUMIMI_DB")]
     db: Option<std::path::PathBuf>,
     /// The data engine: `duckdb` (the default) or `sqlite`.
     ///
@@ -86,59 +86,59 @@ pub struct ServeArgs {
     /// file: it takes more space and is slower on the heavy aggregations, but it
     /// allows many readers next to one writer and it is what most other tools
     /// already know how to open.
-    #[arg(long, env = "SUMAMI_BACKEND", default_value = "duckdb")]
+    #[arg(long, env = "SUMIMI_BACKEND", default_value = "duckdb")]
     backend: String,
     /// Address to bind to.
-    #[arg(long, env = "SUMAMI_HOST")]
+    #[arg(long, env = "SUMIMI_HOST")]
     host: Option<String>,
     /// Port to bind to.
-    #[arg(long, env = "SUMAMI_PORT")]
+    #[arg(long, env = "SUMIMI_PORT")]
     port: Option<u16>,
     /// Secret used to sign tokens (generated and stored on first run when omitted).
-    #[arg(long, env = "SUMAMI_JWT_SECRET")]
+    #[arg(long, env = "SUMIMI_JWT_SECRET")]
     jwt_secret: Option<String>,
     /// Default retention window in days (0 = keep forever).
-    #[arg(long, env = "SUMAMI_RETENTION_DAYS")]
+    #[arg(long, env = "SUMIMI_RETENTION_DAYS")]
     retention_days: Option<i32>,
     /// Header carrying the country code (e.g. `CF-IPCountry`).
-    #[arg(long, env = "SUMAMI_COUNTRY_HEADER")]
+    #[arg(long, env = "SUMIMI_COUNTRY_HEADER")]
     country_header: Option<String>,
     /// Directory holding the frontend files.
-    #[arg(long, env = "SUMAMI_JS_DIR")]
+    #[arg(long, env = "SUMIMI_JS_DIR")]
     js_dir: Option<std::path::PathBuf>,
     /// Directory holding the documentation site.
-    #[arg(long, env = "SUMAMI_DOCS_DIR")]
+    #[arg(long, env = "SUMIMI_DOCS_DIR")]
     docs_dir: Option<std::path::PathBuf>,
     /// Serve HTTPS with an automatically issued (and renewed) certificate.
-    #[arg(long = "ssl", alias = "ssl-domain", env = "SUMAMI_SSL_DOMAIN")]
+    #[arg(long = "ssl", alias = "ssl-domain", env = "SUMIMI_SSL_DOMAIN")]
     ssl_domain: Option<String>,
     /// Contact address registered with the ACME provider (Let's Encrypt).
-    #[arg(long, env = "SUMAMI_SSL_EMAIL")]
+    #[arg(long, env = "SUMIMI_SSL_EMAIL")]
     ssl_email: Option<String>,
     /// Directory where the ACME account and certificates are cached.
-    #[arg(long, env = "SUMAMI_SSL_CACHE_DIR")]
+    #[arg(long, env = "SUMIMI_SSL_CACHE_DIR")]
     ssl_cache_dir: Option<std::path::PathBuf>,
     /// Port used for HTTPS.
-    #[arg(long, env = "SUMAMI_SSL_PORT", default_value_t = 443)]
+    #[arg(long, env = "SUMIMI_SSL_PORT", default_value_t = 443)]
     ssl_port: u16,
 }
 
 #[derive(Debug, clap::Args)]
 pub struct AdminArgs {
     /// Admin username.
-    #[arg(long, env = "SUMAMI_ADMIN_USER", default_value = "admin")]
+    #[arg(long, env = "SUMIMI_ADMIN_USER", default_value = "admin")]
     username: String,
     /// Admin password (generated and printed when omitted).
-    #[arg(long, env = "SUMAMI_ADMIN_PASSWORD")]
+    #[arg(long, env = "SUMIMI_ADMIN_PASSWORD")]
     password: Option<String>,
     /// The instance directory.
-    #[arg(long, env = "SUMAMI_DIR", default_value = "sumami")]
+    #[arg(long, env = "SUMIMI_DIR", default_value = "sumimi")]
     dir: std::path::PathBuf,
     /// The data file, when it should not be the default one.
-    #[arg(long, env = "SUMAMI_DB")]
+    #[arg(long, env = "SUMIMI_DB")]
     db: Option<std::path::PathBuf>,
     /// The data engine: `duckdb` (the default) or `sqlite`.
-    #[arg(long, env = "SUMAMI_BACKEND", default_value = "duckdb")]
+    #[arg(long, env = "SUMIMI_BACKEND", default_value = "duckdb")]
     backend: String,
 }
 
@@ -146,7 +146,7 @@ pub struct AdminArgs {
 pub async fn run() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,sumami=debug")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,sumimi=debug")),
         )
         .with_target(false)
         .init();
@@ -183,7 +183,7 @@ pub async fn serve_on_runtime(args: ServeArgs) -> Result<()> {
 
 /// Open the storage backend the configuration asks for.
 ///
-/// The open-source build has DuckDB and SQLite. The private `sumami-pro` build adds
+/// The open-source build has DuckDB and SQLite. The private `sumimi-pro` build adds
 /// PostgreSQL; see `pro/backend.rs`.
 fn open_storage(config: &Config, backend: &str) -> Result<Arc<dyn Storage>> {
     let storage: Arc<dyn Storage> = match backend.to_ascii_lowercase().as_str() {
@@ -291,7 +291,7 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
 
 /// Run the HTTP server with a given storage backend.
 ///
-/// The open-source build only has DuckDB; the private `sumami-pro` build passes a
+/// The open-source build only has DuckDB; the private `sumimi-pro` build passes a
 /// SQLite or PostgreSQL backend here.
 pub async fn serve_with(
     config: Arc<Config>,
@@ -316,10 +316,10 @@ pub async fn serve_with(
             .unwrap_or_else(config::random_secret);
         let generated = config.admin_password.is_none();
         instance.set_password(&config.admin_user, &auth::hash_password(&password)?)?;
-        println!("[sumami] created the admin user '{}'", config.admin_user);
+        println!("[sumimi] created the admin user '{}'", config.admin_user);
         if generated {
-            println!("[sumami] password: {password}");
-            println!("[sumami] store it now — it is not shown again");
+            println!("[sumimi] password: {password}");
+            println!("[sumimi] store it now — it is not shown again");
         }
     }
 
@@ -349,10 +349,10 @@ pub async fn serve_with(
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         dir = %config.paths.dir.display(),
-        "sumami is listening on http://{addr}"
+        "sumimi is listening on http://{addr}"
     );
     println!(
-        "[sumami] listening on http://{addr} (instance: {})",
+        "[sumimi] listening on http://{addr} (instance: {})",
         config.paths.dir.display()
     );
 
@@ -478,5 +478,5 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 
-    println!("[sumami] shutting down");
+    println!("[sumimi] shutting down");
 }

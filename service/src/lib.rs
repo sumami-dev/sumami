@@ -1,4 +1,4 @@
-//! Sumami service — the analytics core.
+//! Sumimi service — the analytics core.
 //!
 //! The crate is split into a library (this file) and a thin binary so the HTTP API
 //! can be integration-tested without spawning a process.

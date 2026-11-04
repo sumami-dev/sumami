@@ -1,8 +1,8 @@
-# Sumami (数猫咪)
+# Sumimi (数咪咪)
 
-> **Count kitties who visit my websites.**
+> **Count kitties popping into my websites.**
 
-Sumami is a **self-hosted web analytics service** that fits on a cheap VPS: one small
+Sumimi is a **self-hosted web analytics service** that fits on a cheap VPS: one small
 binary, one directory, no external database, no cloud account, no telemetry.
 
 - **Rust + Axum + Tokio** — one self-contained binary, ~50 MB of RAM at rest.
@@ -12,7 +12,7 @@ binary, one directory, no external database, no cloud account, no telemetry.
 - **Privacy first** — no cookies, no fingerprinting, **raw IP addresses are never stored**,
   DNT and Global Privacy Control are honoured, and the query string of collected URLs is
   stripped by default.
-- **One command to deploy** — `sumami serve --dir ./sumami --port 3000`.
+- **One command to deploy** — `sumimi serve --dir ./sumimi --port 3000`.
 
 An open-source, high-performance alternative to Umami.
 
@@ -21,8 +21,8 @@ An open-source, high-performance alternative to Umami.
 | Path       | What it is                                                        |
 | ---------- | ----------------------------------------------------------------- |
 | `service/` | The server: collection API, stats API, auth, the writer, TLS.     |
-| `cli/`     | `sumami` — read and analyse a database, locally or over HTTP.     |
-| `sumami/`  | The facade crate: the server and the client as one library.       |
+| `cli/`     | `sumimi` — read and analyse a database, locally or over HTTP.     |
+| `sumimi/`  | The facade crate: the server and the client as one library.       |
 | `js/`      | The dashboard frontend. The tracker is in `service/js/`.            |
 | `docs/`    | The website and documentation.                                     |
 
@@ -32,46 +32,46 @@ rules, and the conventions every change has to follow.
 ## Install
 
 ```bash
-cargo install sumami            # the server and the client, one binary
-sumami serve --dir ./sumami --port 3000
+cargo install sumimi            # the server and the client, one binary
+sumimi serve --dir ./sumimi --port 3000
 ```
 
 Or download the release archive (it ships the dashboard frontend and the
 documentation next to the executable):
 
 ```bash
-curl -LO https://github.com/sumami-dev/sumami/releases/download/v0.1.0/sumami-v0.1.0-Darwin-arm64.tar.gz
-tar xzf sumami-v0.1.0-Darwin-arm64.tar.gz && cd sumami-v0.1.0-Darwin-arm64
-./sumami serve --dir ./sumami --port 3000
+curl -LO https://github.com/sumimi-dev/sumimi/releases/download/v0.2.0/sumimi-v0.2.0-Darwin-arm64.tar.gz
+tar xzf sumimi-v0.2.0-Darwin-arm64.tar.gz && cd sumimi-v0.2.0-Darwin-arm64
+./sumimi serve --dir ./sumimi --port 3000
 ```
 
-The crates are `sumami` (the binary), `sumami-service` (the library) and
-`sumami-cli` (the client). They are Apache-2.0.
+The crates are `sumimi` (the binary), `sumimi-service` (the library) and
+`sumimi-cli` (the client). They are Apache-2.0.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/sumami-dev/sumami
-cd sumami
+git clone https://github.com/sumimi-dev/sumimi
+cd sumimi
 cargo build --release          # the first build compiles DuckDB: be patient
 ```
 
-The result is **one** executable in `target/release/`: `sumami`. It is both the server and
-the client — `sumami serve …` starts the server, `sumami summary …` reads the data —
+The result is **one** executable in `target/release/`: `sumimi`. It is both the server and
+the client — `sumimi serve …` starts the server, `sumimi summary …` reads the data —
 because both halves share the schema, the metric definitions and the query code.
 
 DuckDB is compiled into the executable, so the result is a **single file** — no shared
 library to install, no `LD_LIBRARY_PATH`, no runtime surprises:
 
 ```bash
-./target/release/sumami serve --dir ./sumami --port 3000
+./target/release/sumimi serve --dir ./sumimi --port 3000
 ```
 
 An instance is a **directory**: the events, the accounts and the rest live inside it,
 so backing it up, moving it and deleting it are one operation on one path.
 
 ```
-sumami/
+sumimi/
 ├── data.duckdb      the events
 ├── instance.sqlite  the accounts, the log, the imports, the cache
 ├── logs/            the server's log files
@@ -97,7 +97,7 @@ curl -s -X POST http://localhost:3000/api/websites \
 Put the tracker on your site:
 
 ```html
-<script defer src="http://localhost:3000/sumami.js" data-website-id="<website-id>"></script>
+<script defer src="http://localhost:3000/sumimi.js" data-website-id="<website-id>"></script>
 ```
 
 Open <http://localhost:3000/> for the dashboard, <http://localhost:3000/docs/> for the docs.
@@ -105,22 +105,22 @@ Open <http://localhost:3000/> for the dashboard, <http://localhost:3000/docs/> f
 ## HTTPS without a reverse proxy
 
 ```bash
-sumami serve --dir /var/lib/sumami \
+sumimi serve --dir /var/lib/sumimi \
              --ssl example.com --ssl-email you@example.com
 ```
 
 The server obtains a Let's Encrypt certificate over ACME and renews it on its own.
-The challenge is TLS-ALPN-01, so port 443 has to reach Sumami directly; behind a
+The challenge is TLS-ALPN-01, so port 443 has to reach Sumimi directly; behind a
 proxy that terminates TLS, let the proxy manage the certificate instead.
 
 ## The CLI
 
 ```bash
-sumami websites                              # local database
-sumami summary <website-id> --from 7d       # or --url https://analytics.example.com
-sumami pages <website-id> --from 24h
-sumami export <website-id> pages --format csv
-sumami gsc import gsc.csv --website <id>    # a Search Console export
+sumimi websites                              # local database
+sumimi summary <website-id> --from 7d       # or --url https://analytics.example.com
+sumimi pages <website-id> --from 24h
+sumimi export <website-id> pages --format csv
+sumimi gsc import gsc.csv --website <id>    # a Search Console export
 ```
 
 The same commands work against a local `.duckdb` file and against a running server
@@ -131,8 +131,8 @@ The same commands work against a local `.duckdb` file and against a running serv
 ```bash
 cargo test                                  # unit + integration tests
 cargo clippy --all-targets -- -D warnings
-cargo run -p sumami -- serve --dir ./dev --port 3000
-cargo run -p sumami -- --db ./dev/data.duckdb summary <website-id>
+cargo run -p sumimi -- serve --dir ./dev --port 3000
+cargo run -p sumimi -- --db ./dev/data.duckdb summary <website-id>
 ```
 
 `AGENTS.md` §7 lists the whole workflow.
@@ -140,7 +140,7 @@ cargo run -p sumami -- --db ./dev/data.duckdb summary <website-id>
 ## What is in the release
 
 ```
-sumami             one binary: the server (`sumami serve`) and the client (`sumami summary`)
+sumimi             one binary: the server (`sumimi serve`) and the client (`sumimi summary`)
 js/                the tracker and the dashboard frontend (published on a CDN)
 docs/              the documentation site
 ```
@@ -151,8 +151,8 @@ The dashboard frontend is served from a CDN by default, so the backend never shi
 ## Try it
 
 ```bash
-sumami serve --db ./demo.duckdb --port 3000   # prints the admin password once
-sumami seed --db ./demo.duckdb --days 30       # synthetic traffic (stop the server first)
+sumimi serve --db ./demo.duckdb --port 3000   # prints the admin password once
+sumimi seed --db ./demo.duckdb --days 30       # synthetic traffic (stop the server first)
 ```
 
 Open <http://localhost:3000/> and sign in.
@@ -166,5 +166,5 @@ contributors, and because it is a licence a company's legal department already k
 The versions published before 2026-11-04 were MIT; that grant stands for them, and
 everything since is Apache-2.0.
 
-Third-party software used by Sumami keeps its own licence: DuckDB (MIT),
+Third-party software used by Sumimi keeps its own licence: DuckDB (MIT),
 Axum / Tokio / Hyper (MIT / Apache-2.0), rustls (Apache-2.0 / ISC / MIT).

@@ -1,31 +1,32 @@
 [package]
-name = "sumami"
-description = "Sumami — the self-hosted analytics service, as a library: the server, the client and both data engines"
+name = "sumimi"
+description = "Sumimi — the self-hosted analytics service, as a library: the server, the client and both data engines"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-# Published as v0.1.0. **A crates.io name is permanent** — a version can be
-# yanked, but a crate cannot be renamed. (The crates were held back while the
-# name was being decided; the decision was to publish them as they are.)
+# The project was called `sumami` until v0.2.0. The crates published under
+# the old names (sumami, sumami-service, sumami-cli v0.1.0) stay there — **a
+# crates.io name is permanent**: a version can be yanked, but a crate cannot be
+# renamed. These are the ones to use.
 
 [lib]
-name = "sumami"
+name = "sumimi"
 path = "src/lib.rs"
 
 # The one and only executable: the server and the client in a single binary,
 # sharing one copy of DuckDB and one implementation of every report.
 [[bin]]
-name = "sumami"
-path = "src/bin/sumami.rs"
+name = "sumimi"
+path = "src/bin/sumimi.rs"
 
 [features]
 default = ["duckdb-static"]
 # Static DuckDB: the executable is self-contained (one file to deploy).
 # Build with --no-default-features to link libduckdb dynamically instead.
-duckdb-static = ["sumami-service/duckdb-static"]
+duckdb-static = ["sumimi-service/duckdb-static"]
 
 [dependencies]
 anyhow.workspace = true
@@ -35,8 +36,8 @@ tokio.workspace = true
 #
 # The versions are needed for publishing: the paths are used locally, and the
 # versions are what the published crate depends on.
-sumami-service = { path = "../service", version = "0.1.0" }
-sumami-cli = { path = "../cli", version = "0.1.0" }
+sumimi-service = { path = "../service", version = "0.2.0" }
+sumimi-cli = { path = "../cli", version = "0.2.0" }
 
 [dev-dependencies]
 # The tests run the real executable: one sends it a real SIGTERM, the other

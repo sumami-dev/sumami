@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CLI — Sumami</title>
-<meta name="description" content="The sumami command line: websites, summary, pages, referrers, browsers, events, sessions, timeseries, export, seed, prune and erase — reading a DuckDB file or a running server.">
+<title>CLI — Sumimi</title>
+<meta name="description" content="The sumimi command line: websites, summary, pages, referrers, browsers, events, sessions, timeseries, export, seed, prune and erase — reading a DuckDB file or a running server.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23f97316'%3E%3Cellipse cx='7.4' cy='13.2' rx='2.9' ry='3.9' transform='rotate(-20 7.4 13.2)'/%3E%3Cellipse cx='12.8' cy='8.8' rx='2.8' ry='3.9' transform='rotate(-7 12.8 8.8)'/%3E%3Cellipse cx='19.2' cy='8.8' rx='2.8' ry='3.9' transform='rotate(7 19.2 8.8)'/%3E%3Cellipse cx='24.6' cy='13.2' rx='2.9' ry='3.9' transform='rotate(20 24.6 13.2)'/%3E%3Cpath d='M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z'/%3E%3C/g%3E%3C/svg%3E">
@@ -15,9 +15,9 @@
 <header class="site-header">
   <div class="wrap">
     <a class="brand" href="index.html">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      <span>Sumami</span>
-      <span class="brand-cn">数猫咪</span>
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      <span>Sumimi</span>
+      <span class="brand-cn">数咪咪</span>
     </a>
     <nav class="site-nav" aria-label="Main">
       <ul>
@@ -37,11 +37,11 @@
 <main id="main">
   <div class="wrap">
 
-    <h1 class="page-title">The <code>sumami</code> CLI</h1>
+    <h1 class="page-title">The <code>sumimi</code> CLI</h1>
     <p class="page-lede">
-      <code>sumami</code> is one self-contained executable with DuckDB compiled in — no shared
+      <code>sumimi</code> is one self-contained executable with DuckDB compiled in — no shared
       library to install alongside it. The same program is the server
-      (<code>sumami serve …</code>) and the analyser (<code>sumami summary …</code>); this
+      (<code>sumimi serve …</code>) and the analyser (<code>sumimi summary …</code>); this
       page is about the analyser half. It answers the same questions whether it reads a
       <code>.duckdb</code> file directly or talks to a running server over HTTP — so the same
       command works on your laptop with the file copied over, and on the box itself.
@@ -50,10 +50,10 @@
     <h2>One binary, two modes</h2>
     <p>
       There is only one file to download. The release archive also ships
-      <code>sumami-server</code> and <code>sumami-client</code> as <strong>symlinks</strong>
-      to <code>sumami</code>, for people who prefer the explicit name; the program switches
-      mode by the name it was invoked under. <code>sumami-server serve</code> and
-      <code>sumami-client summary</code> therefore both work, but they are the same
+      <code>sumimi-server</code> and <code>sumimi-client</code> as <strong>symlinks</strong>
+      to <code>sumimi</code>, for people who prefer the explicit name; the program switches
+      mode by the name it was invoked under. <code>sumimi-server serve</code> and
+      <code>sumimi-client summary</code> therefore both work, but they are the same
       executable.
     </p>
     <div class="table-wrap">
@@ -62,16 +62,16 @@
           <tr><th>I want to…</th><th>Command</th></tr>
         </thead>
         <tbody>
-          <tr><td>Run the server</td><td><code>sumami serve --db ./sumami.duckdb --port 3000</code></td></tr>
-          <tr><td>Manage the admin account</td><td><code>sumami admin --username admin</code></td></tr>
-          <tr><td>Print the resolved configuration</td><td><code>sumami config</code></td></tr>
-          <tr><td>Analyse a database</td><td><code>sumami summary &lt;website-id&gt; --from 7d</code></td></tr>
-          <tr><td>Break the traffic down</td><td><code>sumami pages</code>, <code>sumami referrers</code>, <code>sumami browsers</code>, <code>sumami os</code>, <code>sumami devices</code>, <code>sumami countries</code>, <code>sumami languages</code>, <code>sumami screens</code></td></tr>
-          <tr><td>Look at the raw records</td><td><code>sumami events</code>, <code>sumami sessions</code>, <code>sumami timeseries</code></td></tr>
-          <tr><td>Export a report</td><td><code>sumami export &lt;website-id&gt; pages --format csv</code></td></tr>
-          <tr><td>Fill a database with demo traffic</td><td><code>sumami seed --db ./sumami.duckdb</code></td></tr>
-          <tr><td>Enforce retention / delete a site</td><td><code>sumami prune</code>, <code>sumami erase</code></td></tr>
-          <tr><td>Store the credentials for a server</td><td><code>sumami login &lt;url&gt;</code></td></tr>
+          <tr><td>Run the server</td><td><code>sumimi serve --db ./sumimi.duckdb --port 3000</code></td></tr>
+          <tr><td>Manage the admin account</td><td><code>sumimi admin --username admin</code></td></tr>
+          <tr><td>Print the resolved configuration</td><td><code>sumimi config</code></td></tr>
+          <tr><td>Analyse a database</td><td><code>sumimi summary &lt;website-id&gt; --from 7d</code></td></tr>
+          <tr><td>Break the traffic down</td><td><code>sumimi pages</code>, <code>sumimi referrers</code>, <code>sumimi browsers</code>, <code>sumimi os</code>, <code>sumimi devices</code>, <code>sumimi countries</code>, <code>sumimi languages</code>, <code>sumimi screens</code></td></tr>
+          <tr><td>Look at the raw records</td><td><code>sumimi events</code>, <code>sumimi sessions</code>, <code>sumimi timeseries</code></td></tr>
+          <tr><td>Export a report</td><td><code>sumimi export &lt;website-id&gt; pages --format csv</code></td></tr>
+          <tr><td>Fill a database with demo traffic</td><td><code>sumimi seed --db ./sumimi.duckdb</code></td></tr>
+          <tr><td>Enforce retention / delete a site</td><td><code>sumimi prune</code>, <code>sumimi erase</code></td></tr>
+          <tr><td>Store the credentials for a server</td><td><code>sumimi login &lt;url&gt;</code></td></tr>
         </tbody>
       </table>
     </div>
@@ -94,13 +94,13 @@
         <tbody>
           <tr>
             <td>Local file</td>
-            <td><code>--db &lt;path&gt;</code><br>(default <code>./sumami.duckdb</code>)</td>
+            <td><code>--db &lt;path&gt;</code><br>(default <code>./sumimi.duckdb</code>)</td>
             <td>The file is opened read-only. <code>prune</code>, <code>erase</code> and <code>seed</code> open it read-write.</td>
           </tr>
           <tr>
             <td>HTTP API</td>
             <td><code>--url http://host:3000</code> plus <code>--username</code>/<code>--password</code> or <code>--token</code></td>
-            <td>Logs in as the admin account via <code>POST /api/login</code> and caches the token in <code>~/.config/sumami/credentials.json</code> (mode <code>0600</code>).</td>
+            <td>Logs in as the admin account via <code>POST /api/login</code> and caches the token in <code>~/.config/sumimi/credentials.json</code> (mode <code>0600</code>).</td>
           </tr>
         </tbody>
       </table>
@@ -112,13 +112,13 @@
       <code>websites</code> needs a running server — ask it over HTTP.
     </p>
     <pre class="shell"><code><span class="cmt"># read a database file</span>
-sumami summary --db /var/lib/sumami/sumami.duckdb 3f2a...
+sumimi summary --db /var/lib/sumimi/sumimi.duckdb 3f2a...
 
 <span class="cmt"># or talk to a running server</span>
-sumami summary --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...
+sumimi summary --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...
 
 <span class="cmt"># with a token you already have</span>
-sumami summary --url http://127.0.0.1:3999 --token eyJhbGciOi... 3f2a...</code></pre>
+sumimi summary --url http://127.0.0.1:3999 --token eyJhbGciOi... 3f2a...</code></pre>
     <p>
       In HTTP mode the command asks the server for the numbers; in local mode it runs the
       <em>same</em> queries against the file directly. The two are not approximations of each
@@ -133,7 +133,7 @@ sumami summary --url http://127.0.0.1:3999 --token eyJhbGciOi... 3f2a...</code><
           <tr><th>Flag</th><th>Meaning</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>--db &lt;path&gt;</code></td><td>The database file to read (local mode). Default <code>./sumami.duckdb</code>.</td></tr>
+          <tr><td><code>--db &lt;path&gt;</code></td><td>The database file to read (local mode). Default <code>./sumimi.duckdb</code>.</td></tr>
           <tr><td><code>--url &lt;url&gt;</code></td><td>Base URL of a running server (HTTP mode).</td></tr>
           <tr><td><code>--token &lt;token&gt;</code></td><td>Bearer token for HTTP mode. Bypasses the credential cache.</td></tr>
           <tr><td><code>--username &lt;name&gt;</code></td><td>Admin username for HTTP mode.</td></tr>
@@ -147,21 +147,21 @@ sumami summary --url http://127.0.0.1:3999 --token eyJhbGciOi... 3f2a...</code><
     </div>
     <p>
       The website id is a positional argument, not a flag:
-      <code>sumami pages 3f2a...</code>. <code>--from</code>, <code>--to</code> and
+      <code>sumimi pages 3f2a...</code>. <code>--from</code>, <code>--to</code> and
       <code>--limit</code> come after it. <code>summary</code> takes the website id and the
       window but no <code>--limit</code>; <code>websites</code> takes no arguments at all.
     </p>
     <p>
       The source flags have environment equivalents:
-      <code>SUMAMI_DB</code>, <code>SUMAMI_URL</code>, <code>SUMAMI_TOKEN</code>,
-      <code>SUMAMI_ADMIN_USER</code> and <code>SUMAMI_ADMIN_PASSWORD</code>.
+      <code>SUMIMI_DB</code>, <code>SUMIMI_URL</code>, <code>SUMIMI_TOKEN</code>,
+      <code>SUMIMI_ADMIN_USER</code> and <code>SUMIMI_ADMIN_PASSWORD</code>.
     </p>
 
     <h2>Commands</h2>
 
     <h3><code>websites</code></h3>
     <p>List the websites known to a running server.</p>
-    <pre class="shell"><code>sumami websites --url http://127.0.0.1:3999 --username admin --password '...'</code></pre>
+    <pre class="shell"><code>sumimi websites --url http://127.0.0.1:3999 --username admin --password '...'</code></pre>
     <pre class="shell"><code>ID                                    NAME          DOMAIN       CREATED
 ------------------------------------  ------------  -----------  --------------------------
 3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071  My Blog       blog.example.com  2026-01-12
@@ -172,7 +172,7 @@ sumami summary --url http://127.0.0.1:3999 --token eyJhbGciOi... 3f2a...</code><
       The headline numbers for a window: page views, visitors, visits, bounces and average
       visit duration.
     </p>
-    <pre class="shell"><code>sumami summary --db ./sumami.duckdb 3f2a... --from 7d</code></pre>
+    <pre class="shell"><code>sumimi summary --db ./sumimi.duckdb 3f2a... --from 7d</code></pre>
     <pre class="shell"><code>METRIC              VALUE
 ------------------  -----
 Pageviews           1523
@@ -183,7 +183,7 @@ Visit duration (s)    84</code></pre>
 
     <h3><code>pages</code></h3>
     <p>The most visited paths.</p>
-    <pre class="shell"><code>sumami pages --db ./sumami.duckdb 3f2a... --limit 5</code></pre>
+    <pre class="shell"><code>sumimi pages --db ./sumimi.duckdb 3f2a... --limit 5</code></pre>
     <pre class="shell"><code>NAME                                VALUE
 ----------------------------------  -----
 /posts/hello                          312
@@ -192,7 +192,7 @@ Visit duration (s)    84</code></pre>
 
     <h3><code>referrers</code></h3>
     <p>Where the traffic came from.</p>
-    <pre class="shell"><code>sumami referrers --db ./sumami.duckdb 3f2a...</code></pre>
+    <pre class="shell"><code>sumimi referrers --db ./sumimi.duckdb 3f2a...</code></pre>
     <pre class="shell"><code>NAME                             VALUE
 -------------------------------  -----
 (direct)                         223
@@ -210,17 +210,17 @@ https://duckduckgo.com/          104</code></pre>
       <code>countries</code>, <code>languages</code> and <code>screens</code>. They take the
       same arguments and print the same shape of table.
     </p>
-    <pre class="shell"><code>sumami browsers  --db ./sumami.duckdb 3f2a...
-sumami os       --db ./sumami.duckdb 3f2a...
-sumami devices  --db ./sumami.duckdb 3f2a...
-sumami countries --db ./sumami.duckdb 3f2a...</code></pre>
+    <pre class="shell"><code>sumimi browsers  --db ./sumimi.duckdb 3f2a...
+sumimi os       --db ./sumimi.duckdb 3f2a...
+sumimi devices  --db ./sumimi.duckdb 3f2a...
+sumimi countries --db ./sumimi.duckdb 3f2a...</code></pre>
 
     <h3><code>events</code></h3>
     <p>
       The custom events, grouped by name and counted — the same breakdown the
       <code>/stats/events</code> endpoint returns.
     </p>
-    <pre class="shell"><code>sumami events --db ./sumami.duckdb 3f2a...</code></pre>
+    <pre class="shell"><code>sumimi events --db ./sumimi.duckdb 3f2a...</code></pre>
     <pre class="shell"><code>NAME                  VALUE
 --------------------  -----
 newsletter_subscribe  34
@@ -234,11 +234,11 @@ download              8</code></pre>
 
     <h3><code>sessions</code></h3>
     <p>The session log, newest first.</p>
-    <pre class="shell"><code>sumami sessions --db ./sumami.duckdb 3f2a... --limit 3</code></pre>
+    <pre class="shell"><code>sumimi sessions --db ./sumimi.duckdb 3f2a... --limit 3</code></pre>
 
     <h3><code>timeseries</code></h3>
     <p>Page views over time, hourly or daily depending on the window.</p>
-    <pre class="shell"><code>sumami timeseries --db ./sumami.duckdb 3f2a... --from 30d</code></pre>
+    <pre class="shell"><code>sumimi timeseries --db ./sumimi.duckdb 3f2a... --from 30d</code></pre>
     <pre class="shell"><code>DATE                  VIEWS
 --------------------  -----
 2026-10-25T00:00:00Z    31
@@ -247,8 +247,8 @@ download              8</code></pre>
 
     <h3><code>export</code></h3>
     <p>Export the data of one website as JSON or CSV.</p>
-    <pre class="shell"><code>sumami export --db ./sumami.duckdb 3f2a... pages --format csv > traffic.csv
-sumami export --db ./sumami.duckdb 3f2a... summary --format json > traffic.json</code></pre>
+    <pre class="shell"><code>sumimi export --db ./sumimi.duckdb 3f2a... pages --format csv > traffic.csv
+sumimi export --db ./sumimi.duckdb 3f2a... summary --format json > traffic.json</code></pre>
     <p>
       The report comes after the website id and names what to export: <code>summary</code>,
       <code>pages</code>, <code>referrers</code>, <code>browsers</code>, <code>events</code>,
@@ -279,7 +279,7 @@ sumami export --db ./sumami.duckdb 3f2a... summary --format json > traffic.json<
       dashboard — or a demo of it — without pointing a real site at it. The data is entirely
       invented: invented domains, invented visitors, an invented traffic shape.
     </p>
-    <pre class="shell"><code>sumami seed --db ./sumami.duckdb --days 30 --visitors 140 \
+    <pre class="shell"><code>sumimi seed --db ./sumimi.duckdb --days 30 --visitors 140 \
   --website "Example Blog" --domain example.com</code></pre>
     <pre class="shell"><code>seeded 3992 sessions and 724 events
 website: e00f7a9b-ab5c-46ac-8293-f28541b85172
@@ -290,7 +290,7 @@ start the server and open the dashboard to see it</code></pre>
           <tr><th>Flag</th><th>Default</th><th>Meaning</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>--db &lt;path&gt;</code></td><td><code>./sumami.duckdb</code></td><td>The database file to write to. Created if it does not exist.</td></tr>
+          <tr><td><code>--db &lt;path&gt;</code></td><td><code>./sumimi.duckdb</code></td><td>The database file to write to. Created if it does not exist.</td></tr>
           <tr><td><code>--days &lt;n&gt;</code></td><td><code>30</code></td><td>How many days of history to generate.</td></tr>
           <tr><td><code>--visitors &lt;n&gt;</code></td><td><code>120</code></td><td>Roughly how many visitors per day.</td></tr>
           <tr><td><code>--website &lt;name&gt;</code></td><td><code>Example Blog</code></td><td>The name of the website to seed. It is created when missing.</td></tr>
@@ -320,7 +320,7 @@ start the server and open the dashboard to see it</code></pre>
       number of days. <code>0</code> days means keep everything, so nothing is deleted.
     </p>
     <pre class="shell"><code><span class="cmt"># local file — opened read-write for this command only</span>
-sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...</code></pre>
+sumimi prune --db /var/lib/sumimi/sumimi.duckdb 3f2a...</code></pre>
     <p>
       This one is local-only: the server has no pruning endpoint yet, so <code>prune</code>
       works on the database file and nowhere else. Stop the service, prune the file, start the
@@ -332,7 +332,7 @@ sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...</code></pre>
       Delete a website and all of its data. This is the "right to be forgotten" button:
       <code>erase</code> removes the website, its sessions and its events.
     </p>
-    <pre class="shell"><code>sumami erase --db /var/lib/sumami/sumami.duckdb 3f2a...</code></pre>
+    <pre class="shell"><code>sumimi erase --db /var/lib/sumimi/sumimi.duckdb 3f2a...</code></pre>
     <p>
       It asks for confirmation unless <code>--yes</code> is given. Like <code>prune</code>,
       this is local-only. To erase a website while the server is running, call
@@ -346,15 +346,15 @@ sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...</code></pre>
       "the site is down" and "this machine has no internet" are not confused.
     </p>
     <pre class="shell"><code><span class="cmt"># is it up?</span>
-sumami uptime https://example.com
+sumimi uptime https://example.com
 
 <span class="cmt"># watch more endpoints of a website</span>
-sumami uptime --website 3f2a... --add https://example.com/health
-sumami uptime --website 3f2a... --list
-sumami uptime --website 3f2a... --remove https://example.com/health
+sumimi uptime --website 3f2a... --add https://example.com/health
+sumimi uptime --website 3f2a... --list
+sumimi uptime --website 3f2a... --remove https://example.com/health
 
 <span class="cmt"># check every endpoint of a website now</span>
-sumami uptime --website 3f2a... --check-all</code></pre>
+sumimi uptime --website 3f2a... --check-all</code></pre>
     <p>
       The checks are recorded in the instance store (or sent to the API when
       <code>--url</code> is used). A failed check says whether the network was
@@ -365,7 +365,7 @@ sumami uptime --website 3f2a... --check-all</code></pre>
     <p>
       Every command accepts <code>--json</code>, which is what you want in a script:
     </p>
-    <pre class="shell"><code>sumami pages --db ./sumami.duckdb 3f2a... --json | jq '.[0].url'</code></pre>
+    <pre class="shell"><code>sumimi pages --db ./sumimi.duckdb 3f2a... --json | jq '.[0].url'</code></pre>
     <pre class="shell"><code>[
   {
     "name": "/posts/hello",
@@ -382,19 +382,19 @@ sumami uptime --website 3f2a... --check-all</code></pre>
     <h2>Credentials</h2>
     <p>
       In HTTP mode, when you give <code>--username</code> and <code>--password</code>, the token
-      is cached in <code>~/.config/sumami/credentials.json</code> with mode <code>0600</code>,
+      is cached in <code>~/.config/sumimi/credentials.json</code> with mode <code>0600</code>,
       so later commands can be run without repeating the password. Pass <code>--token</code> to
       bypass the cache entirely.
     </p>
-    <pre class="shell"><code>sumami summary --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...
-sumami summary --url http://127.0.0.1:3999 3f2a...   <span class="cmt"># uses the cached token</span></code></pre>
+    <pre class="shell"><code>sumimi summary --url http://127.0.0.1:3999 --username admin --password '...' 3f2a...
+sumimi summary --url http://127.0.0.1:3999 3f2a...   <span class="cmt"># uses the cached token</span></code></pre>
     <p>
       The <code>login</code> subcommand does the same thing up front: it checks the
       credentials against the server and stores them.
     </p>
-    <pre class="shell"><code>sumami login http://127.0.0.1:3999 --username admin
+    <pre class="shell"><code>sumimi login http://127.0.0.1:3999 --username admin
 <span class="cmt"># the password is asked for interactively when --password is omitted</span>
-credentials saved to /home/you/.config/sumami/credentials.json
+credentials saved to /home/you/.config/sumimi/credentials.json
 logged in to http://127.0.0.1:3999</code></pre>
 
     <h2>Safety rules</h2>
@@ -413,26 +413,26 @@ logged in to http://127.0.0.1:3999</code></pre>
 
     <h2>Examples</h2>
     <h3>Yesterday's top pages</h3>
-    <pre class="shell"><code>sumami pages --db ./sumami.duckdb 3f2a... --from 2026-01-14 --to 2026-01-15</code></pre>
+    <pre class="shell"><code>sumimi pages --db ./sumimi.duckdb 3f2a... --from 2026-01-14 --to 2026-01-15</code></pre>
 
     <h3>A weekly report as CSV</h3>
-    <pre class="shell"><code>sumami export --db ./sumami.duckdb 3f2a... pages --format csv --from 30d > last-30-days.csv</code></pre>
+    <pre class="shell"><code>sumimi export --db ./sumimi.duckdb 3f2a... pages --format csv --from 30d > last-30-days.csv</code></pre>
 
     <h3>Counting unique visitors per day</h3>
-    <pre class="shell"><code>sumami timeseries --db ./sumami.duckdb 3f2a... --from 7d --json | jq 'map(.value)'</code></pre>
+    <pre class="shell"><code>sumimi timeseries --db ./sumimi.duckdb 3f2a... --from 7d --json | jq 'map(.value)'</code></pre>
 
     <h3>Auditing a running server</h3>
-    <pre class="shell"><code>sumami websites --url http://127.0.0.1:3999 --username admin --password '...'
-sumami summary --url http://127.0.0.1:3999 --username admin --password '...' 3f2a... --from 30d</code></pre>
+    <pre class="shell"><code>sumimi websites --url http://127.0.0.1:3999 --username admin --password '...'
+sumimi summary --url http://127.0.0.1:3999 --username admin --password '...' 3f2a... --from 30d</code></pre>
 
     <h3>A demo database to look at</h3>
     <pre class="shell"><code><span class="cmt"># the server must be stopped while the database is written</span>
-sumami seed --db ./demo.duckdb --days 30
-sumami serve --db ./demo.duckdb --port 3000</code></pre>
+sumimi seed --db ./demo.duckdb --days 30
+sumimi serve --db ./demo.duckdb --port 3000</code></pre>
 
     <p class="footnote">
-      The <code>sumami</code> CLI is original work, Apache-2.0 licensed together with the rest
-      of Sumami. All licences are recorded in <code>assets/CREDITS.md</code>.
+      The <code>sumimi</code> CLI is original work, Apache-2.0 licensed together with the rest
+      of Sumimi. All licences are recorded in <code>assets/CREDITS.md</code>.
     </p>
 
   </div>
@@ -441,8 +441,8 @@ sumami serve --db ./demo.duckdb --port 3000</code></pre>
 <footer class="site-footer">
   <div class="wrap">
     <p class="footer-mark">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      Sumami 数猫咪
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      Sumimi 数咪咪
     </p>
     <p>Apache-2.0 licensed. Self-hosted, cookieless, no telemetry.</p>
     <ul>

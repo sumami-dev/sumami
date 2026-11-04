@@ -1,6 +1,6 @@
-# AGENTS.md — Sumami (数猫咪)
+# AGENTS.md — Sumimi (数咪咪)
 
-> This file is the **single source of truth for the design** of Sumami.
+> This file is the **single source of truth for the design** of Sumimi.
 > Read it before writing code. If code and this document disagree, this document wins
 > until it is updated in the same change.
 
@@ -8,7 +8,7 @@
 
 ## 0. TL;DR
 
-Sumami is a **self-hosted, single-binary web analytics service**: Rust + Axum + Tokio in the
+Sumimi is a **self-hosted, single-binary web analytics service**: Rust + Axum + Tokio in the
 backend, **DuckDB 2.0.0** as the embedded analytics store, and an **Umami v2–compatible HTTP
 API** so existing Umami dashboards / trackers keep working.
 
@@ -28,7 +28,7 @@ Measured footprint (release binary, DuckDB 2.0.0 statically linked):
 
 The declared limit is a **ceiling, not an allocation**: DuckDB's buffer manager held
 0.5–1.8 MB while serving traffic. The RSS growth after a burst is the C allocator
-keeping freed pages, not live data. `SUMAMI_DUCKDB_MEMORY_LIMIT` tunes the ceiling;
+keeping freed pages, not live data. `SUMIMI_DUCKDB_MEMORY_LIMIT` tunes the ceiling;
 `/api/heartbeat` reports the usage, the configured limit, the limit DuckDB itself
 reports back, and the thread count.
 
@@ -38,13 +38,13 @@ The defaults are chosen for the deployment target, not for a workstation:
 
 | Setting | Default | Why |
 | --- | --- | --- |
-| `SUMAMI_DUCKDB_MEMORY_LIMIT` | **min(128 MB, RAM / 4)** | DuckDB's own default is 80% of RAM — 410 MB on a 512 MB box, which would leave nothing for the OS. The limit caps the *buffer*, not the data: queries stream and spill to disk. |
-| `SUMAMI_DUCKDB_FLUSH_THRESHOLD` | 32 MB | DuckDB's default (128 MB) keeps that much freed memory before returning it to the OS. |
-| `SUMAMI_DUCKDB_TEMP_LIMIT` | 2 GB | A query that spills must not fill the disk. |
-| `SUMAMI_DUCKDB_THREADS` | auto (one per 64 MB of budget) | A parallel `COUNT(DISTINCT …)` builds **one hash table per thread**, so a query's memory scales with the thread count: at 10 threads a 5M-row summary query runs out of a 128 MB limit, at 2 threads it takes 154 ms. |
-| `SUMAMI_STORE_TITLES` | **on** | On by default: Umami stores the title, and that is the baseline. Set it to `0` to save the space — the title is roughly half of the stored bytes and almost nobody looks at it. |
-| `SUMAMI_STORE_FULL_REFERRER` | **on** | On by default. Set it to `0` to keep the referrer host alone — which is what the breakdown groups by anyway. |
-| `SUMAMI_KEEP_QUERY` | **on** | On by default: Umami stores the query string, and the marketing parameters live in it (they are parsed out of it either way). Set it to `0` to drop the raw query string. |
+| `SUMIMI_DUCKDB_MEMORY_LIMIT` | **min(128 MB, RAM / 4)** | DuckDB's own default is 80% of RAM — 410 MB on a 512 MB box, which would leave nothing for the OS. The limit caps the *buffer*, not the data: queries stream and spill to disk. |
+| `SUMIMI_DUCKDB_FLUSH_THRESHOLD` | 32 MB | DuckDB's default (128 MB) keeps that much freed memory before returning it to the OS. |
+| `SUMIMI_DUCKDB_TEMP_LIMIT` | 2 GB | A query that spills must not fill the disk. |
+| `SUMIMI_DUCKDB_THREADS` | auto (one per 64 MB of budget) | A parallel `COUNT(DISTINCT …)` builds **one hash table per thread**, so a query's memory scales with the thread count: at 10 threads a 5M-row summary query runs out of a 128 MB limit, at 2 threads it takes 154 ms. |
+| `SUMIMI_STORE_TITLES` | **on** | On by default: Umami stores the title, and that is the baseline. Set it to `0` to save the space — the title is roughly half of the stored bytes and almost nobody looks at it. |
+| `SUMIMI_STORE_FULL_REFERRER` | **on** | On by default. Set it to `0` to keep the referrer host alone — which is what the breakdown groups by anyway. |
+| `SUMIMI_KEEP_QUERY` | **on** | On by default: Umami stores the query string, and the marketing parameters live in it (they are parsed out of it either way). Set it to `0` to drop the raw query string. |
 
 Measured on 10M and 100M row tables (`cli/examples/scale.rs`, event-row schema,
 128 MB DuckDB limit, the production thread derivation — 2 threads on a 128 MB budget):
@@ -79,7 +79,7 @@ DuckDB reads what it needs, aggregates it and spills the rest.
 > **Fixed:** the ids are DuckDB's 16-byte `UUID` type now (schema v4). The database is
 > ~10% smaller and the hash tables hold a third of the bytes.
 
-The thread count matters as much as the limit — see `SUMAMI_DUCKDB_THREADS` above.
+The thread count matters as much as the limit — see `SUMIMI_DUCKDB_THREADS` above.
 Measured on the same 5M-row table, the summary query:
 
 | threads | time | note |
@@ -91,20 +91,20 @@ Measured on the same 5M-row table, the summary query:
 
 The declared limit is a **ceiling, not an allocation**: DuckDB's buffer manager held
 0.5–1.8 MB while serving traffic. The RSS growth after a burst is the C allocator
-keeping freed pages, not live data. `SUMAMI_DUCKDB_MEMORY_LIMIT` tunes the ceiling;
+keeping freed pages, not live data. `SUMIMI_DUCKDB_MEMORY_LIMIT` tunes the ceiling;
 `/api/heartbeat` reports the usage, the configured limit, the limit DuckDB itself
 reports back, and the thread count.
 
 ```
                     ┌────────────────────────────────────┐
-   browser ───────▶ │  sumami (one binary)                │
-   (tracker.js)    │  ├─ /sumami.js   tracker             │
+   browser ───────▶ │  sumimi (one binary)                │
+   (tracker.js)    │  ├─ /sumimi.js   tracker             │
                     │  ├─ /api/send    collect             │
                     │  ├─ /api/*       umami compat + the │
                     │  │               control plane       │
                     │  ├─ /            app shell ─────────┼──▶ CDN (frontend JS)
                     │  ├─ /docs/*      docs site           │
-                    │  └─ ./sumami/    (the instance)      │
+                    │  └─ ./sumimi/    (the instance)      │
                     │      ├── data.duckdb     the events  │
                     │      └── instance.sqlite the control │
                     │                         plane        │
@@ -120,36 +120,36 @@ instance is one path to back up, move or delete.
 
 | Artifact | What it is                                                                                   |
 | -------- | -------------------------------------------------------------------------------------------- |
-| `sumami` | **everything**: `sumami serve …` is the server, `sumami summary …` is the client              |
+| `sumimi` | **everything**: `sumimi serve …` is the server, `sumimi summary …` is the client              |
 
 The server and the client are **the same program**: they share the DuckDB schema, the
 metric definitions and the query implementation (`service/src/reports.rs`), so they cannot
 disagree — and there is only **one copy of DuckDB** in the binary. Installing the binary
-under another name (`sumami-server`, `sumami-client`) switches the default mode; those are
+under another name (`sumimi-server`, `sumimi-client`) switches the default mode; those are
 symlinks in the release, not separate builds.
 
-Brand: **Sumami / 数猫咪** — "Sum" + "Umami", and phonetically *"Tsunami speed"*.
-Slogan: *Count kitties who visit my websites. — 由猫开发*.
+Brand: **Sumimi / 数咪咪** — "Sum" + "Umami", and phonetically *"Tsunami speed"*.
+Slogan: *Count kitties popping into my websites. — 由猫开发*.
 
 ---
 
 ## 1. Repository map
 
-This repository (`sumami-dev/sumami`, **public**) is a workspace of five components:
+This repository (`sumimi-dev/sumimi`, **public**) is a workspace of five components:
 
 | Path       | Language       | What it is                                                                 |
 | ---------- | -------------- | -------------------------------------------------------------------------- |
 | `service/` | Rust           | The server library: collection API, stats API, auth, the writer, TLS, **the shared report layer**, **the instance store**. |
 | `cli/`     | Rust           | The analysis client. |
-| `sumami/`  | Rust           | The facade crate: the server and the client as one library, **and the one executable** (`sumami`: server + client). |
-| `js/`      | JavaScript     | The tracker (`sumami.js`) + the dashboard frontend (`sumami-app.js`). Published on a CDN. |
+| `sumimi/`  | Rust           | The facade crate: the server and the client as one library, **and the one executable** (`sumimi`: server + client). |
+| `js/`      | JavaScript     | The tracker (`sumimi.js`) + the dashboard frontend (`sumimi-app.js`). Published on a CDN. |
 | `docs/`    | HTML/Markdown  | The website & documentation served by the service binary.                  |
 
 The Rust crates are members of one Cargo workspace (root `Cargo.toml`). `service/` and
-`cli/` share the schema and the report code by **code sharing**; the `sumami/` crate is
+`cli/` share the schema and the report code by **code sharing**; the `sumimi/` crate is
 the facade both of them are published through.
 
-**The private edition depends on this one.** `sumami-dev/sumami-pro` does not copy these
+**The private edition depends on this one.** `sumimi-dev/sumimi-pro` does not copy these
 crates — it depends on them (a git dependency, patched to the sibling checkout
 locally) and adds the PostgreSQL backend, the object-storage archive and the jobs. So
 there is exactly one implementation of the schema, the metrics and the reports.
@@ -158,9 +158,9 @@ there is exactly one implementation of the schema, the metrics and the reports.
 
 | Repository            | Visibility | Contents                                                                                        |
 | --------------------- | ---------- | ----------------------------------------------------------------------------------------------- |
-| `sumami-dev/sumami`   | public     | This repo: code, website, docs, public design (this file). **No private material, ever.**        |
-| `sumami-dev/mneme`    | private    | Decision log, agent notes, private discussion issues, unreleased plans, draft design.            |
-| `sumami-dev/sumami-dev` | private  | Org-level meta / non-code assets.                                                                 |
+| `sumimi-dev/sumimi`   | public     | This repo: code, website, docs, public design (this file). **No private material, ever.**        |
+| `sumimi-dev/mneme`    | private    | Decision log, agent notes, private discussion issues, unreleased plans, draft design.            |
+| `sumimi-dev/sumimi-dev` | private  | Org-level meta / non-code assets.                                                                 |
 
 **Rule:** anything that reveals private discussions, unreleased plans, private traffic data,
 internal credentials, or personal notes belongs in `mneme` only. The public repo may *reference*
@@ -222,10 +222,10 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
 4. **No outbound network calls.** The service never phones home. No analytics, no crash
    reporting, no update checks.
 5. **Synthetic fixtures only.** Tests, seed scripts, docs examples and screenshots use invented
-   domains (`example.com`, `sumami.dev`) and invented data. Never paste real traffic into this
+   domains (`example.com`, `sumimi.dev`) and invented data. Never paste real traffic into this
    repo.
 6. **Retention is a feature, not an afterthought.** Events/sessions older than the configured
-   retention window are prunable (`sumami prune`), and the CLI must expose the same window.
+   retention window are prunable (`sumimi prune`), and the CLI must expose the same window.
 7. **Secrets never enter the repo.** JWT secret, admin password, DB path with credentials come
    from the environment or a file with `0600`. `.env` is git-ignored; `*.duckdb` and `*.duckdb.wal`
    are git-ignored.
@@ -233,7 +233,7 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
    Umami field set cheap to keep. If a schema change would drop a field we do not have
    an equivalent for, fix the schema — not the field list.
 8. **Access control is default-deny.** Statistics and website management require a valid token
-   except for the deliberately public endpoints (`/api/send`, `/api/collect`, `/sumami.js`,
+   except for the deliberately public endpoints (`/api/send`, `/api/collect`, `/sumimi.js`,
    `/api/heartbeat`).
 9. **Vulnerability reports are private.** Ask the maintainer privately; do not open a public
    issue containing a working exploit or a real leaked value.
@@ -244,13 +244,13 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
 * Custom event properties are user-supplied free-form data: the documentation must warn that
   **sending PII in custom properties defeats the whole purpose**, and the tracker must not
   auto-attach anything sensitive.
-* A `sumami erase` CLI command wipes one website (or everything) from the database.
+* A `sumimi erase` CLI command wipes one website (or everything) from the database.
 
 ---
 
 ## 3. Brand, naming and IP guardrails
 
-* The product is **Sumami**. It is an independent open-source project.
+* The product is **Sumimi**. It is an independent open-source project.
 * Compatibility is described **factually**: *"An open-source, high-performance alternative to
   Umami. Implements the Umami v2 HTTP API."* Never claim endorsement, affiliation or
   sponsorship, and never use Umami's name in a way that suggests it.
@@ -298,19 +298,19 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
   service drops the **oldest** buffered hits and counts them (surfaced in `/api/heartbeat`),
   instead of growing until the OOM killer arrives. Statistics do not need to be perfect; the
   server staying up matters more. The log line for it is deliberately friendly:
-  `[sumami] the 33rd kitty was too cute to count, the server dozed off — later kittens can wait`.
+  `[sumimi] the 33rd kitty was too cute to count, the server dozed off — later kittens can wait`.
 * **Auth:** username + password (Argon2id), JWT (HS256) bearer tokens, like Umami's
   `POST /api/login` → `{ token, user }`. The admin account is created on the first run; the
-  password is generated and printed **once** unless `SUMAMI_ADMIN_PASSWORD` is set.
+  password is generated and printed **once** unless `SUMIMI_ADMIN_PASSWORD` is set.
 * **TLS:** `--ssl <domain>` obtains a Let's Encrypt certificate over ACME (TLS-ALPN-01) and
   renews it in the background — no certbot, no cron, no reverse proxy needed just for TLS.
   Port 443 must reach the process directly; behind a TLS-terminating proxy, let the proxy
   manage the certificate instead.
-* **Static hosting:** the binary serves `service/js/sumami.js` (embedded at compile time via
+* **Static hosting:** the binary serves `service/js/sumimi.js` (embedded at compile time via
   `include_str!`, ~7 KB) and the docs site from `docs/` (`/docs`).
   The **dashboard frontend is not in the binary**: the shell at `/` points at a CDN
-  (`SUMAMI_APP_URL`, default `https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js`),
-  which serves this public repository directly. Set `SUMAMI_APP_URL=/app` to serve it
+  (`SUMIMI_APP_URL`, default `https://cdn.jsdelivr.net/gh/sumimi-dev/sumimi@main/js`),
+  which serves this public repository directly. Set `SUMIMI_APP_URL=/app` to serve it
   from the backend instead (air-gapped installs).
 
 ### 4.1b The shared query layer (`service/src/reports.rs`)
@@ -339,7 +339,7 @@ implements it once — for DuckDB, in `service/src/reports.rs`.
 
 The trait defines the **semantics**, not the SQL: timestamps, date bucketing, distinct
 counting and upsert syntax differ between engines, so each backend writes its own
-dialect against the same contract. The private `sumami-pro` repository adds SQLite and
+dialect against the same contract. The private `sumimi-pro` repository adds SQLite and
 PostgreSQL backends against this trait; the open-source build ships **only DuckDB**.
 
 Consequences for this repository:
@@ -352,7 +352,7 @@ Consequences for this repository:
 
 ### 4.2 Umami v2 API compatibility (the contract)
 
-Implemented in v1 (target for the `sumami-dev/sumami` client used by the dashboard):
+Implemented in v1 (target for the `sumimi-dev/sumimi` client used by the dashboard):
 
 | Method | Path                                   | Purpose                                  |
 | ------ | -------------------------------------- | ---------------------------------------- |
@@ -465,7 +465,7 @@ with and without it, and it does not grow with the row count).
 scan (`WHERE website_id = ? AND created_at BETWEEN ?`). DuckDB prunes those with
 **zone maps** — one min/max per column per row group, maintained automatically and
 stored with the data — so an index buys nothing at query time either. Measured
-(`cargo run --release --example index_probe -p sumami-service`):
+(`cargo run --release --example index_probe -p sumimi-service`):
 
 | | with `PRIMARY KEY` | without |
 | --- | ---: | ---: |
@@ -510,7 +510,7 @@ the *budget a bulk load needs* — with a primary key DuckDB has to be given ~1 
 to get through it, and it will then use it.
 
 **How many bytes a page view costs** (`cargo run --release --example row_cost -p
-sumami-service`, the real schema, 100000 views):
+sumimi-service`, the real schema, 100000 views):
 
 | | B/浏览 |
 | --- | ---: |
@@ -542,7 +542,7 @@ Console import, the report cache, the saved reports and the assistant's
 conversations.
 
 **It is a trait** (`service/src/instance.rs`): `Instance` has 22 methods, and the private
-edition implements the same trait in PostgreSQL (`sumami-pro`'s
+edition implements the same trait in PostgreSQL (`sumimi-pro`'s
 `instance::PostgresInstance`). The API layer does not know which one it is talking
 to, and `pro/tests/instance.rs` checks that both keep the same numbers.
 
@@ -556,7 +556,7 @@ plane is a few hundred kilobytes you can back up in a second.
 queried before a write never sees that write — not even after a checkpoint. And a
 connection opened *after* the write sees it only until the older connection is closed.
 It was measured, not guessed: `cargo run --release --example snapshot_probe -p
-sumami-service`.
+sumimi-service`.
 
 ```
 1. the reader queried before the write: 0
@@ -596,36 +596,36 @@ about what "the top pages" means.
 
 ### 4.4 cli/ — the analyzer (two sources, one UX)
 
-The CLI (`sumami-client`, or `sumami` in its client mode) works against **either** a local
+The CLI (`sumimi-client`, or `sumimi` in its client mode) works against **either** a local
 database file **or** a running service, and the subcommands are identical in both modes:
 
 ```
-sumami websites                     # list websites
-sumami summary   --website <id>     # pageviews, visitors, views, bounces, duration
-sumami pages     --website <id>     # top paths
-sumami referrers --website <id>     # traffic sources
-sumami browsers  --website <id>     # browser / OS / device / country breakdowns
-sumami events    --website <id>     # custom events
-sumami sessions  --website <id>     # session log
-sumami timeseries --website <id>    # hourly/daily series
-sumami export    --website <id> --format json|csv
-sumami prune     --website <id>     # enforce retention   (local only)
-sumami erase     --website <id>     # delete a website's data
+sumimi websites                     # list websites
+sumimi summary   --website <id>     # pageviews, visitors, views, bounces, duration
+sumimi pages     --website <id>     # top paths
+sumimi referrers --website <id>     # traffic sources
+sumimi browsers  --website <id>     # browser / OS / device / country breakdowns
+sumimi events    --website <id>     # custom events
+sumimi sessions  --website <id>     # session log
+sumimi timeseries --website <id>    # hourly/daily series
+sumimi export    --website <id> --format json|csv
+sumimi prune     --website <id>     # enforce retention   (local only)
+sumimi erase     --website <id>     # delete a website's data
 ```
 
 **Source selection** (exactly one of):
 
 | Mode       | Flags                                                          | Notes |
 | ---------- | -------------------------------------------------------------- | ----- |
-| local file | `--db <path>` (default `./sumami.duckdb`)                       | opened `access_mode=READ_ONLY`; `prune`/`erase` open it read-write |
-| HTTP API   | `--url http://host:3000` + `--token <jwt>` or `--username/--password` | logs in as **admin** via `POST /api/login`, caches the JWT in `~/.config/sumami/credentials.json` (mode `0600`) |
+| local file | `--db <path>` (default `./sumimi.duckdb`)                       | opened `access_mode=READ_ONLY`; `prune`/`erase` open it read-write |
+| HTTP API   | `--url http://host:3000` + `--token <jwt>` or `--username/--password` | logs in as **admin** via `POST /api/login`, caches the JWT in `~/.config/sumimi/credentials.json` (mode `0600`) |
 
 The **admin account** is the service's own user table (Argon2id password, JWT issued by
 `POST /api/login`); it is the DB entry point for management operations. The first `serve`
 on an empty database creates the admin user:
 
-* `SUMAMI_ADMIN_USER` (default `admin`)
-* `SUMAMI_ADMIN_PASSWORD` — if unset, a strong password is generated and printed **once**
+* `SUMIMI_ADMIN_USER` (default `admin`)
+* `SUMIMI_ADMIN_PASSWORD` — if unset, a strong password is generated and printed **once**
   to the service log; it is never stored in plaintext.
 
 The CLI **must never** open a local database for writing except in `prune`/`erase`.
@@ -638,11 +638,11 @@ Flags common to all subcommands: `--from`, `--to` (ISO date or relative like `7d
 
 Two independent, **dependency-free** files (no build step, no npm, no bundler):
 
-**`service/js/sumami.js` — the tracker** (embedded in the binary, served at `/sumami.js`):
+**`service/js/sumimi.js` — the tracker** (embedded in the binary, served at `/sumimi.js`):
 
 * sends pageviews and custom events to `/api/send` via `sendBeacon` (fallback `fetch`
   with `keepalive`), as `application/json`;
-* is self-hosted by default (`<script defer src="https://sumami.example/sumami.js"
+* is self-hosted by default (`<script defer src="https://sumimi.example/sumimi.js"
   data-website-id="...">`) — **the service serves it from its own origin**;
 * sets no cookies, uses no `localStorage`, honours DNT/GPC;
 * reports **Umami's full field set**: the website, the full URL and referrer, the title,
@@ -654,12 +654,12 @@ Two independent, **dependency-free** files (no build step, no npm, no bundler):
   `visibilitychange`/`pagehide` (the metrics are only known after the page is painted);
 * patches `history.pushState`/`replaceState` and listens for `popstate`, so a single page
   application records every route change as its own page view;
-* exposes `window.sumami.track(name, props)`, `window.sumami.identify(data)` and
-  `window.sumami.pageview()` (with `window.umami` as an alias for existing snippets);
+* exposes `window.sumimi.track(name, props)`, `window.sumimi.identify(data)` and
+  `window.sumimi.pageview()` (with `window.umami` as an alias for existing snippets);
 * is byte-for-byte reproducible: the file in the repo is the file that gets served.
 
-**`js/sumami-app.js` + `js/sumami.css` — the dashboard frontend** (served from disk at
-`/app/*`, or hosted on a CDN and pointed at with `SUMAMI_APP_URL`):
+**`js/sumimi-app.js` + `js/sumimi.css` — the dashboard frontend** (served from disk at
+`/app/*`, or hosted on a CDN and pointed at with `SUMIMI_APP_URL`):
 
 * vanilla ES2020, no framework, no chart library (the timeseries chart is hand-drawn SVG);
 * logs in against `/api/login` and keeps the admin token in `localStorage` — this is the
@@ -682,9 +682,9 @@ archive/
   websites.parquet
 ```
 
-* `sumami backup --out ./archive` writes it — **one pass per table**
+* `sumimi backup --out ./archive` writes it — **one pass per table**
   (`COPY … TO … (FORMAT PARQUET, COMPRESSION ZSTD, PARTITION_BY (day))`).
-* `sumami --parquet './archive/*' summary <id>` reads it **in place**: the archive is
+* `sumimi --parquet './archive/*' summary <id>` reads it **in place**: the archive is
   queried through `read_parquet()`, never imported, so analysing years of history costs
   nothing but the query.
 * The archive is self-describing (Hive-style partitions) — DuckDB, Spark, Polars and
@@ -695,9 +695,9 @@ archive/
 Rule: the hot tier holds the last N days (14–90), the cold tier holds everything older.
 A 20 GB disk plus a 90-day hot window plus daily roll-ups covers ten years of history.
 
-### 4.5b Demo data (`sumami seed`)
+### 4.5b Demo data (`sumimi seed`)
 
-`sumami seed --db <file> --days 30 --visitors 140` fills a database with **synthetic**
+`sumimi seed --db <file> --days 30 --visitors 140` fills a database with **synthetic**
 traffic: a weighted page/referrer/country/browser distribution, returning visitors within
 a day, weekend dips, and custom events. It exists so the dashboard can be evaluated and
 demoed without pointing a real site at it.
@@ -717,7 +717,7 @@ different.
 A static site (plain HTML + one stylesheet, no build step, no npm) served by the service
 binary at `/docs`:
 
-* `docs/index.html` — the landing page (Sumami branding, cats, install snippet);
+* `docs/index.html` — the landing page (Sumimi branding, cats, install snippet);
 * `docs/install.html`, `self-host.html`, `tracker.html`, `api.html`, `cli.html`,
   `privacy.html`, `faq.html` — the documentation;
 * `docs/assets/style.css` — one stylesheet, light + dark via `prefers-color-scheme`;
@@ -727,7 +727,7 @@ Docs are plain HTML on purpose: no Markdown renderer has to be shipped in the bi
 the pages work when opened straight from the filesystem.
 
 The **dashboard** is separate from the docs: the backend serves a very small HTML shell at
-`/` that loads `js/sumami-app.js` + `js/sumami.css` (see §4.5). Point `SUMAMI_APP_URL` at a
+`/` that loads `js/sumimi-app.js` + `js/sumimi.css` (see §4.5). Point `SUMIMI_APP_URL` at a
 CDN to serve that frontend from anywhere; the backend binary stays tiny because the
 frontend is never embedded in it.
 
@@ -752,7 +752,7 @@ frontend is never embedded in it.
    128 MB, 256 MB and 512 MB; chunking does not help — it dies at the
    13-millionth row), while the same rows without one need 128 MB.
    *Check this before adding a write path:*
-   `cargo run --release --example idx_memory -p sumami-service -- <rows> <pk|nopk> <path> <limit>`.
+   `cargo run --release --example idx_memory -p sumimi-service -- <rows> <pk|nopk> <path> <limit>`.
 
 ---
 
@@ -774,7 +774,7 @@ make release          # release build (static DuckDB: self-contained binaries)
 make test             # unit + integration tests
 make lint             # clippy -- -D warnings
 make run              # serve on :3000 with ./dev.duckdb
-make package          # release artefact: the `sumami` binary + js/ + docs/
+make package          # release artefact: the `sumimi` binary + js/ + docs/
 make build-small      # optional: dynamically linked DuckDB (smaller, needs libduckdb)
 ```
 
@@ -783,8 +783,8 @@ Plain cargo works too:
 ```bash
 cargo build --release
 cargo test --workspace
-cargo run -p sumami-cli -- serve --db ./dev.duckdb --port 3000
-cargo run -p sumami-cli -- --db ./dev.duckdb summary <website-id>
+cargo run -p sumimi-cli -- serve --db ./dev.duckdb --port 3000
+cargo run -p sumimi-cli -- --db ./dev.duckdb summary <website-id>
 ```
 
 The first build compiles DuckDB from source — that is the slow part (set
@@ -805,17 +805,17 @@ Deployment (cheap VPS, Debian/Ubuntu):
 
 ```bash
 # The release is a single self-contained binary — nothing else to install.
-sudo install -m 0755 target/release/sumami /usr/local/bin/
-sudo systemctl enable --now sumami
+sudo install -m 0755 target/release/sumimi /usr/local/bin/
+sudo systemctl enable --now sumimi
 ```
 
 Optional aliases (symlinks, zero cost):
-`ln -s /usr/local/bin/sumami /usr/local/bin/sumami-server`
+`ln -s /usr/local/bin/sumimi /usr/local/bin/sumimi-server`
 
-With TLS managed by Sumami itself:
+With TLS managed by Sumimi itself:
 
 ```bash
-sumami-server serve --db /var/lib/sumami/sumami.duckdb \
+sumimi-server serve --db /var/lib/sumimi/sumimi.duckdb \
                     --ssl example.com --ssl-email you@example.com
 ```
 
@@ -833,6 +833,6 @@ sumami-server serve --db /var/lib/sumami/sumami.duckdb \
 ## 9. Related private material
 
 Internal decision log, unreleased plans and private discussion live in the **private**
-`sumami-dev/mneme` repository (GitHub issues + notes). Agents working on Sumami may record
+`sumimi-dev/mneme` repository (GitHub issues + notes). Agents working on Sumimi may record
 decisions there, but must never copy private content into this repository. When a decision
 becomes public, move the *conclusion* (not the discussion) into this file.

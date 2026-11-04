@@ -5,7 +5,7 @@
 //! and transactional. They live in their own file, so they survive an analytics
 //! rebuild.
 
-use sumami_service::instance::{
+use sumimi_service::instance::{
     Account, ChatMessage, ChatSession, GscRow, ImportReport, LogEntry, Snapshot, SqliteInstance,
 };
 

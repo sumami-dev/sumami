@@ -1,4 +1,4 @@
-//! The Sumami client — read and analyse a Sumami database.
+//! The Sumimi client — read and analyse a Sumimi database.
 //!
 //! The same commands work against a local DuckDB file (`--db`) or against a running
 //! server over HTTP (`--url`, with the admin account).
@@ -19,37 +19,37 @@ use serde_json::Value;
 
 use source::{parse_time, Range, Report, Source};
 
-/// The Sumami command line interface.
+/// The Sumimi command line interface.
 #[derive(Debug, Parser)]
-#[command(name = "sumami", version, about = "Sumami CLI — read and analyse Sumami data")]
+#[command(name = "sumimi", version, about = "Sumimi CLI — read and analyse Sumimi data")]
 struct Cli {
     /// Path of the DuckDB database file (local mode).
-    #[arg(long, global = true, env = "SUMAMI_DB")]
+    #[arg(long, global = true, env = "SUMIMI_DB")]
     db: Option<PathBuf>,
-    /// Base URL of a running Sumami server (remote mode).
-    #[arg(long, global = true, env = "SUMAMI_URL")]
+    /// Base URL of a running Sumimi server (remote mode).
+    #[arg(long, global = true, env = "SUMIMI_URL")]
     url: Option<String>,
     /// Bearer token for remote mode.
-    #[arg(long, global = true, env = "SUMAMI_TOKEN")]
+    #[arg(long, global = true, env = "SUMIMI_TOKEN")]
     token: Option<String>,
     /// Admin username (remote mode).
-    #[arg(long, global = true, env = "SUMAMI_ADMIN_USER")]
+    #[arg(long, global = true, env = "SUMIMI_ADMIN_USER")]
     username: Option<String>,
     /// Admin password (remote mode).
-    #[arg(long, global = true, env = "SUMAMI_ADMIN_PASSWORD")]
+    #[arg(long, global = true, env = "SUMIMI_ADMIN_PASSWORD")]
     password: Option<String>,
     /// Print raw JSON instead of a table.
     #[arg(long, global = true)]
     json: bool,
     /// Analyse a Parquet archive instead of the database (e.g. './archive/*').
-    #[arg(long, global = true, env = "SUMAMI_PARQUET")]
+    #[arg(long, global = true, env = "SUMIMI_PARQUET")]
     parquet: Option<String>,
     /// The data engine: `duckdb` (the default) or `sqlite`.
-    #[arg(long, global = true, env = "SUMAMI_BACKEND", default_value = "duckdb")]
+    #[arg(long, global = true, env = "SUMIMI_BACKEND", default_value = "duckdb")]
     backend: String,
     /// The instance directory: the accounts, the log, the imports and the cache
     /// live in it.
-    #[arg(long, global = true, env = "SUMAMI_DIR", default_value = "sumami")]
+    #[arg(long, global = true, env = "SUMIMI_DIR", default_value = "sumimi")]
     dir: PathBuf,
     #[command(subcommand)]
     command: Command,
@@ -284,7 +284,35 @@ enum ExportFormat {
 }
 
 /// Parse the command line and run the client.
+/// The environment variables that were renamed.
+///
+/// The project was called `sumami` until v0.2.0. The old names are still in
+/// people's `.env` files and systemd units, so they keep working — the new name
+/// wins when both are set.
+const RENAMED_ENV: [(&str, &str); 8] = [
+    ("SUMAMI_DB", "SUMIMI_DB"),
+    ("SUMAMI_URL", "SUMIMI_URL"),
+    ("SUMAMI_TOKEN", "SUMIMI_TOKEN"),
+    ("SUMAMI_ADMIN_USER", "SUMIMI_ADMIN_USER"),
+    ("SUMAMI_ADMIN_PASSWORD", "SUMIMI_ADMIN_PASSWORD"),
+    ("SUMAMI_BACKEND", "SUMIMI_BACKEND"),
+    ("SUMAMI_DIR", "SUMIMI_DIR"),
+    ("SUMAMI_PARQUET", "SUMIMI_PARQUET"),
+];
+
+/// Copy the old environment variable names to the new ones.
+fn carry_over_old_env_names() {
+    for (old, new) in RENAMED_ENV {
+        if std::env::var_os(new).is_none() {
+            if let Some(value) = std::env::var_os(old) {
+                std::env::set_var(new, value);
+            }
+        }
+    }
+}
+
 pub fn run() -> Result<()> {
+    carry_over_old_env_names();
     let cli = Cli::parse();
 
     let command = cli.command.clone();
@@ -351,12 +379,12 @@ pub fn run() -> Result<()> {
                 }
 
                 // Offline: straight into the instance store.
-                let paths = sumami_service::config::Paths::new(
+                let paths = sumimi_service::config::Paths::new(
                     Some(cli.dir.clone()),
                     cli.db.clone(),
                     &cli.backend,
                 );
-                let instance = sumami_service::instance::SqliteInstance::open(&paths.instance)
+                let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
                     .map_err(|err| anyhow!("opening the instance store: {err}"))?;
                 let report = instance
                     .import_gsc(&website, &rows, Some(&file.display().to_string()))
@@ -369,12 +397,12 @@ pub fn run() -> Result<()> {
                 Ok(())
             }
             GscCommand::List { website, limit } => {
-                let paths = sumami_service::config::Paths::new(
+                let paths = sumimi_service::config::Paths::new(
                     Some(cli.dir.clone()),
                     cli.db.clone(),
                     &cli.backend,
                 );
-                let instance = sumami_service::instance::SqliteInstance::open(&paths.instance)
+                let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
                     .map_err(|err| anyhow!("opening the instance store: {err}"))?;
                 let rows = instance
                     .gsc_rows(&website, limit)
@@ -407,7 +435,7 @@ pub fn run() -> Result<()> {
             days,
             visitors,
         } => {
-            let paths = sumami_service::config::Paths::new(
+            let paths = sumimi_service::config::Paths::new(
                 Some(cli.dir.clone()),
                 cli.db.clone(),
                 &cli.backend,
@@ -422,14 +450,14 @@ pub fn run() -> Result<()> {
 
             // The seed goes through the storage backend, so the same data lands in
             // DuckDB, in SQLite and in PostgreSQL — and the numbers agree.
-            let storage: Box<dyn sumami_service::storage::Storage> =
+            let storage: Box<dyn sumimi_service::storage::Storage> =
                 match cli.backend.to_ascii_lowercase().as_str() {
                     "duckdb" => Box::new(
-                        sumami_service::pool::Db::open(&paths.data, "256MB")
+                        sumimi_service::pool::Db::open(&paths.data, "256MB")
                             .map_err(|err| anyhow!("opening {}: {err}", paths.data.display()))?,
                     ),
                     "sqlite" => Box::new(
-                        sumami_service::sqlite::SqliteBackend::open(&paths.data)
+                        sumimi_service::sqlite::SqliteBackend::open(&paths.data)
                             .map_err(|err| anyhow!("opening {}: {err}", paths.data.display()))?,
                     ),
                     other => {
@@ -453,10 +481,10 @@ pub fn run() -> Result<()> {
             skip_existing,
         } => {
             // The data file lives **inside the instance directory**. (Using the
-            // default path here meant `sumami backup --dir <dir>` archived an
+            // default path here meant `sumimi backup --dir <dir>` archived an
             // **empty** database — and said it had archived 0 rows, which looks
             // like a successful backup of an empty site.)
-            let path = sumami_service::config::Paths::new(
+            let path = sumimi_service::config::Paths::new(
                 Some(cli.dir.clone()),
                 cli.db.clone(),
                 &cli.backend,
@@ -466,7 +494,7 @@ pub fn run() -> Result<()> {
             // The backup reads the database, so the server must be stopped (DuckDB
             // allows a single writer per file). `--url` is not supported here for the
             // same reason.
-            let db = sumami_service::pool::Db::open(&path, "256MB")
+            let db = sumimi_service::pool::Db::open(&path, "256MB")
                 .map_err(|err| anyhow!("opening {}: {err}", path.display()))?;
 
             let from = from.as_deref().map(parse_date).transpose()?;
@@ -491,7 +519,7 @@ pub fn run() -> Result<()> {
                 stats.files,
                 stats.directory.display()
             );
-            println!("read it back with:  sumami --parquet '{}/' summary <website-id>", stats.directory.display());
+            println!("read it back with:  sumimi --parquet '{}/' summary <website-id>", stats.directory.display());
             Ok(())
         }
         Command::Uptime {
@@ -503,13 +531,13 @@ pub fn run() -> Result<()> {
             remove,
             check_all,
         } => {
-            let checker = sumami_service::uptime::Checker::with_timeout(
+            let checker = sumimi_service::uptime::Checker::with_timeout(
                 std::time::Duration::from_secs(timeout.clamp(1, 60)),
             );
 
             // --- managing the watched endpoints ---
             if let Some(website) = &website {
-                let paths = sumami_service::config::Paths::new(
+                let paths = sumimi_service::config::Paths::new(
                     Some(cli.dir.clone()),
                     cli.db.clone(),
                     &cli.backend,
@@ -578,7 +606,7 @@ pub fn run() -> Result<()> {
                 }
 
                 // Offline: straight into the instance store.
-                let instance = sumami_service::instance::SqliteInstance::open(&paths.instance)
+                let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
                     .map_err(|err| anyhow!("opening the instance store: {err}"))?;
 
                 if let Some(url) = &add {
@@ -626,7 +654,7 @@ pub fn run() -> Result<()> {
 
             if cli.json {
                 let value = match &verdict {
-                    sumami_service::uptime::Verdict::Up {
+                    sumimi_service::uptime::Verdict::Up {
                         status,
                         latency_ms,
                     } => serde_json::json!({
@@ -635,13 +663,13 @@ pub fn run() -> Result<()> {
                         "status": status,
                         "latencyMs": latency_ms,
                     }),
-                    sumami_service::uptime::Verdict::Down { error } => serde_json::json!({
+                    sumimi_service::uptime::Verdict::Down { error } => serde_json::json!({
                         "url": url,
                         "up": false,
                         "error": error,
                         "networkOk": true,
                     }),
-                    sumami_service::uptime::Verdict::NetworkDown { error, references } => {
+                    sumimi_service::uptime::Verdict::NetworkDown { error, references } => {
                         serde_json::json!({
                             "url": url,
                             "up": false,
@@ -682,12 +710,12 @@ pub fn run() -> Result<()> {
                 }
 
                 // Offline: straight into the instance store.
-                let paths = sumami_service::config::Paths::new(
+                let paths = sumimi_service::config::Paths::new(
                     Some(cli.dir.clone()),
                     cli.db.clone(),
                     &cli.backend,
                 );
-                let instance = sumami_service::instance::SqliteInstance::open(&paths.instance)
+                let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
                     .map_err(|err| anyhow!("opening the instance store: {err}"))?;
                 instance.record_uptime(&check)?;
                 println!("recorded for {website}");
@@ -721,10 +749,10 @@ pub fn run() -> Result<()> {
             let source = open_source(&cli, false)?;
             match &source {
                 Source::Local { path, .. } => {
-                    eprintln!("[sumami] source: {}", path.display());
+                    eprintln!("[sumimi] source: {}", path.display());
                 }
                 Source::Remote { base, .. } => {
-                    eprintln!("[sumami] source: {base}");
+                    eprintln!("[sumimi] source: {base}");
                 }
             }
             let (report, website, range, limit) = match &cli.command {
@@ -877,7 +905,7 @@ fn open_source(cli: &Cli, writable: bool) -> Result<Source> {
     // the seed writes it and the server reads it. (Using the default path here
     // meant `--dir` was ignored on the read path: the CLI seeded one directory
     // and then looked in another.)
-    let paths = sumami_service::config::Paths::new(
+    let paths = sumimi_service::config::Paths::new(
         Some(cli.dir.clone()),
         cli.db.clone(),
         &cli.backend,

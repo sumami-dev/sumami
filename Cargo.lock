@@ -2319,21 +2319,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
-name = "sumami"
-version = "0.1.0"
+name = "sumimi"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
  "libc",
  "serde_json",
- "sumami-cli",
- "sumami-service",
+ "sumimi-cli",
+ "sumimi-service",
  "tokio",
 ]
 
 [[package]]
-name = "sumami-cli"
-version = "0.1.0"
+name = "sumimi-cli"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2341,15 +2341,15 @@ dependencies = [
  "duckdb",
  "serde",
  "serde_json",
- "sumami-service",
+ "sumimi-service",
  "tokio",
  "ureq",
  "uuid",
 ]
 
 [[package]]
-name = "sumami-service"
-version = "0.1.0"
+name = "sumimi-service"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argon2",

@@ -176,7 +176,7 @@ fn writer_loop(
                     );
                 }
             }
-            tracing::debug!("sumami writer stopped");
+            tracing::debug!("sumimi writer stopped");
             break;
         }
 
@@ -228,7 +228,7 @@ fn writer_loop(
         if dropped > reported_dropped {
             tracing::warn!(
                 dropped,
-                "hits were dropped — the queue was full (raise SUMAMI_MAX_QUEUE)"
+                "hits were dropped — the queue was full (raise SUMIMI_MAX_QUEUE)"
             );
             reported_dropped = dropped;
         }

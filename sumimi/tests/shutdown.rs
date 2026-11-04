@@ -1,6 +1,6 @@
 //! The server, as a process: what happens when it is asked to stop.
 //!
-//! `systemctl stop sumami` sends SIGTERM. The hits that are in the buffer at
+//! `systemctl stop sumimi` sends SIGTERM. The hits that are in the buffer at
 //! that moment — the last couple of seconds of traffic — have to be on disk
 //! when the process is gone. This is the only test that can prove it: it runs
 //! the real executable, collects real traffic, sends the real signal and then
@@ -37,7 +37,7 @@ impl Drop for ChildGuard {
 
 /// A unique temporary directory.
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-shutdown-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-shutdown-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -67,7 +67,7 @@ fn the_server_writes_what_is_buffered_when_it_stops() {
     let password = "test-password-1234";
 
     // The server.
-    let child = Command::new(env!("CARGO_BIN_EXE_sumami"))
+    let child = Command::new(env!("CARGO_BIN_EXE_sumimi"))
         .args([
             "serve",
             "--dir",
@@ -75,7 +75,7 @@ fn the_server_writes_what_is_buffered_when_it_stops() {
             "--port",
             &port.to_string(),
         ])
-        .env("SUMAMI_ADMIN_PASSWORD", password)
+        .env("SUMIMI_ADMIN_PASSWORD", password)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
@@ -186,7 +186,7 @@ fn post(port: u16, path: &str, body: &str, token: Option<&str>) -> String {
 
 /// How many rows the data file holds.
 fn count_rows(path: &std::path::Path) -> i64 {
-    use sumami_service::pool::Db;
+    use sumimi_service::pool::Db;
 
     let db = Db::open(path, "256MB").expect("the data file opens");
     db.with_read(|conn| {
@@ -213,7 +213,7 @@ fn the_server_can_start_twice() {
 
     for round in 1..=2 {
         let port = free_port();
-        let child = Command::new(env!("CARGO_BIN_EXE_sumami"))
+        let child = Command::new(env!("CARGO_BIN_EXE_sumimi"))
             .args([
                 "serve",
                 "--dir",
@@ -221,7 +221,7 @@ fn the_server_can_start_twice() {
                 "--port",
                 &port.to_string(),
             ])
-            .env("SUMAMI_ADMIN_PASSWORD", password)
+            .env("SUMIMI_ADMIN_PASSWORD", password)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -270,7 +270,7 @@ fn the_instance_file_holds_everything_when_the_server_stops() {
     let port = free_port();
     let password = "test-password-1234";
 
-    let child = Command::new(env!("CARGO_BIN_EXE_sumami"))
+    let child = Command::new(env!("CARGO_BIN_EXE_sumimi"))
         .args([
             "serve",
             "--dir",
@@ -278,7 +278,7 @@ fn the_instance_file_holds_everything_when_the_server_stops() {
             "--port",
             &port.to_string(),
         ])
-        .env("SUMAMI_ADMIN_PASSWORD", password)
+        .env("SUMIMI_ADMIN_PASSWORD", password)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -307,7 +307,7 @@ fn the_instance_file_holds_everything_when_the_server_stops() {
     assert!(stopped, "the server stopped");
 
     // The account is in the file itself, and the log is empty.
-    let store = sumami_service::instance::SqliteInstance::open(&dir.join("instance.sqlite"))
+    let store = sumimi_service::instance::SqliteInstance::open(&dir.join("instance.sqlite"))
         .expect("the instance file opens");
     let account = store.account("admin").expect("the accounts are readable");
     assert!(account.is_some(), "the admin account is in the file");

@@ -210,7 +210,7 @@ fn build_hit(
         None => (None, None, Vec::new()),
     };
     // The query string is stored by default — Umami stores it, and it is where the
-    // marketing parameters live. `SUMAMI_KEEP_QUERY=0` keeps the parameters but
+    // marketing parameters live. `SUMIMI_KEEP_QUERY=0` keeps the parameters but
     // drops the raw query string.
     let url_query = if state.config.keep_query { url_query } else { None };
     let param = |name: &str| -> Option<String> {
@@ -222,7 +222,7 @@ fn build_hit(
 
     // The referrer: host, path and query. The breakdown groups by the host, which
     // is what Umami shows; the path and the query are the extra we keep.
-    // `SUMAMI_STORE_FULL_REFERRER=0` keeps the host alone.
+    // `SUMIMI_STORE_FULL_REFERRER=0` keeps the host alone.
     let (referrer, referrer_path, referrer_query) = match raw.str("referrer") {
         Some(referrer) => {
             let (host, path, query) = split_referrer(&referrer);
@@ -456,7 +456,7 @@ mod tests {
     #[test]
     fn splits_the_page_into_a_path_and_a_query() {
         // The query string is stored by default — Umami stores it, and it is where
-        // the marketing parameters live. `SUMAMI_KEEP_QUERY=0` drops it later.
+        // the marketing parameters live. `SUMIMI_KEEP_QUERY=0` drops it later.
         let (url, query, params) = split_url("/a/b?token=secret&utm_source=twitter");
         assert_eq!(url.as_deref(), Some("/a/b"));
         assert_eq!(query.as_deref(), Some("token=secret&utm_source=twitter"));

@@ -1,4 +1,4 @@
-//! Configuration for the Sumami service.
+//! Configuration for the Sumimi service.
 //!
 //! Everything is overridable by environment variable so a deployment is a systemd unit
 //! plus a small `EnvironmentFile`, never a config file in the repository.
@@ -11,7 +11,7 @@ use anyhow::Context;
 ///
 /// jsDelivr serves the public GitHub repository directly, so the frontend can be
 /// updated (or pinned to a release tag) without touching the backend.
-pub const CDN_APP_URL: &str = "https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js";
+pub const CDN_APP_URL: &str = "https://cdn.jsdelivr.net/gh/sumimi-dev/sumimi@main/js";
 
 /// Where an instance keeps its files.
 ///
@@ -19,7 +19,7 @@ pub const CDN_APP_URL: &str = "https://cdn.jsdelivr.net/gh/sumami-dev/sumami@mai
 /// up, moving it and deleting it are all one operation on one path:
 ///
 /// ```text
-/// sumami/
+/// sumimi/
 ///   data.duckdb      the data plane — the events
 ///   instance.sqlite  the control plane — the accounts, the log, the cache, the chat
 ///   logs/            the server's log files
@@ -68,7 +68,7 @@ impl Paths {
                 (dir, data)
             }
             (None, None) => {
-                let dir = PathBuf::from("sumami");
+                let dir = PathBuf::from("sumimi");
                 let data = dir.join(default_name);
                 (dir, data)
             }
@@ -195,113 +195,100 @@ impl Config {
         docs_dir: Option<PathBuf>,
     ) -> anyhow::Result<Self> {
         let host = host
-            .or_else(|| std::env::var("SUMAMI_HOST").ok())
+            .or_else(|| env_any("SUMIMI_HOST"))
             .unwrap_or_else(|| "0.0.0.0".to_string());
 
         let port = port
-            .or_else(|| std::env::var("SUMAMI_PORT").ok().and_then(|v| v.parse().ok()))
+            .or_else(|| env_any("SUMIMI_PORT").and_then(|v| v.parse().ok()))
             .unwrap_or(3000);
 
         let jwt_secret = jwt_secret
-            .or_else(|| std::env::var("SUMAMI_JWT_SECRET").ok())
+            .or_else(|| env_any("SUMIMI_JWT_SECRET"))
             .unwrap_or_default();
 
-        let admin_user = std::env::var("SUMAMI_ADMIN_USER").unwrap_or_else(|_| "admin".to_string());
-        let admin_password = std::env::var("SUMAMI_ADMIN_PASSWORD").ok();
+        let admin_user = env_any("SUMIMI_ADMIN_USER").unwrap_or_else(|| "admin".to_string());
+        let admin_password = env_any("SUMIMI_ADMIN_PASSWORD");
 
         // DuckDB's own default is 80% of RAM — on a 512 MB VPS that is 410 MB,
         // which would leave nothing for the OS. We take a quarter of RAM, capped
         // at 128 MB: the analytics queries stream and spill to disk long before
         // that, so the limit costs nothing and buys a lot of headroom.
-        let duckdb_memory_limit = std::env::var("SUMAMI_DUCKDB_MEMORY_LIMIT")
-            .ok()
-            .filter(|v| !v.is_empty())
+        let duckdb_memory_limit = env_any("SUMIMI_DUCKDB_MEMORY_LIMIT")
             .unwrap_or_else(default_memory_limit);
 
         // DuckDB's default flush threshold is 128 MB: it would keep that much
         // freed memory before giving it back. On a small box, hand it back sooner.
-        let duckdb_flush_threshold = std::env::var("SUMAMI_DUCKDB_FLUSH_THRESHOLD")
-            .ok()
-            .filter(|v| !v.is_empty())
+        let duckdb_flush_threshold = env_any("SUMIMI_DUCKDB_FLUSH_THRESHOLD")
             .unwrap_or_else(|| "32MB".to_string());
 
         // A runaway query spills to disk; it must not fill the VPS.
-        let duckdb_temp_limit = std::env::var("SUMAMI_DUCKDB_TEMP_LIMIT")
-            .ok()
-            .filter(|v| !v.is_empty())
+        let duckdb_temp_limit = env_any("SUMIMI_DUCKDB_TEMP_LIMIT")
             .unwrap_or_else(|| "2GB".to_string());
 
         // 0 = derive from the memory limit.
-        let duckdb_threads = std::env::var("SUMAMI_DUCKDB_THREADS")
-            .ok()
+        let duckdb_threads = env_any("SUMIMI_DUCKDB_THREADS")
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
 
-        let max_queue = std::env::var("SUMAMI_MAX_QUEUE")
-            .ok()
+        let max_queue = env_any("SUMIMI_MAX_QUEUE")
             .and_then(|v| v.parse().ok())
             .unwrap_or(100_000);
 
-        let flush_interval_secs = std::env::var("SUMAMI_FLUSH_INTERVAL_SECS")
-            .ok()
+        let flush_interval_secs = env_any("SUMIMI_FLUSH_INTERVAL_SECS")
             .and_then(|v| v.parse().ok())
             .unwrap_or(2);
 
         // The uptime checker: every five minutes, with ten seconds to answer.
-        let uptime_interval_secs = std::env::var("SUMAMI_UPTIME_INTERVAL_SECS")
-            .ok()
+        let uptime_interval_secs = env_any("SUMIMI_UPTIME_INTERVAL_SECS")
             .and_then(|v| v.parse().ok())
             .unwrap_or(300);
-        let uptime_timeout_secs = std::env::var("SUMAMI_UPTIME_TIMEOUT_SECS")
-            .ok()
+        let uptime_timeout_secs = env_any("SUMIMI_UPTIME_TIMEOUT_SECS")
             .and_then(|v| v.parse().ok())
             .unwrap_or(10);
 
         // How old a cached report may be. Thirty seconds is invisible on a
         // dashboard and turns a hundred queries into one.
-        let cache_stale_secs = std::env::var("SUMAMI_CACHE_STALE_SECS")
-            .ok()
+        let cache_stale_secs = env_any("SUMIMI_CACHE_STALE_SECS")
             .and_then(|v| v.parse().ok())
             .unwrap_or(30)
             .max(0);
 
         let retention_days = retention_days
-            .or_else(|| std::env::var("SUMAMI_RETENTION_DAYS").ok().and_then(|v| v.parse().ok()))
+            .or_else(|| env_any("SUMIMI_RETENTION_DAYS").and_then(|v| v.parse().ok()))
             .unwrap_or(0);
 
-        let country_header = country_header.or_else(|| std::env::var("SUMAMI_COUNTRY_HEADER").ok());
+        let country_header = country_header.or_else(|| env_any("SUMIMI_COUNTRY_HEADER"));
 
         // These three keep everything by default — that is what Umami stores, and
         // it is the baseline we promised. Turning one off is a per-site policy
         // decision, so it is environment-only.
-        let store_titles = env_flag("SUMAMI_STORE_TITLES", true);
-        let store_full_referrer = env_flag("SUMAMI_STORE_FULL_REFERRER", true);
+        let store_titles = env_flag("SUMIMI_STORE_TITLES", true);
+        let store_full_referrer = env_flag("SUMIMI_STORE_FULL_REFERRER", true);
 
-        let keep_query = env_flag("SUMAMI_KEEP_QUERY", true);
+        let keep_query = env_flag("SUMIMI_KEEP_QUERY", true);
 
         // The frontend and the documentation site live next to the executable
         // when they are shipped with it — that is where the release archive puts
         // them, and where a `cargo install`ed binary finds them. The working
         // directory comes first, so running from a checkout still works.
-        let js_dir = env_path("SUMAMI_JS_DIR").unwrap_or_else(|| next_to_executable("js"));
+        let js_dir = env_path_any("SUMIMI_JS_DIR").unwrap_or_else(|| next_to_executable("js"));
 
         // The dashboard frontend is published on a CDN (jsDelivr serves this public
         // repository directly), so the backend never ships it. Point this at `/app`
         // to serve it from the backend instead — useful for air-gapped installs.
-        let app_url = std::env::var("SUMAMI_APP_URL")
-            .ok()
+        let app_url = env_any("SUMIMI_APP_URL")
             .filter(|s| !s.is_empty())
             .or_else(|| Some(CDN_APP_URL.to_string()));
 
         let docs_dir = docs_dir
-            .or_else(|| env_path("SUMAMI_DOCS_DIR"))
+            .or_else(|| env_path_any("SUMIMI_DOCS_DIR"))
             .unwrap_or_else(|| next_to_executable("docs"));
 
-        let ssl_domain = std::env::var("SUMAMI_SSL_DOMAIN").ok().filter(|s| !s.is_empty());
-        let ssl_email = std::env::var("SUMAMI_SSL_EMAIL").ok().filter(|s| !s.is_empty());
+        let ssl_domain = std::env::var("SUMIMI_SSL_DOMAIN").ok().filter(|s| !s.is_empty());
+        let ssl_email = std::env::var("SUMIMI_SSL_EMAIL").ok().filter(|s| !s.is_empty());
         // The ACME cache lives inside the instance directory by default.
-        let ssl_cache_dir = env_path("SUMAMI_SSL_CACHE_DIR").unwrap_or_else(|| paths.acme.clone());
-        let ssl_port = std::env::var("SUMAMI_SSL_PORT")
+        let ssl_cache_dir = env_path_any("SUMIMI_SSL_CACHE_DIR").unwrap_or_else(|| paths.acme.clone());
+        let ssl_port = std::env::var("SUMIMI_SSL_PORT")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(443);
@@ -411,13 +398,29 @@ pub fn total_ram_bytes() -> Option<u64> {
 
 /// Read a boolean environment variable.
 fn env_flag(key: &str, default: bool) -> bool {
-    std::env::var(key)
+    env_any(key)
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(default)
 }
 
-fn env_path(key: &str) -> Option<PathBuf> {
-    std::env::var(key).ok().map(PathBuf::from)
+/// Read an environment variable, with the **old** name as a fallback.
+///
+/// The project was called `sumami` until v0.2.0; the settings it took with it
+/// are still in people's `/etc/sumami/sumami.env` files and systemd units, so
+/// `SUMAMI_DIR` still works. The new name wins when both are set.
+fn env_any(new_key: &str) -> Option<String> {
+    if let Ok(value) = std::env::var(new_key) {
+        if !value.is_empty() {
+            return Some(value);
+        }
+    }
+    let old_key = format!("SUMAMI{}", &new_key["SUMIMI".len()..]);
+    std::env::var(old_key).ok().filter(|value| !value.is_empty())
+}
+
+/// A path from the environment, with the old name as a fallback.
+fn env_path_any(key: &str) -> Option<PathBuf> {
+    env_any(key).map(PathBuf::from)
 }
 
 /// Resolve the JWT secret, generating and persisting one on first run.
@@ -428,7 +431,7 @@ pub fn resolve_jwt_secret(configured: &str, secret_path: &std::path::Path) -> an
     if !configured.is_empty() {
         return Ok(configured.to_string());
     }
-    if let Ok(v) = std::env::var("SUMAMI_JWT_SECRET_FILE") {
+    if let Ok(v) = std::env::var("SUMIMI_JWT_SECRET_FILE") {
         let path = PathBuf::from(v);
         if path.exists() {
             let s = std::fs::read_to_string(&path)
@@ -464,7 +467,7 @@ pub fn resolve_jwt_secret(configured: &str, secret_path: &std::path::Path) -> an
 /// A directory next to the executable, or next to the working directory.
 ///
 /// The release archive ships the frontend and the documentation site next to
-/// the binary, so a `cargo install`ed Sumami finds them wherever it was put.
+/// the binary, so a `cargo install`ed Sumimi finds them wherever it was put.
 pub fn next_to_executable(name: &str) -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(directory) = exe.parent() {

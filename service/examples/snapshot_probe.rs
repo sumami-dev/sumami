@@ -12,7 +12,7 @@
 //!    nothing is lost: after a restart the rows are there.
 //!
 //! ```bash
-//! cargo run --release --example snapshot_probe -p sumami-service
+//! cargo run --release --example snapshot_probe -p sumimi-service
 //! ```
 
 use std::time::Instant;
@@ -35,7 +35,7 @@ fn append(conn: &Connection) {
 }
 
 fn main() -> anyhow::Result<()> {
-    let path = std::env::temp_dir().join("sumami-snapshot-probe.duckdb");
+    let path = std::env::temp_dir().join("sumimi-snapshot-probe.duckdb");
     let _ = std::fs::remove_file(&path);
 
     let writer = Connection::open(&path)?;

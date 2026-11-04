@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install — Sumami</title>
-<meta name="description" content="Install Sumami: download the release archive, unpack the self-contained sumami executable, start the server, create a website and install the tracker.">
+<title>Install — Sumimi</title>
+<meta name="description" content="Install Sumimi: download the release archive, unpack the self-contained sumimi executable, start the server, create a website and install the tracker.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23f97316'%3E%3Cellipse cx='7.4' cy='13.2' rx='2.9' ry='3.9' transform='rotate(-20 7.4 13.2)'/%3E%3Cellipse cx='12.8' cy='8.8' rx='2.8' ry='3.9' transform='rotate(-7 12.8 8.8)'/%3E%3Cellipse cx='19.2' cy='8.8' rx='2.8' ry='3.9' transform='rotate(7 19.2 8.8)'/%3E%3Cellipse cx='24.6' cy='13.2' rx='2.9' ry='3.9' transform='rotate(20 24.6 13.2)'/%3E%3Cpath d='M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z'/%3E%3C/g%3E%3C/svg%3E">
@@ -15,9 +15,9 @@
 <header class="site-header">
   <div class="wrap">
     <a class="brand" href="index.html">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      <span>Sumami</span>
-      <span class="brand-cn">数猫咪</span>
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      <span>Sumimi</span>
+      <span class="brand-cn">数咪咪</span>
     </a>
     <nav class="site-nav" aria-label="Main">
       <ul>
@@ -54,9 +54,9 @@
           <tr><th>File</th><th>What it is</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>sumami</code></td><td>The one executable: the analytics server (collection API, statistics API, authentication, the dashboard shell and the tracker) and the analysis CLI. A self-contained executable — DuckDB is compiled into it. <code>sumami serve …</code> runs the server, every other subcommand is the analyser.</td></tr>
-          <tr><td><code>sumami-server</code><br><code>sumami-client</code></td><td>Symlinks to <code>sumami</code>, for people who prefer the explicit name. The program decides its mode by the name it was invoked under, so <code>sumami-server serve</code> and <code>sumami-client summary</code> both work. There is nothing extra to download.</td></tr>
-          <tr><td><code>js/</code></td><td>The dashboard frontend files (<code>sumami-app.js</code>, <code>sumami.css</code>) and a copy of the tracker. The frontend is served from a CDN by default, and from here when you set <code>SUMAMI_APP_URL=/app</code>; the tracker itself is compiled into the server binary and always served by the backend.</td></tr>
+          <tr><td><code>sumimi</code></td><td>The one executable: the analytics server (collection API, statistics API, authentication, the dashboard shell and the tracker) and the analysis CLI. A self-contained executable — DuckDB is compiled into it. <code>sumimi serve …</code> runs the server, every other subcommand is the analyser.</td></tr>
+          <tr><td><code>sumimi-server</code><br><code>sumimi-client</code></td><td>Symlinks to <code>sumimi</code>, for people who prefer the explicit name. The program decides its mode by the name it was invoked under, so <code>sumimi-server serve</code> and <code>sumimi-client summary</code> both work. There is nothing extra to download.</td></tr>
+          <tr><td><code>js/</code></td><td>The dashboard frontend files (<code>sumimi-app.js</code>, <code>sumimi.css</code>) and a copy of the tracker. The frontend is served from a CDN by default, and from here when you set <code>SUMIMI_APP_URL=/app</code>; the tracker itself is compiled into the server binary and always served by the backend.</td></tr>
           <tr><td><code>docs/</code></td><td>This documentation site, served by the server at <code>/docs</code>.</td></tr>
         </tbody>
       </table>
@@ -79,18 +79,18 @@
           <tr><th>I want to…</th><th>Command</th></tr>
         </thead>
         <tbody>
-          <tr><td>Run the server (collect page views, serve the dashboard)</td><td><code>sumami serve --db … --port 3000</code></td></tr>
-          <tr><td>Create or reset the admin account</td><td><code>sumami admin --username admin</code></td></tr>
-          <tr><td>Print the resolved configuration</td><td><code>sumami config</code></td></tr>
-          <tr><td>Analyse the data from the command line</td><td><code>sumami summary &lt;website-id&gt;</code>, <code>sumami pages</code>, <code>sumami export</code>, …</td></tr>
-          <tr><td>Fill a database with demo traffic</td><td><code>sumami seed --db ./sumami/data.duckdb</code></td></tr>
+          <tr><td>Run the server (collect page views, serve the dashboard)</td><td><code>sumimi serve --db … --port 3000</code></td></tr>
+          <tr><td>Create or reset the admin account</td><td><code>sumimi admin --username admin</code></td></tr>
+          <tr><td>Print the resolved configuration</td><td><code>sumimi config</code></td></tr>
+          <tr><td>Analyse the data from the command line</td><td><code>sumimi summary &lt;website-id&gt;</code>, <code>sumimi pages</code>, <code>sumimi export</code>, …</td></tr>
+          <tr><td>Fill a database with demo traffic</td><td><code>sumimi seed --db ./sumimi/data.duckdb</code></td></tr>
         </tbody>
       </table>
     </div>
     <p>
-      If you prefer the explicit names, the symlinks <code>sumami-server</code> and
-      <code>sumami-client</code> are in the archive: <code>sumami-server serve</code> is the
-      server and <code>sumami-client summary</code> is the analyser. They are the same file.
+      If you prefer the explicit names, the symlinks <code>sumimi-server</code> and
+      <code>sumimi-client</code> are in the archive: <code>sumimi-server serve</code> is the
+      server and <code>sumimi-client summary</code> is the analyser. They are the same file.
     </p>
     <div class="callout tip">
       <p class="callout-title">
@@ -108,20 +108,20 @@
     </div>
 
     <h3>Linux (x86-64)</h3>
-    <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-linux-amd64.tar.gz | tar xz
+    <pre class="shell"><code>curl -fsSL https://github.com/sumimi-dev/sumimi/releases/latest/download/sumimi-linux-amd64.tar.gz | tar xz
 ls -l</code></pre>
-    <p>You should now see <code>sumami</code>, the <code>sumami-server</code> and <code>sumami-client</code> symlinks, <code>js/</code> and <code>docs/</code>.</p>
+    <p>You should now see <code>sumimi</code>, the <code>sumimi-server</code> and <code>sumimi-client</code> symlinks, <code>js/</code> and <code>docs/</code>.</p>
 
     <h3>macOS (Apple silicon)</h3>
-    <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-macos-arm64.tar.gz | tar xz</code></pre>
+    <pre class="shell"><code>curl -fsSL https://github.com/sumimi-dev/sumimi/releases/latest/download/sumimi-macos-arm64.tar.gz | tar xz</code></pre>
     <p>
       The same layout, and the same rule: the executables are self-contained on macOS too, so
       there is nothing to copy next to them.
     </p>
 
     <h3>Windows</h3>
-    <pre class="shell"><code>curl -fsSL https://github.com/sumami-dev/sumami/releases/latest/download/sumami-windows-amd64.zip -o sumami.zip
-Expand-Archive sumami.zip</code></pre>
+    <pre class="shell"><code>curl -fsSL https://github.com/sumimi-dev/sumimi/releases/latest/download/sumimi-windows-amd64.zip -o sumimi.zip
+Expand-Archive sumimi.zip</code></pre>
 
     <h3>Build from source</h3>
     <p>
@@ -129,10 +129,10 @@ Expand-Archive sumami.zip</code></pre>
       Rust toolchain. The first build compiles DuckDB from source and takes a while; afterwards
       it is quick.
     </p>
-    <pre class="shell"><code>git clone https://github.com/sumami-dev/sumami.git
-cd sumami
+    <pre class="shell"><code>git clone https://github.com/sumimi-dev/sumimi.git
+cd sumimi
 cargo build --release
-<span class="cmt"># the executable lands in target/release/sumami</span></code></pre>
+<span class="cmt"># the executable lands in target/release/sumimi</span></code></pre>
     <p>
       <code>cargo build --release</code> produces the same self-contained executable as the
       release archive. <code>make build-small</code> produces the smaller dynamic build
@@ -142,28 +142,28 @@ cargo build --release
 
     <h2>2. Install the executable</h2>
     <pre class="shell"><code><span class="cmt"># the one executable: the server and the analysis CLI</span>
-sudo install -m 0755 sumami /usr/local/bin/
+sudo install -m 0755 sumimi /usr/local/bin/
 
 <span class="cmt"># optional: the explicit-name symlinks, if you prefer them</span>
-sudo ln -sf /usr/local/bin/sumami /usr/local/bin/sumami-server
-sudo ln -sf /usr/local/bin/sumami /usr/local/bin/sumami-client
+sudo ln -sf /usr/local/bin/sumimi /usr/local/bin/sumimi-server
+sudo ln -sf /usr/local/bin/sumimi /usr/local/bin/sumimi-client
 
 <span class="cmt"># optional: the js/ and docs/ directories, for the dashboard frontend</span>
 <span class="cmt"># served by the backend itself and for the docs site at /docs</span>
-sudo install -d -m 0755 /opt/sumami
-sudo cp -r js docs /opt/sumami/</code></pre>
+sudo install -d -m 0755 /opt/sumimi
+sudo cp -r js docs /opt/sumimi/</code></pre>
     <p>
       That is the whole installation. The binary carries DuckDB inside it, so there is no
       library to install alongside and no loader configuration to do. If you would rather keep
-      everything together in one directory, install it into <code>/opt/sumami</code> and
+      everything together in one directory, install it into <code>/opt/sumimi</code> and
       point the service's <code>ExecStart</code> at that path.
     </p>
     <p>
       The <code>js/</code> and <code>docs/</code> directories are optional. You need
       <code>js/</code> only if you serve the dashboard frontend from the backend yourself
-      (<code>SUMAMI_APP_URL=/app</code>); by default it comes from a CDN. <code>docs/</code> is
+      (<code>SUMIMI_APP_URL=/app</code>); by default it comes from a CDN. <code>docs/</code> is
       this documentation site, served at <code>/docs</code>. The tracker at
-      <code>/sumami.js</code> is compiled into the server binary, so it is available either way.
+      <code>/sumimi.js</code> is compiled into the server binary, so it is available either way.
     </p>
 
     <h2>3. Create the admin account</h2>
@@ -171,13 +171,13 @@ sudo cp -r js docs /opt/sumami/</code></pre>
       The server has one user: the administrator. Create it before the first run so the password
       is one you chose.
     </p>
-    <pre class="shell"><code>sumami admin --dir /var/lib/sumami \
+    <pre class="shell"><code>sumimi admin --dir /var/lib/sumimi \
   --username admin --password 'a-long-passphrase'</code></pre>
     <p>
       If you leave <code>--password</code> out, a strong password is generated and printed
       <strong>once</strong>:
     </p>
-    <pre class="shell"><code>$ sumami admin --dir ./sumami --username admin
+    <pre class="shell"><code>$ sumimi admin --dir ./sumimi --username admin
 admin user 'admin' ready
 password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
 (store it now — it is not shown again)</code></pre>
@@ -188,19 +188,19 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
       </p>
       <p>
         The first <code>serve</code> on an empty database creates the admin user anyway, using
-        <code>SUMAMI_ADMIN_USER</code> (default <code>admin</code>) and
-        <code>SUMAMI_ADMIN_PASSWORD</code>. If the password is unset, one is generated and
+        <code>SUMIMI_ADMIN_USER</code> (default <code>admin</code>) and
+        <code>SUMIMI_ADMIN_PASSWORD</code>. If the password is unset, one is generated and
         printed to the service log exactly once. It is never stored in plaintext.
       </p>
     </div>
 
     <h2>4. Run the server</h2>
-    <pre class="shell"><code>sumami serve --dir /var/lib/sumami --host 127.0.0.1 --port 3999</code></pre>
+    <pre class="shell"><code>sumimi serve --dir /var/lib/sumimi --host 127.0.0.1 --port 3999</code></pre>
     <p>
       An instance is a <strong>directory</strong>. Everything it owns lives inside it, so
       backing it up, moving it and deleting it are one operation on one path:
     </p>
-    <pre class="shell"><code>/var/lib/sumami/
+    <pre class="shell"><code>/var/lib/sumimi/
 ├── data.duckdb      the events
 ├── instance.sqlite  the accounts, the log, the imports, the cache
 ├── logs/            the server's log files
@@ -210,7 +210,7 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
       To serve HTTPS directly — without a reverse proxy in front — add
       <code>--ssl</code>:
     </p>
-    <pre class="shell"><code>sumami serve --dir /var/lib/sumami \
+    <pre class="shell"><code>sumimi serve --dir /var/lib/sumimi \
   --ssl example.com --ssl-email you@example.com</code></pre>
     <p>
       <code>--ssl-domain</code> is still accepted as an alias for <code>--ssl</code>.
@@ -224,20 +224,20 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
           <tr><th>Flag</th><th>Environment variable</th><th>Default</th><th>Meaning</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>--dir &lt;path&gt;</code></td><td><code>SUMAMI_DIR</code></td><td><code>sumami</code></td><td>The instance directory: the events, the accounts, the log, the imports and the cache all live inside it.</td></tr>
-          <tr><td><code>--db &lt;path&gt;</code></td><td><code>SUMAMI_DB</code></td><td><code>&lt;dir&gt;/data.duckdb</code></td><td>Path of the data file — for keeping the events on a bigger disk than the rest.</td></tr>
-          <tr><td><code>--backend &lt;name&gt;</code></td><td><code>SUMAMI_BACKEND</code></td><td><code>duckdb</code></td><td>The data engine: <code>duckdb</code> or <code>sqlite</code>. Both store the same tables and answer the same reports; DuckDB is smaller and faster on the heavy aggregations, SQLite is an ordinary file that many readers can open at once.</td></tr>
-          <tr><td><code>--host &lt;addr&gt;</code></td><td><code>SUMAMI_HOST</code></td><td><code>0.0.0.0</code></td><td>Address to bind to.</td></tr>
-          <tr><td><code>--port &lt;port&gt;</code></td><td><code>SUMAMI_PORT</code></td><td><code>3000</code></td><td>Port to listen on.</td></tr>
-          <tr><td><code>--jwt-secret &lt;secret&gt;</code></td><td><code>SUMAMI_JWT_SECRET</code></td><td>generated</td><td>Secret used to sign tokens. A random one is generated and stored in the instance directory on first run if unset.</td></tr>
-          <tr><td><code>--retention-days &lt;n&gt;</code></td><td><code>SUMAMI_RETENTION_DAYS</code></td><td><code>0</code></td><td>Default retention window in days. <code>0</code> means keep forever.</td></tr>
-          <tr><td><code>--country-header &lt;name&gt;</code></td><td><code>SUMAMI_COUNTRY_HEADER</code></td><td>none</td><td>Header carrying the country code, e.g. <code>CF-IPCountry</code>.</td></tr>
-          <tr><td><code>--js-dir &lt;path&gt;</code></td><td><code>SUMAMI_JS_DIR</code></td><td><code>js</code></td><td>Directory holding the dashboard frontend files. Only used when <code>SUMAMI_APP_URL=/app</code> makes the backend serve the frontend itself.</td></tr>
-          <tr><td><code>--docs-dir &lt;path&gt;</code></td><td><code>SUMAMI_DOCS_DIR</code></td><td><code>docs</code></td><td>Directory holding the documentation site served at <code>/docs</code>.</td></tr>
-          <tr><td><code>--ssl &lt;domain&gt;</code></td><td><code>SUMAMI_SSL_DOMAIN</code></td><td>none</td><td>Serve HTTPS with a certificate obtained and renewed automatically over ACME. <code>--ssl-domain</code> is accepted as an alias. See <a href="self-host.html#lets-sumami-manage-tls-itself">Let Sumami manage TLS itself</a>.</td></tr>
-          <tr><td><code>--ssl-email &lt;address&gt;</code></td><td><code>SUMAMI_SSL_EMAIL</code></td><td>none</td><td>Contact address registered with the ACME provider. Let's Encrypt sends expiry notices there.</td></tr>
-          <tr><td><code>--ssl-cache-dir &lt;path&gt;</code></td><td><code>SUMAMI_SSL_CACHE_DIR</code></td><td><code>&lt;instance directory&gt;/acme</code></td><td>Directory holding the ACME account and the certificates. Back it up.</td></tr>
-          <tr><td><code>--ssl-port &lt;port&gt;</code></td><td><code>SUMAMI_SSL_PORT</code></td><td><code>443</code></td><td>Port used for HTTPS when <code>--ssl</code> is set.</td></tr>
+          <tr><td><code>--dir &lt;path&gt;</code></td><td><code>SUMIMI_DIR</code></td><td><code>sumimi</code></td><td>The instance directory: the events, the accounts, the log, the imports and the cache all live inside it.</td></tr>
+          <tr><td><code>--db &lt;path&gt;</code></td><td><code>SUMIMI_DB</code></td><td><code>&lt;dir&gt;/data.duckdb</code></td><td>Path of the data file — for keeping the events on a bigger disk than the rest.</td></tr>
+          <tr><td><code>--backend &lt;name&gt;</code></td><td><code>SUMIMI_BACKEND</code></td><td><code>duckdb</code></td><td>The data engine: <code>duckdb</code> or <code>sqlite</code>. Both store the same tables and answer the same reports; DuckDB is smaller and faster on the heavy aggregations, SQLite is an ordinary file that many readers can open at once.</td></tr>
+          <tr><td><code>--host &lt;addr&gt;</code></td><td><code>SUMIMI_HOST</code></td><td><code>0.0.0.0</code></td><td>Address to bind to.</td></tr>
+          <tr><td><code>--port &lt;port&gt;</code></td><td><code>SUMIMI_PORT</code></td><td><code>3000</code></td><td>Port to listen on.</td></tr>
+          <tr><td><code>--jwt-secret &lt;secret&gt;</code></td><td><code>SUMIMI_JWT_SECRET</code></td><td>generated</td><td>Secret used to sign tokens. A random one is generated and stored in the instance directory on first run if unset.</td></tr>
+          <tr><td><code>--retention-days &lt;n&gt;</code></td><td><code>SUMIMI_RETENTION_DAYS</code></td><td><code>0</code></td><td>Default retention window in days. <code>0</code> means keep forever.</td></tr>
+          <tr><td><code>--country-header &lt;name&gt;</code></td><td><code>SUMIMI_COUNTRY_HEADER</code></td><td>none</td><td>Header carrying the country code, e.g. <code>CF-IPCountry</code>.</td></tr>
+          <tr><td><code>--js-dir &lt;path&gt;</code></td><td><code>SUMIMI_JS_DIR</code></td><td><code>js</code></td><td>Directory holding the dashboard frontend files. Only used when <code>SUMIMI_APP_URL=/app</code> makes the backend serve the frontend itself.</td></tr>
+          <tr><td><code>--docs-dir &lt;path&gt;</code></td><td><code>SUMIMI_DOCS_DIR</code></td><td><code>docs</code></td><td>Directory holding the documentation site served at <code>/docs</code>.</td></tr>
+          <tr><td><code>--ssl &lt;domain&gt;</code></td><td><code>SUMIMI_SSL_DOMAIN</code></td><td>none</td><td>Serve HTTPS with a certificate obtained and renewed automatically over ACME. <code>--ssl-domain</code> is accepted as an alias. See <a href="self-host.html#lets-sumimi-manage-tls-itself">Let Sumimi manage TLS itself</a>.</td></tr>
+          <tr><td><code>--ssl-email &lt;address&gt;</code></td><td><code>SUMIMI_SSL_EMAIL</code></td><td>none</td><td>Contact address registered with the ACME provider. Let's Encrypt sends expiry notices there.</td></tr>
+          <tr><td><code>--ssl-cache-dir &lt;path&gt;</code></td><td><code>SUMIMI_SSL_CACHE_DIR</code></td><td><code>&lt;instance directory&gt;/acme</code></td><td>Directory holding the ACME account and the certificates. Back it up.</td></tr>
+          <tr><td><code>--ssl-port &lt;port&gt;</code></td><td><code>SUMIMI_SSL_PORT</code></td><td><code>443</code></td><td>Port used for HTTPS when <code>--ssl</code> is set.</td></tr>
         </tbody>
       </table>
     </div>
@@ -246,56 +246,56 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
       policy rather than per-server:
     </p>
     <ul>
-      <li><code>SUMAMI_KEEP_QUERY</code> — whether to store the query string of the
+      <li><code>SUMIMI_KEEP_QUERY</code> — whether to store the query string of the
         collected URLs. It is <strong>on</strong> by default, because that is what Umami
         stores and the marketing parameters (UTM, ad click ids) live in it — they are
         parsed out of it either way. Set it to <code>0</code> to keep the parameters but
         drop the raw query string, which is where session tokens and other personal data
         tend to be.</li>
-      <li><code>SUMAMI_STORE_TITLES</code> — whether to store the page title. It is
+      <li><code>SUMIMI_STORE_TITLES</code> — whether to store the page title. It is
         <strong>on</strong> by default (Umami stores it); set it to <code>0</code> to
         save the space — the title is roughly half of the stored bytes and almost nobody
         looks at it.</li>
-      <li><code>SUMAMI_STORE_FULL_REFERRER</code> — whether to store the referring URL
+      <li><code>SUMIMI_STORE_FULL_REFERRER</code> — whether to store the referring URL
         in full. It is <strong>on</strong> by default; set it to <code>0</code> to keep
         the host alone, which is what the referrer breakdown groups by anyway.</li>
-      <li><code>SUMAMI_APP_URL</code> — base URL of the dashboard frontend
-        (<code>sumami-app.js</code> and <code>sumami.css</code>). It defaults to
-        <code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code>, so the frontend is
+      <li><code>SUMIMI_APP_URL</code> — base URL of the dashboard frontend
+        (<code>sumimi-app.js</code> and <code>sumimi.css</code>). It defaults to
+        <code>https://cdn.jsdelivr.net/gh/sumimi-dev/sumimi@main/js</code>, so the frontend is
         served from a CDN out of the box and the backend only ships a tiny HTML shell. Set it
         to <code>/app</code> to serve the frontend from the backend's own <code>js/</code>
         directory instead — that is what you want on an air-gapped machine. The tracker
-        (<code>sumami.js</code>) is served by the backend itself and is unaffected by this
+        (<code>sumimi.js</code>) is served by the backend itself and is unaffected by this
         setting.</li>
     </ul>
     <p>
       A few more environment variables tune the process rather than the data:
     </p>
     <ul>
-      <li><code>SUMAMI_DUCKDB_MEMORY_LIMIT</code> (default <code>256MB</code>) — DuckDB's
+      <li><code>SUMIMI_DUCKDB_MEMORY_LIMIT</code> (default <code>256MB</code>) — DuckDB's
         memory limit, in bytes.</li>
-      <li><code>SUMAMI_MAX_QUEUE</code> (default <code>100000</code>) — how many events may be
+      <li><code>SUMIMI_MAX_QUEUE</code> (default <code>100000</code>) — how many events may be
         buffered in memory before the oldest are dropped.</li>
-      <li><code>SUMAMI_FLUSH_INTERVAL_SECS</code> (default <code>2</code>) — how often the
+      <li><code>SUMIMI_FLUSH_INTERVAL_SECS</code> (default <code>2</code>) — how often the
         writer commits a batch to disk.</li>
-      <li><code>SUMAMI_UPTIME_INTERVAL_SECS</code> (default <code>300</code>) — how often the
+      <li><code>SUMIMI_UPTIME_INTERVAL_SECS</code> (default <code>300</code>) — how often the
         uptime of the websites is checked. <code>0</code> turns the checker off.</li>
-      <li><code>SUMAMI_UPTIME_TIMEOUT_SECS</code> (default <code>10</code>) — how long a website
+      <li><code>SUMIMI_UPTIME_TIMEOUT_SECS</code> (default <code>10</code>) — how long a website
         has to answer before it counts as down.</li>
-      <li><code>SUMAMI_CACHE_STALE_SECS</code> (default <code>30</code>) — how old a cached
+      <li><code>SUMIMI_CACHE_STALE_SECS</code> (default <code>30</code>) — how old a cached
         report may be. The writer commits every couple of seconds, so a cache that only
         accepted the current version of the data would never hit on a busy site; with the
         window, the numbers on the screen are at most that old and the query runs once
         instead of a hundred times. <code>0</code> means "only while the data has not
         changed".</li>
-      <li><code>SUMAMI_JWT_SECRET_FILE</code> — path of a file holding the token secret, if you
+      <li><code>SUMIMI_JWT_SECRET_FILE</code> — path of a file holding the token secret, if you
         would rather keep it out of the environment.</li>
     </ul>
     <p>
       The <code>admin</code> subcommand has its own flags — <code>--username</code>
-      (<code>SUMAMI_ADMIN_USER</code>, default <code>admin</code>),
-      <code>--password</code> (<code>SUMAMI_ADMIN_PASSWORD</code>) and <code>--db</code>
-      (<code>SUMAMI_DB</code>). A third subcommand, <code>config</code>, prints the resolved
+      (<code>SUMIMI_ADMIN_USER</code>, default <code>admin</code>),
+      <code>--password</code> (<code>SUMIMI_ADMIN_PASSWORD</code>) and <code>--db</code>
+      (<code>SUMIMI_DB</code>). A third subcommand, <code>config</code>, prints the resolved
       configuration and exits.
     </p>
     <div class="callout tip">
@@ -307,7 +307,7 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
         With <code>--ssl example.com</code> the server obtains a Let's Encrypt certificate on
         its own over ACME and renews it in the background. There is no certbot and no cron
         job, and no reverse proxy is needed just to serve TLS. The challenge used is
-        TLS-ALPN-01, so port 443 has to reach the Sumami process directly — behind a proxy
+        TLS-ALPN-01, so port 443 has to reach the Sumimi process directly — behind a proxy
         that terminates TLS, use the proxy's own ACME support instead.
       </p>
     </div>
@@ -337,12 +337,12 @@ curl -s -X POST http://127.0.0.1:3999/api/websites \
 
     <h2>6. Install the tracker</h2>
     <p>
-      The server serves the tracker itself at <code>/sumami.js</code> — it is compiled into the
-      binary, so it is always available whatever you set <code>SUMAMI_APP_URL</code> to. Put
+      The server serves the tracker itself at <code>/sumimi.js</code> — it is compiled into the
+      binary, so it is always available whatever you set <code>SUMIMI_APP_URL</code> to. Put
       this in the <code>&lt;head&gt;</code> of every page you want to measure:
     </p>
     <pre class="shell"><code>&lt;script defer
-  src="https://your-sumami-host/sumami.js"
+  src="https://your-sumimi-host/sumimi.js"
   data-website-id="3f2a..."&gt;&lt;/script&gt;</code></pre>
     <p>
       That is the whole integration. A page view is sent automatically on load. There are more
@@ -354,31 +354,31 @@ curl -s -X POST http://127.0.0.1:3999/api/websites \
     <p>
       Open <code>http://127.0.0.1:3999/</code> and log in with the admin account. The dashboard
       is a small HTML shell that loads the frontend JavaScript. By default that frontend comes
-      from a CDN (<code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code>), so the
-      backend ships no frontend code; set <code>SUMAMI_APP_URL=/app</code> to serve it from the
+      from a CDN (<code>https://cdn.jsdelivr.net/gh/sumimi-dev/sumimi@main/js</code>), so the
+      backend ships no frontend code; set <code>SUMIMI_APP_URL=/app</code> to serve it from the
       backend's own <code>js/</code> directory instead. The tracker at
-      <code>/sumami.js</code> is always served by the backend itself.
+      <code>/sumimi.js</code> is always served by the backend itself.
     </p>
     <p>
       You can also read the same numbers straight from the database file:
     </p>
-    <pre class="shell"><code>sumami summary --db /var/lib/sumami/data.duckdb 3f2a...
-sumami pages --db /var/lib/sumami/data.duckdb 3f2a... --limit 10</code></pre>
+    <pre class="shell"><code>sumimi summary --db /var/lib/sumimi/data.duckdb 3f2a...
+sumimi pages --db /var/lib/sumimi/data.duckdb 3f2a... --limit 10</code></pre>
     <p>
       The <a href="cli.html">CLI reference</a> lists every subcommand and every flag.
     </p>
 
     <h2>Just want to look at it first?</h2>
     <p>
-      You do not need a website to see the dashboard working. <code>sumami seed</code> fills a
+      You do not need a website to see the dashboard working. <code>sumimi seed</code> fills a
       database with synthetic demo traffic — invented pages, invented visitors, a plausible
       traffic shape — so you can evaluate the whole thing without pointing a real site at it:
     </p>
     <pre class="shell"><code><span class="cmt"># the server must be stopped while the database is written</span>
-sumami seed --db ./demo.duckdb --days 30
+sumimi seed --db ./demo.duckdb --days 30
 
 <span class="cmt"># then start it on the demo database</span>
-sumami serve --db ./demo.duckdb --port 3000</code></pre>
+sumimi serve --db ./demo.duckdb --port 3000</code></pre>
     <p>
       Open <code>http://127.0.0.1:3000/</code> and sign in with the admin account (the first
       start prints its password once). The seeded website is called "Example Blog". The
@@ -394,7 +394,7 @@ sumami serve --db ./demo.duckdb --port 3000</code></pre>
     </ul>
 
     <p class="footnote">
-      Sumami is an independent open-source project, an open-source alternative to Umami that
+      Sumimi is an independent open-source project, an open-source alternative to Umami that
       implements the Umami v2 HTTP API. Apache-2.0 licensed.
     </p>
 
@@ -404,8 +404,8 @@ sumami serve --db ./demo.duckdb --port 3000</code></pre>
 <footer class="site-footer">
   <div class="wrap">
     <p class="footer-mark">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      Sumami 数猫咪
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      Sumimi 数咪咪
     </p>
     <p>Apache-2.0 licensed. Self-hosted, cookieless, no telemetry.</p>
     <ul>

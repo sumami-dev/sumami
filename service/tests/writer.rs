@@ -16,29 +16,29 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use sumami_service::models::{
+use sumimi_service::models::{
     BreakdownRow, EventRow, Hit, HitKind, MetricsSummary, Revenue, SessionRow, Website,
 };
-use sumami_service::pool::Db;
-use sumami_service::storage::{
+use sumimi_service::pool::Db;
+use sumimi_service::storage::{
     Dimension, ReportQuery, SessionEvent, Storage, StorageStats, SummaryMetrics, WebsitePatch,
 };
-use sumami_service::writer::Writer;
+use sumimi_service::writer::Writer;
 
 /// A unique temporary database path.
 fn temp_db(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-writer-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-writer-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    dir.join("sumami.duckdb")
+    dir.join("sumimi.duckdb")
 }
 
 /// A hit.
 fn hit(url: &str) -> Hit {
     Hit {
         website_id: "w1".to_string(),
-        session_id: sumami_service::ua::uuid_from_text("s1"),
-        visitor_id: sumami_service::ua::uuid_from_text("v1"),
+        session_id: sumimi_service::ua::uuid_from_text("s1"),
+        visitor_id: sumimi_service::ua::uuid_from_text("v1"),
         retention_days: 0,
         kind: HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Privacy and data protection — Sumami</title>
-<meta name="description" content="What Sumami collects, what it refuses to collect, and why: no cookies, no fingerprinting, no stored IP addresses, query strings stripped by default, DNT and GPC honoured, no telemetry, configurable retention.">
+<title>Privacy and data protection — Sumimi</title>
+<meta name="description" content="What Sumimi collects, what it refuses to collect, and why: no cookies, no fingerprinting, no stored IP addresses, query strings stripped by default, DNT and GPC honoured, no telemetry, configurable retention.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23f97316'%3E%3Cellipse cx='7.4' cy='13.2' rx='2.9' ry='3.9' transform='rotate(-20 7.4 13.2)'/%3E%3Cellipse cx='12.8' cy='8.8' rx='2.8' ry='3.9' transform='rotate(-7 12.8 8.8)'/%3E%3Cellipse cx='19.2' cy='8.8' rx='2.8' ry='3.9' transform='rotate(7 19.2 8.8)'/%3E%3Cellipse cx='24.6' cy='13.2' rx='2.9' ry='3.9' transform='rotate(20 24.6 13.2)'/%3E%3Cpath d='M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z'/%3E%3C/g%3E%3C/svg%3E">
@@ -15,9 +15,9 @@
 <header class="site-header">
   <div class="wrap">
     <a class="brand" href="index.html">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      <span>Sumami</span>
-      <span class="brand-cn">数猫咪</span>
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      <span>Sumimi</span>
+      <span class="brand-cn">数咪咪</span>
     </a>
     <nav class="site-nav" aria-label="Main">
       <ul>
@@ -40,14 +40,14 @@
     <h1 class="page-title">Privacy and data protection</h1>
     <p class="page-lede">
       Analytics software handles data that identifies people. The rules on this page are not
-      stylistic preferences — they are acceptance criteria in Sumami's own design, and a
+      stylistic preferences — they are acceptance criteria in Sumimi's own design, and a
       feature that would violate them is out of scope. Read them before you deploy, and read
       them again before you add custom events.
     </p>
 
     <div class="callout">
       <p class="callout-title">
-        <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+        <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
         The short version
       </p>
       <p>
@@ -61,7 +61,7 @@
 
     <h2>What is collected</h2>
     <p>
-      Everything Sumami records is listed here. Everything not on this list is not recorded.
+      Everything Sumimi records is listed here. Everything not on this list is not recorded.
       All of it is optional, and all of it is coarse.
     </p>
     <div class="table-wrap">
@@ -118,7 +118,7 @@
           <tr>
             <td>Country</td>
             <td>An edge header</td>
-            <td><strong>Only</strong> if a header such as <code>CF-IPCountry</code> is present and you configure Sumami to read it. Never derived from a geo-IP database.</td>
+            <td><strong>Only</strong> if a header such as <code>CF-IPCountry</code> is present and you configure Sumimi to read it. Never derived from a geo-IP database.</td>
           </tr>
           <tr>
             <td>Session id</td>
@@ -160,7 +160,7 @@
     <h2>The visitor identifier</h2>
     <p>
       Analytics needs some way to say "this is the same person as yesterday" without keeping a
-      durable record of who that person is. Sumami uses an HMAC-SHA256 over the server's own
+      durable record of who that person is. Sumimi uses an HMAC-SHA256 over the server's own
       secret and four inputs:
     </p>
     <pre class="shell"><code>HMAC(server_secret, coarse_ip_prefix ‖ user_agent ‖ website_id ‖ time_bucket)</code></pre>
@@ -247,19 +247,19 @@ utm_source = newsletter</code></pre>
     <p>
       This does mean the query string is personal data: it routinely carries session
       tokens, email addresses and search terms. If you do not want it, run your own
-      Sumami behind a reverse proxy that strips the query string before it reaches
+      Sumimi behind a reverse proxy that strips the query string before it reaches
       <code>POST /api/send</code>.
     </p>
 
     <h2>Geography</h2>
     <p>
-      Sumami has <strong>no geo-IP database</strong> and never looks one up. A country code is
+      Sumimi has <strong>no geo-IP database</strong> and never looks one up. A country code is
       recorded only when two conditions are both true:
     </p>
     <ol>
-      <li>A reverse proxy in front of Sumami sets a header containing the country code —
+      <li>A reverse proxy in front of Sumimi sets a header containing the country code —
         typically <code>CF-IPCountry</code> from a CDN, or your own header.</li>
-      <li>You name that header in <code>SUMAMI_COUNTRY_HEADER</code>, or per website in
+      <li>You name that header in <code>SUMIMI_COUNTRY_HEADER</code>, or per website in
         <code>countryHeader</code>.</li>
     </ol>
     <p>
@@ -280,11 +280,11 @@ utm_source = newsletter</code></pre>
       </li>
       <li>
         <strong>The tracker is always served by your own server.</strong> The script you put
-        on your website (<code>sumami.js</code>) is compiled into the server binary and served
+        on your website (<code>sumimi.js</code>) is compiled into the server binary and served
         from your own host, so your visitors' browsers never talk to a third party to report a
         page view. The <em>dashboard</em> frontend is a separate thing: it is loaded by your
         own administrator's browser, and by default comes from a CDN. Set
-        <code>SUMAMI_APP_URL=/app</code> to serve it from your own server instead.
+        <code>SUMIMI_APP_URL=/app</code> to serve it from your own server instead.
       </li>
       <li>
         <strong>No raw IPs in logs.</strong> Access logs record the method, the path, the status
@@ -298,10 +298,10 @@ utm_source = newsletter</code></pre>
       <li>
         <strong>Default-deny access.</strong> Statistics and website management require a valid
         token. Only <code>/api/send</code>, <code>/api/collect</code>,
-        <code>/api/heartbeat</code> and <code>/sumami.js</code> are public.
+        <code>/api/heartbeat</code> and <code>/sumimi.js</code> are public.
       </li>
       <li>
-        <strong>Synthetic examples only.</strong> Everything in Sumami's documentation, tests
+        <strong>Synthetic examples only.</strong> Everything in Sumimi's documentation, tests
         and screenshots uses invented domains and invented data. Real traffic is never pasted
         into the project.
       </li>
@@ -320,13 +320,13 @@ utm_source = newsletter</code></pre>
       </p>
     </div>
     <pre class="shell"><code><span class="cmt"># fine — a coarse, non-identifying value</span>
-sumami.track('signup', { plan: 'free', source: 'pricing' });
+sumimi.track('signup', { plan: 'free', source: 'pricing' });
 
 <span class="cmt"># NOT fine — this creates personal data in your database</span>
-sumami.track('signup', { email: 'ada@example.com', user_id: 'u-10423' });</code></pre>
+sumimi.track('signup', { email: 'ada@example.com', user_id: 'u-10423' });</code></pre>
     <p>
       The moment you put an email address, a phone number, a name or a stable user id into an
-      event property, you have made your Sumami installation a system that processes personal
+      event property, you have made your Sumimi installation a system that processes personal
       data — and every guarantee on this page stops applying to it. You would then need your
       own legal basis, your own retention policy and your own way to honour access and erasure
       requests for that data.
@@ -343,16 +343,16 @@ sumami.track('signup', { email: 'ada@example.com', user_id: 'u-10423' });</code>
       <code>retentionDays</code> value, and <code>0</code> means "keep forever".
     </p>
     <ul>
-      <li>Set the default for new websites with <code>SUMAMI_RETENTION_DAYS</code>.</li>
+      <li>Set the default for new websites with <code>SUMIMI_RETENTION_DAYS</code>.</li>
       <li>Change it for one website with <code>PUT /api/websites/:id</code> or the
         <code>PUT</code> equivalent in the dashboard.</li>
       <li>Read it back with <code>GET /api/websites/:id</code>.</li>
-      <li>Enforce it with <code>sumami prune</code>, scheduled from cron.</li>
+      <li>Enforce it with <code>sumimi prune</code>, scheduled from cron.</li>
     </ul>
     <p>
       To remove a website and everything belonging to it:
     </p>
-    <pre class="shell"><code>sumami erase --db /var/lib/sumami/sumami.duckdb 3f2a...
+    <pre class="shell"><code>sumimi erase --db /var/lib/sumimi/sumimi.duckdb 3f2a...
 
 <span class="cmt"># or through the API</span>
 curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
@@ -364,7 +364,7 @@ curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
     <h2>Who can see the data</h2>
     <p>
       Only you. The data lives in a DuckDB file on the machine you deployed it on. There is no
-      account with the Sumami project, no hosted dashboard, no central database and no
+      account with the Sumimi project, no hosted dashboard, no central database and no
       third-party processor. The people who can read your analytics data are the people who
       can read that file — which means the file's permissions are the whole access-control
       story.
@@ -376,13 +376,13 @@ curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
       <li>The database file and the JWT secret should be mode <code>0600</code>, owned by the
         service user. The <a href="self-host.html">self-hosting guide</a> sets that up.</li>
       <li>If you put your site behind a CDN, the CDN sees visitor addresses regardless of
-        what Sumami does. That is outside Sumami's control, and it is worth remembering when
+        what Sumimi does. That is outside Sumimi's control, and it is worth remembering when
         you weigh the privacy benefit of running your own analytics.</li>
     </ul>
 
     <h2>Legal notes</h2>
     <p>
-      Sumami is Apache-2.0 licensed software. The licence covers the software, not the data you
+      Sumimi is Apache-2.0 licensed software. The licence covers the software, not the data you
       collect with it, and it makes no statement about the legal basis on which you may
       collect data from your visitors. That depends on where you and your visitors are. A
       small amount of anonymous, coarse traffic statistics is treated differently in many
@@ -403,7 +403,7 @@ curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
       report it. Security and privacy issues should be sent to the maintainer privately
       rather than opened as a public issue — a public issue containing a working exploit or a
       real leaked value helps nobody. The
-      <a href="https://github.com/sumami-dev/sumami/issues">issue tracker</a> is fine for
+      <a href="https://github.com/sumimi-dev/sumimi/issues">issue tracker</a> is fine for
       everything else.
     </p>
 
@@ -411,7 +411,7 @@ curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Behaviour</th><th>Sumami</th></tr>
+          <tr><th>Behaviour</th><th>Sumimi</th></tr>
         </thead>
         <tbody>
           <tr><td>Cookies</td><td><span class="pill no">never set</span></td></tr>
@@ -426,14 +426,14 @@ curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
           <tr><td>Geography</td><td>only from a configured edge header, else nothing</td></tr>
           <tr><td>Outbound calls from the server</td><td><span class="pill no">none, ever</span></td></tr>
           <tr><td>Request bodies in logs</td><td><span class="pill no">never</span></td></tr>
-          <tr><td>Retention</td><td>configurable per website, enforced by <code>sumami prune</code></td></tr>
-          <tr><td>Erasure</td><td><span class="pill yes"><code>sumami erase</code> and <code>DELETE /api/websites/:id</code></span></td></tr>
+          <tr><td>Retention</td><td>configurable per website, enforced by <code>sumimi prune</code></td></tr>
+          <tr><td>Erasure</td><td><span class="pill yes"><code>sumimi erase</code> and <code>DELETE /api/websites/:id</code></span></td></tr>
         </tbody>
       </table>
     </div>
 
     <p class="footnote">
-      Sumami is an independent open-source project, an open-source alternative to Umami that
+      Sumimi is an independent open-source project, an open-source alternative to Umami that
       implements the Umami v2 HTTP API. Apache-2.0 licensed.
     </p>
 
@@ -443,8 +443,8 @@ curl -X DELETE https://analytics.example.com/api/websites/3f2a... \
 <footer class="site-footer">
   <div class="wrap">
     <p class="footer-mark">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      Sumami 数猫咪
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      Sumimi 数咪咪
     </p>
     <p>Apache-2.0 licensed. Self-hosted, cookieless, no telemetry.</p>
     <ul>

@@ -7,14 +7,14 @@
 //! both.
 //!
 //! ```bash
-//! cargo run --release --example query_cost -p sumami-service -- 20000000
+//! cargo run --release --example query_cost -p sumimi-service -- 20000000
 //! ```
 
 use std::time::Instant;
 
 use duckdb::Connection;
-use sumami_service::pool::Db;
-use sumami_service::storage::{Dimension, ReportQuery, Storage, TimeRange};
+use sumimi_service::pool::Db;
+use sumimi_service::storage::{Dimension, ReportQuery, Storage, TimeRange};
 
 /// How many rows to write.
 const ROWS: i64 = 20_000_000;
@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
         .nth(1)
         .and_then(|v| v.parse().ok())
         .unwrap_or(ROWS);
-    let dir = std::env::temp_dir().join("sumami-query-cost");
+    let dir = std::env::temp_dir().join("sumimi-query-cost");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
 
@@ -145,12 +145,12 @@ fn build(path: &std::path::Path, pk: bool, rows: i64) -> anyhow::Result<Db> {
     )?;
 
     let ddl = if pk {
-        sumami_service::db::EVENT_COLUMNS.replace(
+        sumimi_service::db::EVENT_COLUMNS.replace(
             "id              BIGINT NOT NULL",
             "id              BIGINT PRIMARY KEY",
         )
     } else {
-        sumami_service::db::EVENT_COLUMNS.to_string()
+        sumimi_service::db::EVENT_COLUMNS.to_string()
     };
     conn.execute_batch(&format!("CREATE TABLE event ({ddl});"))?;
 

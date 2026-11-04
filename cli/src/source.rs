@@ -7,8 +7,8 @@ use anyhow::{anyhow, Context, Result};
 use duckdb::{AccessMode, Config, Connection};
 use serde_json::{json, Value};
 
-use sumami_service::pool::Db;
-use sumami_service::storage::{Dimension, ReportQuery, Storage};
+use sumimi_service::pool::Db;
+use sumimi_service::storage::{Dimension, ReportQuery, Storage};
 
 /// A time window.
 #[derive(Debug, Clone, Copy)]
@@ -113,7 +113,7 @@ pub enum Source {
         /// The path, for messages.
         path: PathBuf,
     },
-    /// A running Sumami server.
+    /// A running Sumimi server.
     Remote {
         /// The base URL, without a trailing slash.
         base: String,
@@ -138,7 +138,7 @@ impl Source {
                 let snapshot = Self::snapshot(path)?;
                 let storage = Self::open_local(&snapshot, AccessMode::ReadOnly)?;
                 eprintln!(
-                    "[sumami] the database is in use by a running server ({err}); \
+                    "[sumimi] the database is in use by a running server ({err}); \
                      analysing a snapshot copy instead"
                 );
                 Ok(Source::Local {
@@ -177,9 +177,9 @@ impl Source {
 
     /// Copy the database (and its WAL) to a temporary directory.
     fn snapshot(path: &Path) -> Result<PathBuf> {
-        let dir = std::env::temp_dir().join(format!("sumami-snapshot-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("sumimi-snapshot-{}", std::process::id()));
         std::fs::create_dir_all(&dir)?;
-        let target = dir.join("sumami.duckdb");
+        let target = dir.join("sumimi.duckdb");
         let _ = std::fs::remove_file(&target);
         std::fs::copy(path, &target)
             .with_context(|| format!("copying {} to {}", path.display(), target.display()))?;
@@ -216,7 +216,7 @@ impl Source {
                     None => {
                         return Err(anyhow!(
                             "no credentials: pass --username/--password, or --token, \
-                             or log in once with `sumami login`"
+                             or log in once with `sumimi login`"
                         ))
                     }
                 }
@@ -251,7 +251,7 @@ impl Source {
             Source::Local { storage, .. } => storage.prune(website),
             Source::Remote { .. } => Err(anyhow!(
                 "pruning over HTTP is not supported in this version; \
-                 stop the server and run `sumami prune --db <path>`"
+                 stop the server and run `sumimi prune --db <path>`"
             )),
         }
     }
@@ -262,7 +262,7 @@ impl Source {
             Source::Local { storage, .. } => storage.erase(website),
             Source::Remote { .. } => Err(anyhow!(
                 "erasing over HTTP is not supported in this version; \
-                 run `sumami erase --db <path> <website> against a stopped server"
+                 run `sumimi erase --db <path> <website> against a stopped server"
             )),
         }
     }
@@ -289,7 +289,7 @@ pub fn credentials_path() -> PathBuf {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
             PathBuf::from(home).join(".config")
         });
-    base.join("sumami").join("credentials.json")
+    base.join("sumimi").join("credentials.json")
 }
 
 /// Store the credentials (mode 0600).
@@ -396,7 +396,7 @@ fn local_report(
             .ok_or_else(|| anyhow!("this report needs a website id"))?
     };
 
-    let mut query = ReportQuery::new(&website_id, sumami_service::storage::TimeRange {
+    let mut query = ReportQuery::new(&website_id, sumimi_service::storage::TimeRange {
         start: range.start,
         end: range.end,
     });

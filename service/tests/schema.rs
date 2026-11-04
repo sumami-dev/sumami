@@ -1,17 +1,17 @@
 //! The schema itself: the migration between versions, and the promise that the
 //! append-only fact tables carry no index.
 
-use sumami_service::db::SCHEMA_VERSION;
-use sumami_service::models::HitKind;
-use sumami_service::pool::Db;
-use sumami_service::storage::Storage;
+use sumimi_service::db::SCHEMA_VERSION;
+use sumimi_service::models::HitKind;
+use sumimi_service::pool::Db;
+use sumimi_service::storage::Storage;
 
 /// A unique temporary database path.
 fn temp_db(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-schema-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-schema-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    dir.join("sumami.duckdb")
+    dir.join("sumimi.duckdb")
 }
 
 /// How many primary keys does this table have?
@@ -76,8 +76,8 @@ fn the_ids_are_unique_without_a_constraint() {
                  VALUES (?1, 'w', ?2, ?3, now(), '/x')",
                 duckdb::params![
                     i as i64,
-                    sumami_service::ua::uuid_from_text("s"),
-                    sumami_service::ua::uuid_from_text("v"),
+                    sumimi_service::ua::uuid_from_text("s"),
+                    sumimi_service::ua::uuid_from_text("v"),
                 ],
             )?;
             Ok::<_, anyhow::Error>(())
@@ -247,8 +247,8 @@ fn deleting_a_website_removes_its_events() {
                 duckdb::params![
                     id,
                     website,
-                    sumami_service::ua::uuid_from_text("s"),
-                    sumami_service::ua::uuid_from_text("v"),
+                    sumimi_service::ua::uuid_from_text("s"),
+                    sumimi_service::ua::uuid_from_text("v"),
                 ],
             )?;
         }
@@ -359,10 +359,10 @@ fn a_v3_database_is_migrated_to_uuids() {
 /// The SQLite backend migrates its ids too.
 #[test]
 fn a_v3_sqlite_database_is_migrated_to_uuids() {
-    use sumami_service::sqlite::SqliteBackend;
-    use sumami_service::storage::Storage;
+    use sumimi_service::sqlite::SqliteBackend;
+    use sumimi_service::storage::Storage;
 
-    let dir = std::env::temp_dir().join(format!("sumami-schema-sqlite-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-schema-sqlite-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("data.sqlite");
@@ -429,9 +429,9 @@ fn a_v3_sqlite_database_is_migrated_to_uuids() {
 
     // Opening it migrates the ids.
     let backend = SqliteBackend::open(&path).unwrap();
-    let query = sumami_service::storage::ReportQuery::new(
+    let query = sumimi_service::storage::ReportQuery::new(
         "w1",
-        sumami_service::storage::TimeRange {
+        sumimi_service::storage::TimeRange {
             start: chrono::DateTime::from_timestamp(1_600_000_000, 0).unwrap().naive_utc(),
             end: chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap().naive_utc(),
         },
@@ -474,15 +474,15 @@ fn a_v3_sqlite_database_is_migrated_to_uuids() {
 /// has to stay right when the process that wrote the rows is gone.
 #[test]
 fn the_row_ids_stay_unique_across_a_restart() {
-    let dir = std::env::temp_dir().join(format!("sumami-ids-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-ids-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("sumami.duckdb");
+    let path = dir.join("sumimi.duckdb");
 
-    let hit = |url: &str| sumami_service::models::Hit {
+    let hit = |url: &str| sumimi_service::models::Hit {
         website_id: "w1".to_string(),
-        session_id: sumami_service::ua::uuid_from_text("s1"),
-        visitor_id: sumami_service::ua::uuid_from_text("v1"),
+        session_id: sumimi_service::ua::uuid_from_text("s1"),
+        visitor_id: sumimi_service::ua::uuid_from_text("v1"),
         retention_days: 0,
         kind: HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
@@ -527,15 +527,15 @@ fn the_row_ids_stay_unique_across_a_restart() {
 /// brings its own connection.
 #[test]
 fn the_row_ids_stay_unique_when_the_cli_opens_the_database() {
-    let dir = std::env::temp_dir().join(format!("sumami-ids-cli-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-ids-cli-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("sumami.duckdb");
+    let path = dir.join("sumimi.duckdb");
 
-    let hit = |url: &str| sumami_service::models::Hit {
+    let hit = |url: &str| sumimi_service::models::Hit {
         website_id: "w1".to_string(),
-        session_id: sumami_service::ua::uuid_from_text("s1"),
-        visitor_id: sumami_service::ua::uuid_from_text("v1"),
+        session_id: sumimi_service::ua::uuid_from_text("s1"),
+        visitor_id: sumimi_service::ua::uuid_from_text("v1"),
         retention_days: 0,
         kind: HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
@@ -547,7 +547,7 @@ fn the_row_ids_stay_unique_when_the_cli_opens_the_database() {
     // there, because the server created it.
     {
         let conn = duckdb::Connection::open(&path).unwrap();
-        sumami_service::db::init_schema(&conn).unwrap();
+        sumimi_service::db::init_schema(&conn).unwrap();
         let db = Db::from_connection(&path, conn);
         db.write_batch(&[hit("/one"), hit("/two")]).unwrap();
     }

@@ -18,17 +18,17 @@
 //! * **one appender** — the appender is created once and flushed per batch.
 //!
 //! ```bash
-//! cargo run --release --example write_probe -p sumami-service -- 100000
+//! cargo run --release --example write_probe -p sumimi-service -- 100000
 //! ```
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use chrono::NaiveDate;
-use sumami_service::models::{Hit, HitKind};
-use sumami_service::pool::Db;
-use sumami_service::sqlite::SqliteBackend;
-use sumami_service::storage::Storage;
+use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::pool::Db;
+use sumimi_service::sqlite::SqliteBackend;
+use sumimi_service::storage::Storage;
 
 /// How many rows to write.
 fn rows() -> usize {
@@ -363,10 +363,10 @@ fn main() -> anyhow::Result<()> {
 
 /// A temporary path.
 fn temp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-write-probe-{name}"));
+    let dir = std::env::temp_dir().join(format!("sumimi-write-probe-{name}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    dir.join("sumami.data")
+    dir.join("sumimi.data")
 }
 
 /// Traffic that looks like a site's.
@@ -390,8 +390,8 @@ fn generate(views: i64) -> Vec<Hit> {
         let at = base + chrono::Duration::seconds(i * 37 % (30 * 86_400));
         out.push(Hit {
             website_id: "w1".to_string(),
-            session_id: sumami_service::ua::uuid_from_text(&format!("session-{session:08x}")),
-            visitor_id: sumami_service::ua::uuid_from_text(&format!("visitor-{:08x}", session % 40_000)),
+            session_id: sumimi_service::ua::uuid_from_text(&format!("session-{session:08x}")),
+            visitor_id: sumimi_service::ua::uuid_from_text(&format!("visitor-{:08x}", session % 40_000)),
             retention_days: 0,
             kind: HitKind::Pageview,
             created_at: at,

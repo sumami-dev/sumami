@@ -251,7 +251,7 @@ const SCHEMA_VERSION: i64 = 4;
 /// becomes.
 fn register_uuid_function(conn: &Connection) -> Result<()> {
     conn.create_scalar_function(
-        "sumami_uuid",
+        "sumimi_uuid",
         1,
         rusqlite::functions::FunctionFlags::SQLITE_UTF8
             | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
@@ -294,10 +294,10 @@ fn migrate(conn: &Connection) -> Result<()> {
         // in two.
         conn.execute_batch(
             "UPDATE event
-                SET session_id = sumami_uuid(session_id),
-                    visitor_id = sumami_uuid(visitor_id);
+                SET session_id = sumimi_uuid(session_id),
+                    visitor_id = sumimi_uuid(visitor_id);
              UPDATE revenue
-                SET session_id = sumami_uuid(session_id)
+                SET session_id = sumimi_uuid(session_id)
                 WHERE session_id IS NOT NULL;",
         )?;
     }
