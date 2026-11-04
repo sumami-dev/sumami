@@ -1,0 +1,49 @@
+{
+  "name": "@sumimi/tracker",
+  "version": "0.2.0",
+  "description": "The Sumimi tracker, typed — self-hosted web analytics with no cookies, no fingerprints and no raw IP addresses",
+  "license": "Apache-2.0",
+  "type": "module",
+  "homepage": "https://sumimi.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sumimi-dev/sumimi.git",
+    "directory": "tracker"
+  },
+  "bugs": {
+    "url": "https://github.com/sumimi-dev/sumimi/issues"
+  },
+  "keywords": [
+    "analytics",
+    "tracker",
+    "privacy",
+    "self-hosted",
+    "umami-compatible"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/mod.d.ts",
+      "import": "./dist/mod.js",
+      "default": "./dist/mod.js"
+    }
+  },
+  "types": "./dist/mod.d.ts",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "deno test --allow-env src/",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

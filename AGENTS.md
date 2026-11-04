@@ -135,13 +135,14 @@ Slogan: *Count kitties popping into my websites. — 由猫开发*.
 
 ## 1. Repository map
 
-This repository (`sumimi-dev/sumimi`, **public**) is a workspace of five components:
+This repository (`sumimi-dev/sumimi`, **public**) is a workspace of six components:
 
 | Path       | Language       | What it is                                                                 |
 | ---------- | -------------- | -------------------------------------------------------------------------- |
 | `service/` | Rust           | The server library: collection API, stats API, auth, the writer, TLS, **the shared report layer**, **the instance store**. |
 | `cli/`     | Rust           | The analysis client. |
 | `sumimi/`  | Rust           | The facade crate: the server and the client as one library, **and the one executable** (`sumimi`: server + client). |
+| `tracker/` | TypeScript     | The tracker package — `@sumimi/tracker` on npm and on JSR. One source (`src/mod.ts`), two registries. |
 | `js/`      | JavaScript     | The tracker (`sumimi.js`) + the dashboard frontend (`sumimi-app.js`). Published on a CDN. |
 | `docs/`    | HTML/Markdown  | The website & documentation served by the service binary.                  |
 

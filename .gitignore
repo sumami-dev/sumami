@@ -22,3 +22,7 @@
 # Release artefacts
 /dist
 /sumami-*.tar.gz
+
+# The tracker package — the build output and the npm dependencies
+/tracker/dist
+/tracker/node_modules

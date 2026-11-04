@@ -27,6 +27,7 @@ An open-source, high-performance alternative to Umami.
 | `service/` | The server: collection API, stats API, auth, the writer, TLS.     |
 | `cli/`     | `sumimi` — read and analyse a database, locally or over HTTP.     |
 | `sumimi/`  | The facade crate: the server and the client as one library.       |
+| `tracker/` | The tracker package — `@sumimi/tracker` on npm and on JSR.        |
 | `js/`      | The dashboard frontend. The tracker is in `service/js/`.            |
 | `docs/`    | The website and documentation.                                     |
 

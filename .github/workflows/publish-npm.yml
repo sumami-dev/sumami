@@ -1,0 +1,51 @@
+# Publish the tracker to npm.
+#
+# The authentication is OIDC: npm trusts this workflow because the package was
+# set up as a trusted publisher (npmjs.com → the package → Settings → Trusted
+# Publisher → the repository and the workflow file). There is no token in this
+# repository, and none is needed.
+#
+# To publish:
+#   git tag npm-v0.2.0 && git push origin npm-v0.2.0
+# or press "Run workflow" here.
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'npm-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # The package has to be sound before it goes out: the types have to
+      # check, the tests have to pass, and the build has to produce what the
+      # package.json promises.
+      - name: Check, test and build
+        working-directory: tracker
+        run: |
+          deno check src/mod.ts
+          deno test --allow-env src/
+          npm ci
+          npm run build
+
+      - name: Publish
+        working-directory: tracker
+        run: npm publish --provenance --access public

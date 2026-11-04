@@ -33,12 +33,12 @@ jobs:
       # check, the tests have to pass, and the "slow types" check (JSR refuses
       # a public API whose types it cannot infer) has to pass too.
       - name: Check and test
-        working-directory: jsr
+        working-directory: tracker
         run: |
           deno check src/mod.ts
           deno test --allow-env src/
           deno publish --dry-run --allow-dirty
 
       - name: Publish
-        working-directory: jsr
+        working-directory: tracker
         run: npx jsr publish
