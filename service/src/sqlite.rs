@@ -858,18 +858,25 @@ fn sessions(conn: &Connection, query: &ReportQuery) -> Result<Vec<SessionRow>> {
     let filters = Filters::new(query);
 
     // The landing page and the last page are the first and the last hit of the
-    // session — SQLite has no `arg_min`/`arg_max`, so they are correlated
-    // lookups. The device fields are constant within a session, so `MAX` returns
-    // the same value DuckDB's `any_value` does.
+    // session. SQLite has no `arg_min`/`arg_max`, and a correlated subquery per
+    // group is far too slow (it ran for minutes on 200k rows), so the two ends are
+    // picked with window functions in one pass. The device fields are constant
+    // within a session, so `MAX` returns the same value DuckDB's `any_value` does.
     let sql = format!(
-        "SELECT session_id,
+        "WITH w AS (
+            SELECT session_id, created_at, url,
+                   ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at ASC)  AS rn_first,
+                   ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC) AS rn_last,
+                   title, referrer, referrer_path, hostname, browser, os, device,
+                   country, region, city, language, screen, visitor_id
+            FROM event WHERE {where_clause}
+         )
+         SELECT session_id,
                 MIN(created_at),
                 MAX(created_at),
                 COUNT(*),
-                (SELECT e2.url FROM event e2
-                  WHERE e2.session_id = e.session_id ORDER BY e2.created_at DESC LIMIT 1),
-                (SELECT e3.url FROM event e3
-                  WHERE e3.session_id = e.session_id ORDER BY e3.created_at ASC LIMIT 1),
+                MAX(CASE WHEN rn_last = 1 THEN url END),
+                MAX(CASE WHEN rn_first = 1 THEN url END),
                 MAX(title),
                 MAX(referrer),
                 MAX(referrer_path),
@@ -884,7 +891,7 @@ fn sessions(conn: &Connection, query: &ReportQuery) -> Result<Vec<SessionRow>> {
                 MAX(screen),
                 MAX(visitor_id),
                 MAX(created_at) - MIN(created_at)
-         FROM event e WHERE {where_clause}
+         FROM w
          GROUP BY session_id
          ORDER BY MIN(created_at) DESC, session_id ASC
          LIMIT {limit} OFFSET {offset}",
