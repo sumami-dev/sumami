@@ -403,12 +403,25 @@ views were all attributed to the page it happened to end on. With one row per vi
 attribution is exact by construction, the write is an append (the fastest path the
 engine has), and the extra rows cost a fraction of what they save.
 
-**Why there is no index on the fact table** (schema v3): `event` and `revenue` are
-append only, and every query over them is a filtered scan
-(`WHERE website_id = ? AND created_at BETWEEN ?`). DuckDB prunes those with **zone
-maps** — one min/max per column per row group, maintained automatically and stored
-with the data — so an index buys nothing. Measured (`cargo run --release --example
-index_probe -p sumami-service`):
+**Why there is no index on the fact table** (schema v3) — the key, in one line:
+
+> **All write paths share one memory budget.** A table with a primary key needs a
+> **~1 GB** budget for a bulk load; without one it needs **128 MB** — the same
+> budget the server already runs in. An index on an append-only table would give
+> the design a cliff: one path that works everywhere except on the customer's
+> 512 MB box, and only at scale. On top of that it costs **8 bytes per row**
+> (about 7% of a live database).
+
+What the index does **not** buy, so nobody repeats the claim: **not** query speed
+(the index is never in a plan — the 15 dashboard queries are 0.92–1.07x, pure
+noise) and **not** steady-state memory (the peak RSS while serving is the same
+with and without it, and it does not grow with the row count).
+
+`event` and `revenue` are append only, and every query over them is a filtered
+scan (`WHERE website_id = ? AND created_at BETWEEN ?`). DuckDB prunes those with
+**zone maps** — one min/max per column per row group, maintained automatically and
+stored with the data — so an index buys nothing at query time either. Measured
+(`cargo run --release --example index_probe -p sumami-service`):
 
 | | with `PRIMARY KEY` | without |
 | --- | ---: | ---: |
@@ -611,6 +624,15 @@ frontend is never embedded in it.
 6. `cargo test` and `cargo clippy -- -D warnings` must pass before push.
 7. Schema changes are **additive** and must not require a migration step in v1
    (`CREATE TABLE IF NOT EXISTS` at open time).
+8. **Every write path must fit in the same memory budget as the serving path.**
+   The target box has 512 MB and the DuckDB ceiling is 128 MB, so a path that
+   needs more is a path that breaks on the customer's machine. This is the reason
+   the fact table carries **no index at all** — see §4.3. A table with a primary
+   key needs a **~1 GB** budget for a bulk load (60000000 rows: out of memory at
+   128 MB, 256 MB and 512 MB; chunking does not help — it dies at the
+   13-millionth row), while the same rows without one need 128 MB.
+   *Check this before adding a write path:*
+   `cargo run --release --example idx_memory -p sumami-service -- <rows> <pk|nopk> <path> <limit>`.
 
 ---
 
