@@ -262,8 +262,11 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
   copyrighted anime/film for promo videos; a self-drawn or clearly transformative parody is
   safe, a clip montage is not. Any third-party artwork in `docs/` needs its licence recorded
   in `docs/assets/CREDITS.md`.
-* The licence is MIT (see `LICENSE`). Dependency licences must stay permissive (DuckDB: MIT,
-  Axum/Tokio: MIT/Apache-2.0).
+* The licence is **Apache-2.0** (see `LICENSE` and `NOTICE`). It was MIT until
+  2026-11-04; the MIT grant for the versions published before that stands, but
+  everything since is Apache-2.0. The reasons: an explicit **patent grant** for the
+  contributors, and a licence the legal department of a company already knows.
+  Dependency licences must stay permissive (DuckDB: MIT, Axum/Tokio: MIT/Apache-2.0).
 
 ---
 

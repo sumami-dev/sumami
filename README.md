@@ -140,7 +140,12 @@ Open <http://localhost:3000/> and sign in.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+**Apache-2.0** — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Apache-2.0 rather than MIT because it grants an explicit **patent licence** to the
+contributors, and because it is a licence a company's legal department already knows.
+The versions published before 2026-11-04 were MIT; that grant stands for them, and
+everything since is Apache-2.0.
 
 Third-party software used by Sumami keeps its own licence: DuckDB (MIT),
 Axum / Tokio / Hyper (MIT / Apache-2.0), rustls (Apache-2.0 / ISC / MIT).
