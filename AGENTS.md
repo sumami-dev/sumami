@@ -430,14 +430,18 @@ keep their keys — they hold a handful of rows, and `meta` needs its primary ke
 (the index was never in a plan) and it does **not** lower the memory the server
 holds: the ART index of a *monotonic* key is a radix tree that collapses to almost
 nothing in RAM — the peak RSS is the same with and without it, at 20M and at 60M
-rows. What it does buy:
+rows, and it does not grow with the row count. What it does buy:
 
 * **8 bytes of disk per row** — about 7% of a live database;
-* **the bulk path fits in a small memory budget.** A single
-  `INSERT … SELECT` (what the schema migration, the seed and any import do) runs
-  out of memory at a 128 MB limit **with** the primary key, at 20M and at 60M
-  rows, and completes without it. That matters: the migration that upgrades an
-  older database is itself a bulk copy.
+* **bulk loads fit in a small memory budget.** Writing a lot of rows into a table
+  that *has* a primary key needs a **~1 GB** memory limit (60000000 rows: out of
+  memory at 128 MB, 256 MB and 512 MB; fine at 1 GB). Writing the same rows into
+  a table without one needs **128 MB**. Chunking does not help — with a primary
+  key the bulk load still runs out of memory, at the 13-millionth row.
+
+  The schema migration is unaffected (it writes into the new table, which has no
+  primary key): 60000000 rows at a 128 MB limit, 53 s. But a future *import* into
+  a live database is not — that is the case this buys.
 
 **How many bytes a page view costs** (`cargo run --release --example row_cost -p
 sumami-service`, the real schema, 100000 views):
