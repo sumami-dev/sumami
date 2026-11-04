@@ -3,15 +3,16 @@
 > **Count kitties who visit my websites.** — 由猫开发
 
 Sumami is a **self-hosted web analytics service** that fits on a cheap VPS: one small
-binary, one DuckDB file, no external database, no cloud account, no telemetry.
+binary, one directory, no external database, no cloud account, no telemetry.
 
 - **Rust + Axum + Tokio** — one self-contained binary, ~50 MB of RAM at rest.
 - **DuckDB 2.0.0** embedded — columnar analytics in a single file you can copy around.
+  SQLite is there too, for the teams that want an ordinary database file.
 - **Umami v2 compatible API** — the existing trackers and dashboards work unchanged.
 - **Privacy first** — no cookies, no fingerprinting, **raw IP addresses are never stored**,
   DNT and Global Privacy Control are honoured, and the query string of collected URLs is
   stripped by default.
-- **One command to deploy** — `sumami-server serve --db ./sumami.duckdb --port 3000`.
+- **One command to deploy** — `sumami serve --dir ./sumami --port 3000`.
 
 An open-source, high-performance alternative to Umami.
 
@@ -19,8 +20,9 @@ An open-source, high-performance alternative to Umami.
 
 | Path       | What it is                                                        |
 | ---------- | ----------------------------------------------------------------- |
-| `service/` | The server: collection API, stats API, auth, DuckDB writer, TLS.  |
+| `service/` | The server: collection API, stats API, auth, the writer, TLS.     |
 | `cli/`     | `sumami` — read and analyse a database, locally or over HTTP.     |
+| `sumami/`  | The facade crate: the server and the client as one library.       |
 | `js/`      | The tracker (`sumami.js`) and the dashboard frontend.              |
 | `docs/`    | The website and documentation.                                     |
 
@@ -43,7 +45,18 @@ DuckDB is compiled into the executable, so the result is a **single file** — n
 library to install, no `LD_LIBRARY_PATH`, no runtime surprises:
 
 ```bash
-./target/release/sumami-server serve --db ./sumami.duckdb --port 3000
+./target/release/sumami serve --dir ./sumami --port 3000
+```
+
+An instance is a **directory**: the events, the accounts and the rest live inside it,
+so backing it up, moving it and deleting it are one operation on one path.
+
+```
+sumami/
+├── data.duckdb      the events
+├── instance.sqlite  the accounts, the log, the imports, the cache
+├── logs/            the server's log files
+└── jwt-secret       the signing secret
 ```
 
 (Prefer a smaller executable over a single file? `make build-small` links the prebuilt
@@ -73,8 +86,8 @@ Open <http://localhost:3000/> for the dashboard, <http://localhost:3000/docs/> f
 ## HTTPS without a reverse proxy
 
 ```bash
-sumami-server serve --db /var/lib/sumami/sumami.duckdb \
-                    --ssl example.com --ssl-email you@example.com
+sumami serve --dir /var/lib/sumami \
+             --ssl example.com --ssl-email you@example.com
 ```
 
 The server obtains a Let's Encrypt certificate over ACME and renews it on its own.
@@ -88,6 +101,7 @@ sumami websites                              # local database
 sumami summary <website-id> --from 7d       # or --url https://analytics.example.com
 sumami pages <website-id> --from 24h
 sumami export <website-id> pages --format csv
+sumami gsc import gsc.csv --website <id>    # a Search Console export
 ```
 
 The same commands work against a local `.duckdb` file and against a running server
@@ -98,8 +112,8 @@ The same commands work against a local `.duckdb` file and against a running serv
 ```bash
 cargo test                                  # unit + integration tests
 cargo clippy --all-targets -- -D warnings
-cargo run -p sumami-cli -- serve --db ./dev.duckdb --port 3000
-cargo run -p sumami-cli -- --db ./dev.duckdb summary <website-id>
+cargo run -p sumami -- serve --dir ./dev --port 3000
+cargo run -p sumami -- --db ./dev/data.duckdb summary <website-id>
 ```
 
 `AGENTS.md` §7 lists the whole workflow.

@@ -65,16 +65,19 @@ DuckDB reads what it needs, aggregates it and spills the rest.
 > log is the only panel that has to *derive* sessions from the event table — a hash
 > aggregate over every event in the window, which spills once the window holds more
 > sessions than fit in the budget. At 20M rows it is ~3 s; at 100M rows it is ~24 s.
-> The obvious fix is to take the most recent N events first
-> (`ORDER BY created_at DESC LIMIT …`) and derive the sessions from those, instead of
-> aggregating the whole window and throwing away all but 50.
+>
+> **Fixed:** the session log is a *log*, so it now reads the most recent N events
+> (`ORDER BY created_at DESC LIMIT …`) and derives the sessions from those, instead of
+> aggregating the whole window and throwing away all but 50. The rules live in one
+> place (`storage::group_sessions`), so the three engines cannot disagree.
 >
 > At **100M rows the summary query runs out of memory** and the dashboard's first
 > panel fails. The memory goes into the `COUNT(DISTINCT …)` hash tables — the session
 > and visitor ids are 36-character UUID strings, and there are millions of distinct
-> ones in a 30-day window. The fix is to store the ids as DuckDB's 16-byte `UUID`
-> type (which also makes the database ~10% smaller) rather than to approximate the
-> counts. Not done yet — see the mneme issue.
+> ones in a 30-day window.
+>
+> **Fixed:** the ids are DuckDB's 16-byte `UUID` type now (schema v4). The database is
+> ~10% smaller and the hash tables hold a third of the bytes.
 
 The thread count matters as much as the limit — see `SUMAMI_DUCKDB_THREADS` above.
 Measured on the same 5M-row table, the summary query:
@@ -93,16 +96,25 @@ keeping freed pages, not live data. `SUMAMI_DUCKDB_MEMORY_LIMIT` tunes the ceili
 reports back, and the thread count.
 
 ```
-                    ┌───────────────────────────────┐
-   browser ───────▶ │  sumami-server (one binary)    │
-   (tracker.js)    │  ├─ /sumami.js   tracker       │
-                    │  ├─ /api/send    collect       │
-                    │  ├─ /api/*       umami compat  │
-                    │  ├─ /            app shell ────┼──▶ CDN (frontend JS)
-                    │  ├─ /docs/*      docs site     │
-                    │  └─ ./sumami.duckdb  (data)   │
-                    └───────────────────────────────┘
+                    ┌────────────────────────────────────┐
+   browser ───────▶ │  sumami (one binary)                │
+   (tracker.js)    │  ├─ /sumami.js   tracker             │
+                    │  ├─ /api/send    collect             │
+                    │  ├─ /api/*       umami compat + the │
+                    │  │               control plane       │
+                    │  ├─ /            app shell ─────────┼──▶ CDN (frontend JS)
+                    │  ├─ /docs/*      docs site           │
+                    │  └─ ./sumami/    (the instance)      │
+                    │      ├── data.duckdb     the events  │
+                    │      └── instance.sqlite the control │
+                    │                         plane        │
+                    └────────────────────────────────────┘
 ```
+
+**An instance is a directory.** The events (DuckDB or SQLite) and the control plane
+(the accounts, the log, the imports, the cache, the saved reports, the chat — SQLite)
+are two files side by side, so the accounts survive an analytics rebuild and the whole
+instance is one path to back up, move or delete.
 
 **One release artifact:**
 
@@ -123,18 +135,24 @@ Slogan: *Count kitties who visit my websites. — 由猫开发*.
 
 ## 1. Repository map
 
-This repository (`sumami-dev/sumami`, **public**) is a workspace of four components:
+This repository (`sumami-dev/sumami`, **public**) is a workspace of five components:
 
 | Path       | Language       | What it is                                                                 |
 | ---------- | -------------- | -------------------------------------------------------------------------- |
-| `service/` | Rust           | The server library: collection API, stats API, auth, DuckDB writer, TLS, **the shared report layer**. |
-| `cli/`     | Rust           | The analysis client **and the one executable** (`sumami`: server + client). |
+| `service/` | Rust           | The server library: collection API, stats API, auth, the writer, TLS, **the shared report layer**, **the instance store**. |
+| `cli/`     | Rust           | The analysis client. |
+| `sumami/`  | Rust           | The facade crate: the server and the client as one library, **and the one executable** (`sumami`: server + client). |
 | `js/`      | JavaScript     | The tracker (`sumami.js`) + the dashboard frontend (`sumami-app.js`). Published on a CDN. |
 | `docs/`    | HTML/Markdown  | The website & documentation served by the service binary.                  |
 
-The Rust crates `service/` and `cli/` are members of one Cargo workspace (root `Cargo.toml`).
-They share the DuckDB schema through `service/src/db.rs` only by **convention**, not by code
-sharing — the CLI opens the database file directly and must never write to it.
+The Rust crates are members of one Cargo workspace (root `Cargo.toml`). `service/` and
+`cli/` share the schema and the report code by **code sharing**; the `sumami/` crate is
+the facade both of them are published through.
+
+**The private edition depends on this one.** `sumami-dev/sumami-pro` does not copy these
+crates — it depends on them (a git dependency, patched to the sibling checkout
+locally) and adds the PostgreSQL backend, the object-storage archive and the jobs. So
+there is exactly one implementation of the schema, the metrics and the reports.
 
 ### Two-repository split (important)
 
@@ -350,6 +368,19 @@ Implemented in v1 (target for the `sumami-dev/sumami` client used by the dashboa
 | GET    | `/api/websites/:id/events`             | custom event list                        |
 | POST   | `/api/login`, `POST /api/auth/refresh`, `GET /api/me` | auth            |
 | GET    | `/api/heartbeat`                       | health + queue stats                     |
+| GET/POST | `/api/logs`                          | the instance log                         |
+| POST   | `/api/gsc/import`                      | a Search Console import (one transaction) |
+| GET    | `/api/websites/:id/gsc`, `/api/websites/:id/gsc/imports` | the imported rows |
+| GET/POST | `/api/snapshots`                     | the saved reports                        |
+| POST   | `/api/snapshots/:name/run`             | run a saved report again                 |
+| DELETE | `/api/snapshots/:name`                 | forget a saved report                    |
+| GET/POST | `/api/chat/sessions`, `/api/chat/sessions/:id/messages` | the assistant's conversations |
+| GET/DELETE | `/api/cache`                        | the report cache                         |
+
+**Everything but the collector needs a token.** One middleware
+(`api::require_auth`), so a new route cannot forget it: the collector
+(`/api/send`, `/api/collect`), the tracker, the dashboard's own files and the docs are
+public; everything else is refused with a `401` without a valid bearer token.
 
 Out of scope for v1 (explicitly, so nobody "fixes" it by accident): teams, roles/permissions,
 annotations, comments, share links, user management UI, plugin marketplace, realtime
@@ -366,7 +397,10 @@ so nothing can drift apart, and the page attribution is exact.
 ```sql
 event(
     id BIGINT,               -- monotonic, assigned by the writer, NOT a primary key
-    website_id, session_id, visitor_id, created_at,
+    website_id,
+    session_id UUID,         -- 16 bytes, not a 36-character string (schema v4)
+    visitor_id UUID,         -- 16 bytes
+    created_at,
 
     url, url_query, title,                       -- the page
     referrer, referrer_path, referrer_query,     -- where it came from
@@ -389,6 +423,12 @@ revenue(                    -- what the owner earned, imported (not tracked)
     event_name, currency, revenue, created_at
 )
 ```
+
+**The session and visitor ids are UUIDs** (schema v4). They used to be 36-character
+strings — a hash, formatted as a UUID — and at 60 million page views that is 2.15 GB of
+text where 1.07 GB of bytes would do. The migration is deterministic: an id that is
+already UUID-shaped keeps its bytes, and a client-supplied id is hashed with SHA-256, so
+**no session is split in two** by the migration.
 
 **The baseline is Umami.** We store everything Umami stores — plus the browser and OS
 *versions*, which Umami does not keep. Two consequences worth stating plainly:
@@ -476,11 +516,80 @@ sumami-service`, the real schema, 100000 views):
 | the worst case (every URL, title and referrer unique) | 209.8 |
 
 Those numbers use the short ids the benchmark scripts use. The **server** hands out
-36-character UUIDs, and the session and visitor id are stored in *every* row — that
-is worth another **34 B/浏览 (42%)**, so the realistic cost of a live site is
-**115.5 B/浏览**. Storing the ids as DuckDB's 16-byte `UUID` type instead of text
-brings it to 105.0, and keeps the API identical (the strings are only formatted at
-the edge). Not done yet — see the mneme issue.
+UUIDs, and the session and visitor id are stored in *every* row.
+
+**Done (schema v4):** the ids are DuckDB's 16-byte `UUID` type, SQLite's 16-byte blob
+and PostgreSQL's `uuid` — the same 16 bytes everywhere, and the API is unchanged (the
+strings are only formatted at the edge). The measured cost of a live site drops from
+**115.5 B/浏览** to about **105 B/浏览**, and the `COUNT(DISTINCT …)` hash tables in the
+summary hold a third of the bytes.
+
+### 4.3a The control plane: the instance store
+
+**The events and everything else are different shapes, so they live apart.**
+
+| | |
+| --- | --- |
+| **the data plane** (the events) | append-only, read as aggregations — a column store is right for it |
+| **the control plane** (the rest) | small, mutable, transactional — a row store is right for it |
+
+The control plane is one small SQLite file (`instance.sqlite`, next to the events) with
+eleven tables: the accounts, the teams, the sign-in attempts, the log, the Search
+Console import, the report cache, the saved reports and the assistant's
+conversations.
+
+**It is a trait** (`service/src/instance.rs`): `Instance` has 22 methods, and the private
+edition implements the same trait in PostgreSQL (`sumami-pro`'s
+`instance::PostgresInstance`). The API layer does not know which one it is talking
+to, and `pro/tests/instance.rs` checks that both keep the same numbers.
+
+**Why it matters:** the accounts survive an analytics rebuild (rebuilding the DuckDB
+file is a write-new-file-and-swap — the accounts are not in it), and the whole control
+plane is a few hundred kilobytes you can back up in a second.
+
+### 4.3b DuckDB has one connection, and that is deliberate
+
+**DuckDB snapshots the database when a connection is opened.** A connection that
+queried before a write never sees that write — not even after a checkpoint. And a
+connection opened *after* the write sees it only until the older connection is closed.
+It was measured, not guessed: `cargo run --release --example snapshot_probe -p
+sumami-service`.
+
+```
+1. the reader queried before the write: 0
+   the writer sees:                    1
+   the reader still sees:               0
+2. a connection opened after the write: 1
+3. after a checkpoint:                  1
+   after the old connection is closed:  0
+   after everything is closed:          1
+```
+
+So the DuckDB backend uses **one connection**, shared by the writer and the dashboard.
+A second connection would show the dashboard stale numbers, and the numbers would
+change under the reader's feet.
+
+**The other two engines do not have this problem** and do use a pool of readers:
+SQLite in WAL mode gives every read a fresh snapshot, and PostgreSQL has had proper
+MVCC for thirty years.
+
+**The price is that the requests are serialised** — which is why the **report cache**
+matters (below): the dashboard's repeated questions are answered without touching
+DuckDB at all.
+
+### 4.3c The report cache
+
+The report cache lives in the instance store, keyed by the report and everything that
+changes its answer. **Every cached answer carries the version of the data it was
+computed from**, and the writer bumps that version with every batch — so a cached
+answer from before the last write is a miss, not a stale hit.
+
+The dashboard's numbers are therefore never older than the last flush, and two people
+looking at the same dashboard only run the query once.
+
+**One place decides what a report is**: `api::stats::run_report`. The stats endpoints,
+the saved reports (snapshots) and the cache all go through it, so they cannot disagree
+about what "the top pages" means.
 
 ### 4.4 cli/ — the analyzer (two sources, one UX)
 
@@ -591,7 +700,14 @@ a day, weekend dips, and custom events. It exists so the dashboard can be evalua
 demoed without pointing a real site at it.
 
 Everything it generates is invented (invented domains, invented visitors). It writes
-directly to the database file, so the server has to be stopped while it runs.
+through the storage backend (`--backend duckdb` or `--backend sqlite`), so the same
+traffic lands in either one — and the server has to be stopped while it runs (DuckDB
+takes an exclusive lock on the file).
+
+**The seed's random numbers must not be zero.** The generator xorshift-mixes the seed
+with a constant, and xorshift on zero stays zero — every session came out identical
+(one view, one event each). The seed constant and the mixing constant must stay
+different.
 
 ### 4.6 docs/ — the website
 

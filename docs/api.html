@@ -476,6 +476,154 @@
       </div>
     </details>
 
+    <h2>The control plane</h2>
+    <p>
+      Everything an instance keeps that is <em>not</em> analytics: the log, the Search
+      Console import, the saved reports, the assistant's conversations and the report
+      cache. These live in the instance store — a small database of their own — so they
+      survive an analytics rebuild.
+    </p>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/logs</span></summary>
+      <div class="endpoint-body">
+        <p>What happened in this instance, newest first.</p>
+        <pre class="shell"><code>curl -H "authorization: Bearer $TOKEN" \
+  'http://127.0.0.1:3999/api/logs?kind=import&amp;limit=20'</code></pre>
+        <pre class="shell"><code>[
+  {
+    "at": "2026-03-01T12:00:00",
+    "level": "info",
+    "kind": "import",
+    "actor": null,
+    "websiteId": "3f2a1b4c-...",
+    "message": "imported 500 Search Console rows",
+    "data": null
+  }
+]</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/gsc/import</span></summary>
+      <div class="endpoint-body">
+        <p>
+          Import a Search Console export. <strong>All or nothing</strong>: the whole file
+          lands in one transaction, so a dump that fails halfway does not leave half a
+          week of rows behind.
+        </p>
+        <pre class="shell"><code>curl -X POST http://127.0.0.1:3999/api/gsc/import \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{
+    "website": "3f2a1b4c-...",
+    "source": "gsc.csv",
+    "rows": [
+      { "date": "2026-03-01", "query": "sumami", "page": "https://example.com/",
+        "clicks": 42, "impressions": 3100, "ctr": 0.0135, "position": 3.2 }
+    ]
+  }'</code></pre>
+        <pre class="shell"><code>{ "id": 1, "rows": 1, "at": "2026-03-02T09:00:00" }</code></pre>
+        <p>
+          The command line does the same thing, and reads the CSV file itself:
+          <code>sumami gsc import gsc.csv --website &lt;id&gt;</code>.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/gsc</span></summary>
+      <div class="endpoint-body">
+        <p>The imported rows, newest day first.</p>
+        <pre class="shell"><code>[
+  {
+    "date": "2026-03-01",
+    "query": "sumami",
+    "page": "https://example.com/",
+    "clicks": 42,
+    "impressions": 3100,
+    "ctr": 0.0135,
+    "position": 3.2
+  }
+]</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">GET</span> <span class="endpoint-path">/api/websites/:id/gsc/imports</span></summary>
+      <div class="endpoint-body">
+        <p>What was imported, and when.</p>
+        <pre class="shell"><code>[{ "id": 1, "rows": 500, "at": "2026-03-02T09:00:00" }]</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">POST</span> <span class="endpoint-path">/api/snapshots</span></summary>
+      <div class="endpoint-body">
+        <p>
+          Save a report under a name. The report is run <em>now</em>, and both the
+          question and the answer are stored — so a saved report is a saved
+          <strong>question</strong>, not a saved number.
+        </p>
+        <pre class="shell"><code>curl -X POST http://127.0.0.1:3999/api/snapshots \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{
+    "name": "monday",
+    "spec": { "website": "3f2a1b4c-...", "report": "summary",
+              "startAt": 1772323200000, "endAt": 1772409600000 }
+  }'</code></pre>
+        <p>
+          <code>report</code> is one of <code>summary</code>, <code>timeseries</code>,
+          <code>pages</code>, <code>referrers</code>, <code>browsers</code>,
+          <code>os</code>, <code>devices</code>, <code>countries</code>,
+          <code>languages</code>, <code>screens</code>, <code>events</code>,
+          <code>sessions</code> or <code>eventLog</code>.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/snapshots/:name/run</span></summary>
+      <div class="endpoint-body">
+        <p>
+          Run a saved report again: the stored question is asked against the data
+          <em>as it is now</em>, and the answer replaces the old one.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">DELETE</span> <span class="endpoint-path">/api/snapshots/:name</span></summary>
+      <div class="endpoint-body">
+        <p>Forget a saved report. <code>204</code> when it was there, <code>404</code> when it was not.</p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">POST</span> <span class="endpoint-path">/api/chat/sessions</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The assistant's conversations. <code>GET</code> lists them, <code>POST</code>
+          starts one; <code>GET /api/chat/sessions/:id</code> returns its messages, oldest
+          first, and <code>POST /api/chat/sessions/:id/messages</code> adds one.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">DELETE</span> <span class="endpoint-path">/api/cache</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The report cache. <code>GET</code> says how many answers it holds,
+          <code>DELETE</code> empties it.
+        </p>
+        <p>
+          The cache carries the version of the data it was computed from, and the writer
+          changes that version with every batch — so a cached answer is never older than
+          the last write.
+        </p>
+      </div>
+    </details>
+
     <h2>Static files</h2>
     <div class="table-wrap">
       <table>

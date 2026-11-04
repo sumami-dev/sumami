@@ -83,7 +83,7 @@
           <tr><td>Create or reset the admin account</td><td><code>sumami admin --username admin</code></td></tr>
           <tr><td>Print the resolved configuration</td><td><code>sumami config</code></td></tr>
           <tr><td>Analyse the data from the command line</td><td><code>sumami summary &lt;website-id&gt;</code>, <code>sumami pages</code>, <code>sumami export</code>, …</td></tr>
-          <tr><td>Fill a database with demo traffic</td><td><code>sumami seed --db ./sumami.duckdb</code></td></tr>
+          <tr><td>Fill a database with demo traffic</td><td><code>sumami seed --db ./sumami/data.duckdb</code></td></tr>
         </tbody>
       </table>
     </div>
@@ -171,13 +171,13 @@ sudo cp -r js docs /opt/sumami/</code></pre>
       The server has one user: the administrator. Create it before the first run so the password
       is one you chose.
     </p>
-    <pre class="shell"><code>sumami admin --db /var/lib/sumami/sumami.duckdb \
+    <pre class="shell"><code>sumami admin --dir /var/lib/sumami \
   --username admin --password 'a-long-passphrase'</code></pre>
     <p>
       If you leave <code>--password</code> out, a strong password is generated and printed
       <strong>once</strong>:
     </p>
-    <pre class="shell"><code>$ sumami admin --db ./sumami.duckdb --username admin
+    <pre class="shell"><code>$ sumami admin --dir ./sumami --username admin
 admin user 'admin' ready
 password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
 (store it now — it is not shown again)</code></pre>
@@ -195,12 +195,22 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
     </div>
 
     <h2>4. Run the server</h2>
-    <pre class="shell"><code>sumami serve --db /var/lib/sumami/sumami.duckdb --host 127.0.0.1 --port 3999</code></pre>
+    <pre class="shell"><code>sumami serve --dir /var/lib/sumami --host 127.0.0.1 --port 3999</code></pre>
+    <p>
+      An instance is a <strong>directory</strong>. Everything it owns lives inside it, so
+      backing it up, moving it and deleting it are one operation on one path:
+    </p>
+    <pre class="shell"><code>/var/lib/sumami/
+├── data.duckdb      the events
+├── instance.sqlite  the accounts, the log, the imports, the cache
+├── logs/            the server's log files
+├── acme/            the TLS certificate cache
+└── jwt-secret       the signing secret</code></pre>
     <p>
       To serve HTTPS directly — without a reverse proxy in front — add
       <code>--ssl</code>:
     </p>
-    <pre class="shell"><code>sumami serve --db /var/lib/sumami/sumami.duckdb \
+    <pre class="shell"><code>sumami serve --dir /var/lib/sumami \
   --ssl example.com --ssl-email you@example.com</code></pre>
     <p>
       <code>--ssl-domain</code> is still accepted as an alias for <code>--ssl</code>.
@@ -214,17 +224,19 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
           <tr><th>Flag</th><th>Environment variable</th><th>Default</th><th>Meaning</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>--db &lt;path&gt;</code></td><td><code>SUMAMI_DB</code></td><td><code>sumami.duckdb</code></td><td>Path of the DuckDB database file.</td></tr>
+          <tr><td><code>--dir &lt;path&gt;</code></td><td><code>SUMAMI_DIR</code></td><td><code>sumami</code></td><td>The instance directory: the events, the accounts, the log, the imports and the cache all live inside it.</td></tr>
+          <tr><td><code>--db &lt;path&gt;</code></td><td><code>SUMAMI_DB</code></td><td><code>&lt;dir&gt;/data.duckdb</code></td><td>Path of the data file — for keeping the events on a bigger disk than the rest.</td></tr>
+          <tr><td><code>--backend &lt;name&gt;</code></td><td><code>SUMAMI_BACKEND</code></td><td><code>duckdb</code></td><td>The data engine: <code>duckdb</code> or <code>sqlite</code>. Both store the same tables and answer the same reports; DuckDB is smaller and faster on the heavy aggregations, SQLite is an ordinary file that many readers can open at once.</td></tr>
           <tr><td><code>--host &lt;addr&gt;</code></td><td><code>SUMAMI_HOST</code></td><td><code>0.0.0.0</code></td><td>Address to bind to.</td></tr>
           <tr><td><code>--port &lt;port&gt;</code></td><td><code>SUMAMI_PORT</code></td><td><code>3000</code></td><td>Port to listen on.</td></tr>
-          <tr><td><code>--jwt-secret &lt;secret&gt;</code></td><td><code>SUMAMI_JWT_SECRET</code></td><td>generated</td><td>Secret used to sign tokens. A random one is generated and stored next to the database on first run if unset.</td></tr>
+          <tr><td><code>--jwt-secret &lt;secret&gt;</code></td><td><code>SUMAMI_JWT_SECRET</code></td><td>generated</td><td>Secret used to sign tokens. A random one is generated and stored in the instance directory on first run if unset.</td></tr>
           <tr><td><code>--retention-days &lt;n&gt;</code></td><td><code>SUMAMI_RETENTION_DAYS</code></td><td><code>0</code></td><td>Default retention window in days. <code>0</code> means keep forever.</td></tr>
           <tr><td><code>--country-header &lt;name&gt;</code></td><td><code>SUMAMI_COUNTRY_HEADER</code></td><td>none</td><td>Header carrying the country code, e.g. <code>CF-IPCountry</code>.</td></tr>
           <tr><td><code>--js-dir &lt;path&gt;</code></td><td><code>SUMAMI_JS_DIR</code></td><td><code>js</code></td><td>Directory holding the dashboard frontend files. Only used when <code>SUMAMI_APP_URL=/app</code> makes the backend serve the frontend itself.</td></tr>
           <tr><td><code>--docs-dir &lt;path&gt;</code></td><td><code>SUMAMI_DOCS_DIR</code></td><td><code>docs</code></td><td>Directory holding the documentation site served at <code>/docs</code>.</td></tr>
           <tr><td><code>--ssl &lt;domain&gt;</code></td><td><code>SUMAMI_SSL_DOMAIN</code></td><td>none</td><td>Serve HTTPS with a certificate obtained and renewed automatically over ACME. <code>--ssl-domain</code> is accepted as an alias. See <a href="self-host.html#lets-sumami-manage-tls-itself">Let Sumami manage TLS itself</a>.</td></tr>
           <tr><td><code>--ssl-email &lt;address&gt;</code></td><td><code>SUMAMI_SSL_EMAIL</code></td><td>none</td><td>Contact address registered with the ACME provider. Let's Encrypt sends expiry notices there.</td></tr>
-          <tr><td><code>--ssl-cache-dir &lt;path&gt;</code></td><td><code>SUMAMI_SSL_CACHE_DIR</code></td><td><code>&lt;directory of the database&gt;/acme</code></td><td>Directory holding the ACME account and the certificates. Back it up.</td></tr>
+          <tr><td><code>--ssl-cache-dir &lt;path&gt;</code></td><td><code>SUMAMI_SSL_CACHE_DIR</code></td><td><code>&lt;instance directory&gt;/acme</code></td><td>Directory holding the ACME account and the certificates. Back it up.</td></tr>
           <tr><td><code>--ssl-port &lt;port&gt;</code></td><td><code>SUMAMI_SSL_PORT</code></td><td><code>443</code></td><td>Port used for HTTPS when <code>--ssl</code> is set.</td></tr>
         </tbody>
       </table>
@@ -340,8 +352,8 @@ curl -s -X POST http://127.0.0.1:3999/api/websites \
     <p>
       You can also read the same numbers straight from the database file:
     </p>
-    <pre class="shell"><code>sumami summary --db /var/lib/sumami/sumami.duckdb 3f2a...
-sumami pages --db /var/lib/sumami/sumami.duckdb 3f2a... --limit 10</code></pre>
+    <pre class="shell"><code>sumami summary --db /var/lib/sumami/data.duckdb 3f2a...
+sumami pages --db /var/lib/sumami/data.duckdb 3f2a... --limit 10</code></pre>
     <p>
       The <a href="cli.html">CLI reference</a> lists every subcommand and every flag.
     </p>
