@@ -4,7 +4,7 @@
 //! purpose — timestamps, date bucketing, distinct counting and upsert syntax all
 //! differ between engines, so each backend implements the trait in its own dialect.
 //!
-//! The SQLite and PostgreSQL backends live in the private `sumami-pro` repository.
+//! The SQLite and PostgreSQL backends live in the private `sumimi-pro` repository.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 

@@ -48,16 +48,16 @@ fn every_logo_copy_matches_the_canonical_file() {
     assert!(pages >= 8, "expected the whole documentation site, found {pages} pages");
 
     // The dashboard frontend.
-    let app = root().join("js/sumami-app.js");
-    let js = std::fs::read_to_string(&app).expect("js/sumami-app.js exists");
+    let app = root().join("js/sumimi-app.js");
+    let js = std::fs::read_to_string(&app).expect("js/sumimi-app.js exists");
     assert!(
         js.contains(&shapes),
-        "js/sumami-app.js does not use the canonical logo — copy it from docs/assets/logo.svg"
+        "js/sumimi-app.js does not use the canonical logo — copy it from docs/assets/logo.svg"
     );
 
     // The tracker must not carry a logo of its own.
-    let tracker = root().join("service/js/sumami.js");
-    let js = std::fs::read_to_string(&tracker).expect("js/sumami.js exists");
+    let tracker = root().join("service/js/sumimi.js");
+    let js = std::fs::read_to_string(&tracker).expect("js/sumimi.js exists");
     assert!(
         !js.contains("currentColor"),
         "the tracker should not carry branding"

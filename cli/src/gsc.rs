@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! Date,Query,Page,Clicks,Impressions,CTR,Position
-//! 2026-03-01,sumami analytics,https://example.com/blog,42,3100,0.0135,3.2
+//! 2026-03-01,sumimi analytics,https://example.com/blog,42,3100,0.0135,3.2
 //! ```
 //!
 //! The columns are looked up **by name**, so an export with extra columns (or with
@@ -12,7 +12,7 @@
 //! writes them: `0.0135` or `1.35%` are both 1.35%.
 
 use anyhow::{anyhow, Result};
-use sumami_service::instance::GscRow;
+use sumimi_service::instance::GscRow;
 
 /// Parse a Search Console export.
 pub fn parse(text: &str) -> Result<Vec<GscRow>> {
@@ -126,14 +126,14 @@ mod tests {
     fn reads_a_search_console_export() {
         let rows = parse(
             "Date,Query,Page,Clicks,Impressions,CTR,Position\n\
-             2026-03-01,sumami analytics,https://example.com/blog,42,3100,1.35%,3.2\n\
+             2026-03-01,sumimi analytics,https://example.com/blog,42,3100,1.35%,3.2\n\
              2026-03-02,,https://example.com/,7,900,0.78%,8.1\n",
         )
         .unwrap();
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].date, "2026-03-01");
-        assert_eq!(rows[0].query.as_deref(), Some("sumami analytics"));
+        assert_eq!(rows[0].query.as_deref(), Some("sumimi analytics"));
         assert_eq!(rows[0].clicks, 42);
         assert_eq!(rows[0].impressions, 3100);
         // A percentage is a rate.
@@ -155,6 +155,6 @@ mod tests {
 
     #[test]
     fn an_export_without_a_date_is_refused() {
-        assert!(parse("Query,Clicks\nsumami,1\n").is_err());
+        assert!(parse("Query,Clicks\nsumimi,1\n").is_err());
     }
 }

@@ -3,17 +3,17 @@
 //! The answers are checked against numbers that were put into the database by
 //! hand — not against the numbers the assistant computed for itself.
 
-use sumami_service::analyst::{self, Metric};
-use sumami_service::models::{Hit, HitKind};
-use sumami_service::pool::Db;
-use sumami_service::storage::{Dimension, Storage};
+use sumimi_service::analyst::{self, Metric};
+use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::pool::Db;
+use sumimi_service::storage::{Dimension, Storage};
 
 /// A unique temporary database path.
 fn temp_db(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-analyst-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-analyst-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    dir.join("sumami.duckdb")
+    dir.join("sumimi.duckdb")
 }
 
 /// A fixed "now", so the windows are the same on every run.
@@ -27,8 +27,8 @@ fn now() -> chrono::NaiveDateTime {
 fn hit(website: &str, session: &str, visitor: &str, url: &str, days_ago: i64) -> Hit {
     Hit {
         website_id: website.to_string(),
-        session_id: sumami_service::ua::uuid_from_text(session),
-        visitor_id: sumami_service::ua::uuid_from_text(visitor),
+        session_id: sumimi_service::ua::uuid_from_text(session),
+        visitor_id: sumimi_service::ua::uuid_from_text(visitor),
         retention_days: 0,
         kind: HitKind::Pageview,
         created_at: now() - chrono::Duration::days(days_ago),

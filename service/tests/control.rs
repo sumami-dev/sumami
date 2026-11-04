@@ -9,23 +9,23 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use sumami_service::api::{self, AppState};
-use sumami_service::config::Config;
-use sumami_service::models::Hit;
-use sumami_service::pool::Db;
-use sumami_service::writer::Writer;
+use sumimi_service::api::{self, AppState};
+use sumimi_service::config::Config;
+use sumimi_service::models::Hit;
+use sumimi_service::pool::Db;
+use sumimi_service::writer::Writer;
 use tower::ServiceExt;
 
 /// A unique temporary database path.
 fn temp_dir(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-control-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-control-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
 
 /// Stops the writer thread when the test ends — even when it panics.
-struct WriterGuard(sumami_service::writer::Writer);
+struct WriterGuard(sumimi_service::writer::Writer);
 
 impl Drop for WriterGuard {
     fn drop(&mut self) {
@@ -44,7 +44,7 @@ async fn app_with(
     cache_stale_secs: i64,
 ) -> (axum::Router, Arc<Db>, Writer, WriterGuard) {
     let dir = temp_dir(name);
-    let path = dir.join("sumami.duckdb");
+    let path = dir.join("sumimi.duckdb");
     let db = Arc::new(Db::open(&path, "256MB").unwrap());
 
     db.with_write(|conn| {
@@ -57,8 +57,8 @@ async fn app_with(
             "INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url, event_type)
              VALUES (1, 'w1', ?1, ?2, now(), '/one', 'pageview')",
             duckdb::params![
-                sumami_service::ua::uuid_from_text("s1"),
-                sumami_service::ua::uuid_from_text("v1"),
+                sumimi_service::ua::uuid_from_text("s1"),
+                sumimi_service::ua::uuid_from_text("v1"),
             ],
         )?;
         Ok::<_, anyhow::Error>(())
@@ -66,7 +66,7 @@ async fn app_with(
     .unwrap();
 
     let mut config = Config::from_env_and_flags(
-        sumami_service::config::Paths::new(Some(dir.clone()), Some(path.clone()), "duckdb"),
+        sumimi_service::config::Paths::new(Some(dir.clone()), Some(path.clone()), "duckdb"),
         None,
         None,
         None,
@@ -83,7 +83,7 @@ async fn app_with(
 
     // The instance store, with the admin account the server creates on the
     // first run.
-    let instance = Arc::new(sumami_service::instance::SqliteInstance::open_in_memory().unwrap());
+    let instance = Arc::new(sumimi_service::instance::SqliteInstance::open_in_memory().unwrap());
     instance.set_password("admin", "hash").unwrap();
 
     let state = AppState::new(
@@ -105,7 +105,7 @@ async fn call(
     body: Option<&str>,
 ) -> (StatusCode, serde_json::Value) {
     // Everything but the collector needs a token.
-    let token = sumami_service::auth::issue_token("test-secret", "admin", "admin", "admin").unwrap();
+    let token = sumimi_service::auth::issue_token("test-secret", "admin", "admin", "admin").unwrap();
     let builder = Request::builder()
         .method(method)
         .uri(uri)
@@ -190,10 +190,10 @@ async fn the_cache_serves_the_same_question_twice() {
     // not once per write.
     let hit = Hit {
         website_id: "w1".to_string(),
-        session_id: sumami_service::ua::uuid_from_text("s2"),
-        visitor_id: sumami_service::ua::uuid_from_text("v2"),
+        session_id: sumimi_service::ua::uuid_from_text("s2"),
+        visitor_id: sumimi_service::ua::uuid_from_text("v2"),
         retention_days: 0,
-        kind: sumami_service::models::HitKind::Pageview,
+        kind: sumimi_service::models::HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
         url: Some("/two".to_string()),
         ..Default::default()
@@ -224,10 +224,10 @@ async fn without_a_stale_window_a_write_throws_the_cache_away() {
 
     let hit = Hit {
         website_id: "w1".to_string(),
-        session_id: sumami_service::ua::uuid_from_text("s2"),
-        visitor_id: sumami_service::ua::uuid_from_text("v2"),
+        session_id: sumimi_service::ua::uuid_from_text("s2"),
+        visitor_id: sumimi_service::ua::uuid_from_text("v2"),
         retention_days: 0,
-        kind: sumami_service::models::HitKind::Pageview,
+        kind: sumimi_service::models::HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
         url: Some("/two".to_string()),
         ..Default::default()

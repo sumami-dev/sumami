@@ -3,16 +3,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sumami_service::models::{Hit, HitKind};
-use sumami_service::pool::Db;
-use sumami_service::writer::Writer;
+use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::pool::Db;
+use sumimi_service::writer::Writer;
 
 /// A unique temporary database path.
 fn temp_db(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-test-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-test-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    dir.join("sumami.duckdb")
+    dir.join("sumimi.duckdb")
 }
 
 /// Stops the writer thread when the test ends — **even when it panics**.
@@ -20,7 +20,7 @@ fn temp_db(name: &str) -> std::path::PathBuf {
 /// The writer owns a blocking thread. If a test panics before it stops the
 /// writer, the thread stays alive, the Tokio runtime never finishes and the
 /// whole test binary hangs instead of failing. A guard makes that impossible.
-struct WriterGuard(sumami_service::writer::Writer);
+struct WriterGuard(sumimi_service::writer::Writer);
 
 impl Drop for WriterGuard {
     fn drop(&mut self) {
@@ -32,8 +32,8 @@ impl Drop for WriterGuard {
 fn hit(website_id: &str, url: &str) -> Hit {
     Hit {
         website_id: website_id.to_string(),
-        session_id: sumami_service::ua::uuid_from_text("session-1"),
-        visitor_id: sumami_service::ua::uuid_from_text("visitor-1"),
+        session_id: sumimi_service::ua::uuid_from_text("session-1"),
+        visitor_id: sumimi_service::ua::uuid_from_text("visitor-1"),
         retention_days: 0,
         kind: HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
@@ -173,8 +173,8 @@ async fn writer_flushes_queued_hits() {
     assert_eq!(stored.19, Some(0.02));
     assert_eq!(stored.20, Some(700.0));
     assert_eq!(stored.21, Some(90.0));
-    assert_eq!(stored.22, sumami_service::ua::uuid_from_text("session-1"));
-    assert_eq!(stored.23, sumami_service::ua::uuid_from_text("visitor-1"));
+    assert_eq!(stored.22, sumimi_service::ua::uuid_from_text("session-1"));
+    assert_eq!(stored.23, sumimi_service::ua::uuid_from_text("visitor-1"));
 
     writer.shutdown();
     // Stop the writer thread so the test runtime can shut down.
@@ -233,10 +233,10 @@ async fn api_matches_the_shared_report_layer() {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
-    use sumami_service::api::{self, AppState};
-    use sumami_service::config::Config;
-    use sumami_service::pool::Db;
-    use sumami_service::storage::{ReportQuery, Storage, TimeRange};
+    use sumimi_service::api::{self, AppState};
+    use sumimi_service::config::Config;
+    use sumimi_service::pool::Db;
+    use sumimi_service::storage::{ReportQuery, Storage, TimeRange};
     use tower::ServiceExt;
 
     let path = temp_db("api");
@@ -255,8 +255,8 @@ async fn api_matches_the_shared_report_layer() {
             (2, "s1", "v1", "/a"),
             (3, "s2", "v2", "/b"),
         ] {
-            let session = sumami_service::ua::uuid_from_text(session);
-            let visitor = sumami_service::ua::uuid_from_text(visitor);
+            let session = sumimi_service::ua::uuid_from_text(session);
+            let visitor = sumimi_service::ua::uuid_from_text(visitor);
             conn.execute(
                 "INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url,
                         event_type, browser, os, device)
@@ -269,7 +269,7 @@ async fn api_matches_the_shared_report_layer() {
     .unwrap();
 
     let mut config = Config::from_env_and_flags(
-        sumami_service::config::Paths::new(Some(path.clone().parent().unwrap().to_path_buf()), Some(path.clone()), "duckdb"),
+        sumimi_service::config::Paths::new(Some(path.clone().parent().unwrap().to_path_buf()), Some(path.clone()), "duckdb"),
         None,
         None,
         None,
@@ -280,7 +280,7 @@ async fn api_matches_the_shared_report_layer() {
     .unwrap();
     config.jwt_secret = "test-secret".to_string();
 
-    let (writer, _handle) = sumami_service::writer::Writer::spawn(
+    let (writer, _handle) = sumimi_service::writer::Writer::spawn(
         db.clone(),
         std::time::Duration::from_millis(200),
         1000,
@@ -289,7 +289,7 @@ async fn api_matches_the_shared_report_layer() {
 
     let state = AppState::new(
         db.clone(),
-        std::sync::Arc::new(sumami_service::instance::SqliteInstance::open_in_memory().unwrap()),
+        std::sync::Arc::new(sumimi_service::instance::SqliteInstance::open_in_memory().unwrap()),
         writer.clone(),
         std::sync::Arc::new(config),
         std::sync::Arc::new("test-secret".to_string()),
@@ -298,7 +298,7 @@ async fn api_matches_the_shared_report_layer() {
     let app = api::router(state);
 
     // Every route but the collector needs a token.
-    let token = sumami_service::auth::issue_token(
+    let token = sumimi_service::auth::issue_token(
         "test-secret",
         "user-1",
         "admin",
@@ -425,10 +425,10 @@ async fn the_dashboard_sees_what_the_writer_wrote() {
 /// read, so a pooled connection is never stale.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_sqlite_dashboard_sees_what_the_writer_wrote() {
-    use sumami_service::sqlite::SqliteBackend;
-    use sumami_service::storage::Storage;
+    use sumimi_service::sqlite::SqliteBackend;
+    use sumimi_service::storage::Storage;
 
-    let dir = std::env::temp_dir().join(format!("sumami-test-fresh-sqlite-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-test-fresh-sqlite-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("data.sqlite");

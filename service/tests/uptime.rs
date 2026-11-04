@@ -16,7 +16,7 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::Duration;
 
-use sumami_service::uptime::{Availability, Checker, UptimeCheck, Verdict};
+use sumimi_service::uptime::{Availability, Checker, UptimeCheck, Verdict};
 
 /// A tiny HTTP server that answers everything with a status.
 fn server(status: u16) -> u16 {

@@ -1,5 +1,5 @@
 /*!
- * Sumami dashboard — a single, dependency-free file.
+ * Sumimi dashboard — a single, dependency-free file.
  *
  * What this is:
  *   The whole dashboard UI. It is rendered with plain DOM APIs, the timeseries chart
@@ -7,26 +7,26 @@
  *   and no build step. The file you read is the file the browser runs.
  *
  * How it is served:
- *   The Rust backend (`sumami-service`) serves a tiny HTML shell that loads
- *   `<base>/sumami-app.js` and `<base>/sumami.css`. By default `<base>` is `/app`
+ *   The Rust backend (`sumimi-service`) serves a tiny HTML shell that loads
+ *   `<base>/sumimi-app.js` and `<base>/sumimi.css`. By default `<base>` is `/app`
  *   and the files are served from the `js/` directory of this repo. Setting
- *   `SUMAMI_APP_URL` points `<base>` at a CDN instead, so this file can be hosted
+ *   `SUMIMI_APP_URL` points `<base>` at a CDN instead, so this file can be hosted
  *   anywhere and still drive a backend on another origin.
  *
  * Because of that, the API base URL is configurable and defaults to the origin the
  * app was served from. Override it with, in order of precedence:
- *   1. `window.SUMAMI_API_URL`
+ *   1. `window.SUMIMI_API_URL`
  *   2. `?api=<url>` in the page URL
- *   3. the `<meta name="sumami-api-url">` tag in the page head
+ *   3. the `<meta name="sumimi-api-url">` tag in the page head
  *   4. the origin the app was served from
  *
  * Privacy:
- *   The only network requests this file makes are to the Sumami API. There is no
+ *   The only network requests this file makes are to the Sumimi API. There is no
  *   analytics, no tracker, no third-party asset, no web font and no CDN call.
  *
  * Note on storage:
  *   The admin token below is *the dashboard's own* credential — it lets the logged-in
- *   admin read the API. It is unrelated to the tracker (`sumami.js`), which sets no
+ *   admin read the API. It is unrelated to the tracker (`sumimi.js`), which sets no
  *   storage at all: no cookies, no localStorage, no fingerprinting.
  */
 (function () {
@@ -34,7 +34,7 @@
 
   // --- configuration -------------------------------------------------------
 
-  var TOKEN_KEY = 'sumami.token';
+  var TOKEN_KEY = 'sumimi.token';
 
   /** Time ranges offered by the picker, in milliseconds. */
   var RANGES = [
@@ -79,8 +79,8 @@
   function resolveApiUrl() {
     var candidate = '';
 
-    if (typeof window.SUMAMI_API_URL === 'string' && window.SUMAMI_API_URL) {
-      candidate = window.SUMAMI_API_URL;
+    if (typeof window.SUMIMI_API_URL === 'string' && window.SUMIMI_API_URL) {
+      candidate = window.SUMIMI_API_URL;
     }
 
     if (!candidate) {
@@ -93,7 +93,7 @@
     }
 
     if (!candidate) {
-      var meta = document.querySelector('meta[name="sumami-api-url"]');
+      var meta = document.querySelector('meta[name="sumimi-api-url"]');
       candidate = (meta && meta.getAttribute('content')) || '';
     }
 
@@ -268,7 +268,7 @@
     }).catch(function (error) {
       if (error instanceof ApiError) throw error;
       // Network failure, CORS, DNS, offline...
-      throw new ApiError('Cannot reach the Sumami API at ' + API_URL + '.', 0);
+      throw new ApiError('Cannot reach the Sumimi API at ' + API_URL + '.', 0);
     });
   }
 
@@ -326,13 +326,13 @@
   // --- branding ------------------------------------------------------------
 
   /**
-   * The Sumami paw logo.
+   * The Sumimi paw logo.
    *
    * The geometry is defined once, in `docs/assets/logo.svg`; the documentation site and
    * this dashboard must show the same paw. A test (service/tests/logo.rs) checks that
    * every copy in the repository still matches the canonical file.
    */
-  var LOGO_SVG = '<svg class="logo" viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>';
+  var LOGO_SVG = '<svg class="logo" viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>';
 
   /** @returns {SVGElement} */
   function pawLogo() {
@@ -359,7 +359,7 @@
 
     var username = el('input', {
       type: 'text',
-      id: 'sumami-username',
+      id: 'sumimi-username',
       name: 'username',
       autocomplete: 'username',
       autocapitalize: 'off',
@@ -370,14 +370,14 @@
 
     var password = el('input', {
       type: 'password',
-      id: 'sumami-password',
+      id: 'sumimi-password',
       name: 'password',
       autocomplete: 'current-password',
       required: true,
       class: 'field-input'
     });
 
-    var error = el('p', { class: 'form-error', role: 'alert', id: 'sumami-login-error' });
+    var error = el('p', { class: 'form-error', role: 'alert', id: 'sumimi-login-error' });
     if (message) error.textContent = message;
 
     var submit = el('button', { type: 'submit', class: 'btn btn-primary' }, ['Sign in']);
@@ -395,11 +395,11 @@
       [
         error,
         el('div', { class: 'field' }, [
-          el('label', { for: 'sumami-username', text: 'Username' }),
+          el('label', { for: 'sumimi-username', text: 'Username' }),
           username
         ]),
         el('div', { class: 'field' }, [
-          el('label', { for: 'sumami-password', text: 'Password' }),
+          el('label', { for: 'sumimi-password', text: 'Password' }),
           password
         ]),
         submit
@@ -408,10 +408,10 @@
 
     var card = el('div', { class: 'login-card' }, [
       el('div', { class: 'brand brand-login' }, [pawLogo(), el('div', {}, [
-        el('span', { class: 'brand-name', text: 'Sumami' }),
-        el('span', { class: 'brand-cn', text: '数猫咪' })
+        el('span', { class: 'brand-name', text: 'Sumimi' }),
+        el('span', { class: 'brand-cn', text: '数咪咪' })
       ])]),
-      el('p', { class: 'brand-slogan', text: 'Count kitties who visit my websites.' }),
+      el('p', { class: 'brand-slogan', text: 'Count kitties popping into my websites.' }),
       form
     ]);
 
@@ -465,7 +465,7 @@
     clear(root);
 
     var siteSelect = el('select', {
-      id: 'sumami-website',
+      id: 'sumimi-website',
       class: 'select',
       onchange: function () {
         state.websiteId = siteSelect.value || null;
@@ -516,16 +516,16 @@
 
     var header = el('header', { class: 'topbar' }, [
       el('div', { class: 'brand' }, [pawLogo(), el('div', {}, [
-        el('span', { class: 'brand-name', text: 'Sumami' }),
-        el('span', { class: 'brand-cn', text: '数猫咪' })
+        el('span', { class: 'brand-name', text: 'Sumimi' }),
+        el('span', { class: 'brand-cn', text: '数咪咪' })
       ])]),
       el('div', { class: 'topbar-controls' }, [
         el('div', { class: 'field field-inline' }, [
-          el('label', { for: 'sumami-website', text: 'Website' }),
+          el('label', { for: 'sumimi-website', text: 'Website' }),
           siteSelect
         ]),
         el('div', { class: 'field field-inline' }, [
-          el('span', { class: 'label-like', id: 'sumami-range-label', text: 'Range' }),
+          el('span', { class: 'label-like', id: 'sumimi-range-label', text: 'Range' }),
           rangeGroup
         ])
       ]),
@@ -535,12 +535,12 @@
     root.appendChild(el('div', { class: 'app-shell' }, [header, body]));
 
     // Keep references for later updates.
-    root._sumami = { siteSelect: siteSelect, rangeGroup: rangeGroup, body: body };
+    root._sumimi = { siteSelect: siteSelect, rangeGroup: rangeGroup, body: body };
   }
 
   /** Update the pressed state of the range buttons. */
   function syncRangeButtons() {
-    var group = root._sumami && root._sumami.rangeGroup;
+    var group = root._sumimi && root._sumimi.rangeGroup;
     if (!group) return;
     Array.prototype.forEach.call(group.querySelectorAll('.range-btn'), function (button) {
       var active = button.getAttribute('data-range') === state.range;
@@ -556,7 +556,7 @@
   function loadWebsites() {
     return request('/api/websites').then(function (websites) {
       state.websites = Array.isArray(websites) ? websites : [];
-      var select = root._sumami && root._sumami.siteSelect;
+      var select = root._sumimi && root._sumimi.siteSelect;
       if (!select) return;
 
       clear(select);
@@ -592,14 +592,14 @@
    * Load everything the dashboard shows for the current website and range.
    */
   function loadDashboard() {
-    var body = root._sumami && root._sumami.body;
+    var body = root._sumimi && root._sumimi.body;
     if (!body) return;
 
     if (!state.websiteId) {
       clear(body);
       body.appendChild(el('div', { class: 'empty' }, [
         el('p', { class: 'empty-title', text: 'No website selected' }),
-        el('p', { class: 'empty-hint', text: 'Create a website in Sumami, then pick it here.' })
+        el('p', { class: 'empty-hint', text: 'Create a website in Sumimi, then pick it here.' })
       ]));
       return;
     }
@@ -668,7 +668,7 @@
    * @param {object} data
    */
   function renderDashboard(data) {
-    var body = root._sumami && root._sumami.body;
+    var body = root._sumimi && root._sumimi.body;
     if (!body) return;
     clear(body);
 
@@ -686,10 +686,10 @@
 
     var chart = el('section', { class: 'card card-wide' }, [
       el('h2', { class: 'card-title', text: 'Pageviews over time' }),
-      el('div', { class: 'chart-wrap', id: 'sumami-chart' })
+      el('div', { class: 'chart-wrap', id: 'sumimi-chart' })
     ]);
     body.appendChild(chart);
-    drawChart(document.getElementById('sumami-chart'), data.series || []);
+    drawChart(document.getElementById('sumimi-chart'), data.series || []);
 
     var grid = el('div', { class: 'grid' });
 
@@ -887,7 +887,7 @@
     if (!host) return;
     clear(host);
     // Remember the data so the chart can be redrawn on resize.
-    host._sumamiSeries = series;
+    host._sumimiSeries = series;
 
     if (!series.length) {
       host.appendChild(el('p', { class: 'empty-hint', text: 'No pageviews in this period.' }));
@@ -1097,7 +1097,7 @@
   // --- boot -----------------------------------------------------------------
 
   /**
-   * Give the tab the Sumami paw as its favicon.
+   * Give the tab the Sumimi paw as its favicon.
    * The icon is an inline SVG data URI: no file, no network request.
    */
   function installFavicon() {
@@ -1160,7 +1160,7 @@
           handleUnauthorized();
           return;
         }
-        var body = root._sumami && root._sumami.body;
+        var body = root._sumimi && root._sumimi.body;
         if (body) {
           clear(body);
           body.appendChild(el('div', { class: 'empty' }, [
@@ -1176,8 +1176,8 @@
   window.addEventListener('resize', function () {
     if (resizeTimer) window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(function () {
-      var host = document.getElementById('sumami-chart');
-      if (host && host._sumamiSeries) drawChart(host, host._sumamiSeries);
+      var host = document.getElementById('sumimi-chart');
+      if (host && host._sumimiSeries) drawChart(host, host._sumimiSeries);
     }, 150);
   });
 

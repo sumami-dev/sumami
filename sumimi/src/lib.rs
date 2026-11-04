@@ -1,4 +1,4 @@
-//! # Sumami — the open-source build, as a library
+//! # Sumimi — the open-source build, as a library
 //!
 //! This crate is the **whole** open-source product behind one name:
 //!
@@ -10,7 +10,7 @@
 //!
 //! ## Why a crate
 //!
-//! The private [`sumami-pro`](https://github.com/sumami-dev/sumami-pro) edition is
+//! The private [`sumimi-pro`](https://github.com/sumimi-dev/sumimi-pro) edition is
 //! the open-source build **plus** the PostgreSQL backend, the S3 cold tier and the
 //! archival job. It used to carry a copy of the open-source tree, which meant every
 //! change to the open-source code had to be merged by hand — and, more than once,
@@ -22,32 +22,32 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use sumami::service::config::Config;
-//! use sumami::service::instance::Instance;
-//! use sumami::service::storage::Storage;
+//! use sumimi::service::config::Config;
+//! use sumimi::service::instance::Instance;
+//! use sumimi::service::storage::Storage;
 //!
 //! # async fn example(
 //! #     config: Config,
 //! #     storage: Arc<dyn Storage>,
 //! #     instance: Arc<dyn Instance>,
 //! # ) -> anyhow::Result<()> {
-//! sumami::service::server::serve_with(Arc::new(config), storage, instance).await
+//! sumimi::service::server::serve_with(Arc::new(config), storage, instance).await
 //! # }
 //! ```
 
 /// The analytics core: the API, the data engines and the shared report layer.
-pub use sumami_service as service;
+pub use sumimi_service as service;
 
 /// The client: the same reports, offline.
-pub use sumami_cli as cli;
+pub use sumimi_cli as cli;
 
-pub use sumami_service::config::Config;
-pub use sumami_service::models::{
+pub use sumimi_service::config::Config;
+pub use sumimi_service::models::{
     BreakdownRow, EventRow, Hit, MetricsSummary, Revenue, SessionRow, Website,
 };
-pub use sumami_service::pool::Db;
-pub use sumami_service::sqlite::SqliteBackend;
-pub use sumami_service::storage::{
+pub use sumimi_service::pool::Db;
+pub use sumimi_service::sqlite::SqliteBackend;
+pub use sumimi_service::storage::{
     Dimension, ReportQuery, Storage, StorageStats, SummaryMetrics, TimeRange, WebsitePatch,
 };
 

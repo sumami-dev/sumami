@@ -2,7 +2,7 @@
 use duckdb::Connection;
 
 fn main() -> anyhow::Result<()> {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "sumami.duckdb".to_string());
+    let path = std::env::args().nth(1).unwrap_or_else(|| "sumimi.duckdb".to_string());
     let conn = Connection::open(&path)?;
     for setting in [
         "memory_limit",

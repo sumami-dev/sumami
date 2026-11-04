@@ -5,22 +5,22 @@ this directory is the file that is served.
 
 | File             | What it is                                                    | Served at         |
 | ---------------- | ------------------------------------------------------------- | ----------------- |
-| `sumami.js`      | The tracker you put on **your own website**.                   | `/sumami.js`     |
-| `sumami-app.js`  | The Sumami **dashboard** frontend.                            | `/app/sumami-app.js` |
-| `sumami.css`     | The dashboard stylesheet.                                      | `/app/sumami.css`   |
+| `sumimi.js`      | The tracker you put on **your own website**.                   | `/sumimi.js`     |
+| `sumimi-app.js`  | The Sumimi **dashboard** frontend.                            | `/app/sumimi-app.js` |
+| `sumimi.css`     | The dashboard stylesheet.                                      | `/app/sumimi.css`   |
 
 ---
 
-## `sumami.js` — the tracker
+## `sumimi.js` — the tracker
 
 ### Install
 
 ```html
-<script defer src="https://analytics.example.com/sumami.js"
+<script defer src="https://analytics.example.com/sumimi.js"
         data-website-id="0f8fad5b-d9cb-469f-a165-70867728950e"></script>
 ```
 
-That is the whole installation. The tracker is served by your own Sumami instance, so
+That is the whole installation. The tracker is served by your own Sumimi instance, so
 there is no third party in the request path.
 
 The tracker is one dependency-free file of plain ES5 JavaScript — no build step, no
@@ -42,14 +42,14 @@ the marketing parameters out of it. See [the query string](#the-query-string) be
 
 ```html
 <script>
-  sumami.track('signup', { plan: 'pro' });        // a custom event
-  sumami.track('click', { button: 'buy' }, 'cta'); // with a tag
-  sumami.identify({ plan: 'pro' });               // attaches data to the current session
-  sumami.pageview();                              // a manual page view
+  sumimi.track('signup', { plan: 'pro' });        // a custom event
+  sumimi.track('click', { button: 'buy' }, 'cta'); // with a tag
+  sumimi.identify({ plan: 'pro' });               // attaches data to the current session
+  sumimi.pageview();                              // a manual page view
 </script>
 ```
 
-`window.umami` is an alias for `window.sumami`, so existing Umami snippets keep working.
+`window.umami` is an alias for `window.sumimi`, so existing Umami snippets keep working.
 
 ### What it sends
 
@@ -172,20 +172,20 @@ The referrer is split the same way, into its host, its path and its query.
 
 ### Deployment recipes
 
-**1. Self-hosted (recommended)** — the tracker is served by your Sumami instance at
-`/sumami.js`, from the same origin as the API. Nothing else to do, and no
+**1. Self-hosted (recommended)** — the tracker is served by your Sumimi instance at
+`/sumimi.js`, from the same origin as the API. Nothing else to do, and no
 cross-origin request is ever made.
 
 ```html
-<script defer src="https://analytics.example.com/sumami.js"
+<script defer src="https://analytics.example.com/sumimi.js"
         data-website-id="0f8fad5b-d9cb-469f-a165-70867728950e"></script>
 ```
 
-**2. From your own CDN** — copy `sumami.js` into your static bucket and point the
+**2. From your own CDN** — copy `sumimi.js` into your static bucket and point the
 `data-api-url` attribute at your server:
 
 ```html
-<script defer src="https://cdn.example.com/sumami.js"
+<script defer src="https://cdn.example.com/sumimi.js"
         data-api-url="https://analytics.example.com"
         data-website-id="0f8fad5b-d9cb-469f-a165-70867728950e"></script>
 ```
@@ -194,7 +194,7 @@ cross-origin request is ever made.
 The domain is optional, but it makes the dashboard easier to read.
 
 ```html
-<script defer src="https://analytics.example.com/sumami.js"
+<script defer src="https://analytics.example.com/sumimi.js"
         data-website="blog.example.com"></script>
 ```
 
@@ -205,27 +205,27 @@ The domain is optional, but it makes the dashboard easier to read.
 **A note on cross-origin deployments.** The tracker posts `application/json`, which
 browsers only allow across origins after a CORS preflight. If you serve the tracker
 from a different origin than your API (recipes 2 and 3), your server must answer the
-`OPTIONS` preflight for `POST /api/send`. Serving the tracker from the Sumami
+`OPTIONS` preflight for `POST /api/send`. Serving the tracker from the Sumimi
 instance itself (recipe 1) needs no CORS setup at all.
 
 ---
 
-## `sumami-app.js` — the dashboard frontend
+## `sumimi-app.js` — the dashboard frontend
 
 The backend serves a very small HTML document at `/`:
 
 ```html
-<link rel="stylesheet" href="/app/sumami.css">
-<script src="/app/sumami-app.js" defer></script>
+<link rel="stylesheet" href="/app/sumimi.css">
+<script src="/app/sumimi-app.js" defer></script>
 ```
 
 Both files are served from this directory at runtime. To serve them from a CDN instead,
-set `SUMAMI_APP_URL` to the CDN base URL and make sure the CDN serves them with the same
-paths (`<base>/sumami-app.js`, `<base>/sumami.css`):
+set `SUMIMI_APP_URL` to the CDN base URL and make sure the CDN serves them with the same
+paths (`<base>/sumimi-app.js`, `<base>/sumimi.css`):
 
 ```bash
-SUMAMI_APP_URL=https://cdn.example.com/sumami \
-  sumami-server serve --db /var/lib/sumami/sumami.duckdb
+SUMIMI_APP_URL=https://cdn.example.com/sumimi \
+  sumimi-server serve --db /var/lib/sumimi/sumimi.duckdb
 ```
 
 The frontend talks to the API on its own origin by default. When it is hosted on a CDN,
@@ -233,9 +233,9 @@ tell it where the API is — either with a query parameter on the dashboard URL
 (`https://analytics.example.com/?api=https://api.example.com`) or with a meta tag:
 
 ```html
-<meta name="sumami-api-url" content="https://api.example.com">
+<meta name="sumimi-api-url" content="https://api.example.com">
 ```
 
-The frontend stores the **admin token** in `localStorage` under `sumami.token` so a reload
+The frontend stores the **admin token** in `localStorage` under `sumimi.token` so a reload
 keeps you logged in. That is the dashboard's own credential — completely separate from
 the tracker, which stores nothing at all.

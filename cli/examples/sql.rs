@@ -1,7 +1,7 @@
 //! Run a SQL file against a DuckDB database — a small development helper.
 //!
 //! ```bash
-//! cargo run --release -p sumami-cli --example sql -- <db> <file.sql>
+//! cargo run --release -p sumimi-cli --example sql -- <db> <file.sql>
 //! ```
 
 use duckdb::Connection;

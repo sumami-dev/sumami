@@ -142,7 +142,7 @@ impl<T> Drop for Pooled<'_, T> {
     }
 }
 
-/// The Sumami database handle.
+/// The Sumimi database handle.
 ///
 /// One connection, guarded by a mutex: the writer and the dashboard share it.
 /// See the module documentation for why DuckDB cannot have more than one.

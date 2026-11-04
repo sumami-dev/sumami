@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tracker — Sumami</title>
-<meta name="description" content="Install the Sumami tracker on your website: the script tag, the data attributes, self-hosting, putting it on a CDN, tracking custom events, and managing several sites.">
+<title>Tracker — Sumimi</title>
+<meta name="description" content="Install the Sumimi tracker on your website: the script tag, the data attributes, self-hosting, putting it on a CDN, tracking custom events, and managing several sites.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23f97316'%3E%3Cellipse cx='7.4' cy='13.2' rx='2.9' ry='3.9' transform='rotate(-20 7.4 13.2)'/%3E%3Cellipse cx='12.8' cy='8.8' rx='2.8' ry='3.9' transform='rotate(-7 12.8 8.8)'/%3E%3Cellipse cx='19.2' cy='8.8' rx='2.8' ry='3.9' transform='rotate(7 19.2 8.8)'/%3E%3Cellipse cx='24.6' cy='13.2' rx='2.9' ry='3.9' transform='rotate(20 24.6 13.2)'/%3E%3Cpath d='M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z'/%3E%3C/g%3E%3C/svg%3E">
@@ -15,9 +15,9 @@
 <header class="site-header">
   <div class="wrap">
     <a class="brand" href="index.html">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      <span>Sumami</span>
-      <span class="brand-cn">数猫咪</span>
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      <span>Sumimi</span>
+      <span class="brand-cn">数咪咪</span>
     </a>
     <nav class="site-nav" aria-label="Main">
       <ul>
@@ -39,7 +39,7 @@
 
     <h1 class="page-title">Tracker</h1>
     <p class="page-lede">
-      The Sumami tracker is a single dependency-free JavaScript file. It has no build step, no
+      The Sumimi tracker is a single dependency-free JavaScript file. It has no build step, no
       npm package and no bundler; the file in the repository is byte-for-byte the file that gets
       served. It sets no cookies, uses no <code>localStorage</code>, does no fingerprinting, and
       honours Do Not Track and Global Privacy Control.
@@ -48,7 +48,7 @@
     <h2>The script tag</h2>
     <p>This is all you need:</p>
     <pre class="shell"><code>&lt;script defer
-  src="https://your-sumami-host/sumami.js"
+  src="https://your-sumimi-host/sumimi.js"
   data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
     <p>
       Put it in the <code>&lt;head&gt;</code> of every page you want to count. A page view is sent
@@ -57,7 +57,7 @@
       is wrapped so a failure is silent.
     </p>
     <p>
-      The server serves the tracker from its own origin at <code>/sumami.js</code>, so by
+      The server serves the tracker from its own origin at <code>/sumimi.js</code>, so by
       default the tracker and the API are the same host and no CORS configuration is needed.
     </p>
 
@@ -89,25 +89,25 @@
 
     <h2>Deployment options</h2>
 
-    <h3>1. Served by your own Sumami host (recommended)</h3>
+    <h3>1. Served by your own Sumimi host (recommended)</h3>
     <p>
       The default and the simplest. The server serves the tracker at
-      <code>/sumami.js</code> from the same origin as the API, so there is no cross-origin
+      <code>/sumimi.js</code> from the same origin as the API, so there is no cross-origin
       request at all.
     </p>
-    <pre class="shell"><code>&lt;script defer src="https://analytics.example.com/sumami.js"
+    <pre class="shell"><code>&lt;script defer src="https://analytics.example.com/sumimi.js"
         data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
 
     <h3>2. Self-hosted on your own site</h3>
     <p>
       If you would rather not make a request to another origin at all — because of a strict
       Content Security Policy, a firewall, or a preference for keeping the tracker on the same
-      domain — copy <code>sumami.js</code> into your own site and point
-      <code>data-api-url</code> at the Sumami server.
+      domain — copy <code>sumimi.js</code> into your own site and point
+      <code>data-api-url</code> at the Sumimi server.
     </p>
     <pre class="shell"><code><span class="cmt"># copy it next to your other static assets</span>
-cp sumami.js /var/www/html/assets/sumami.js</code></pre>
-    <pre class="shell"><code>&lt;script defer src="/assets/sumami.js"
+cp sumimi.js /var/www/html/assets/sumimi.js</code></pre>
+    <pre class="shell"><code>&lt;script defer src="/assets/sumimi.js"
         data-api-url="https://analytics.example.com"
         data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
     <p>
@@ -120,14 +120,14 @@ cp sumami.js /var/www/html/assets/sumami.js</code></pre>
       A CDN gives the tracker a stable URL close to your visitors. Upload the file to your CDN
       as-is and point <code>data-api-url</code> back at your server.
     </p>
-    <pre class="shell"><code>&lt;script defer src="https://cdn.example.com/sumami.js"
+    <pre class="shell"><code>&lt;script defer src="https://cdn.example.com/sumimi.js"
         data-api-url="https://analytics.example.com"
         data-website-id="3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071"&gt;&lt;/script&gt;</code></pre>
     <p>
       The dashboard frontend works the same way, but in the other direction: it is loaded by
       your own browser, and by default it comes from a CDN
-      (<code>https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js</code>) — the backend serves
-      only a tiny HTML shell and ships no frontend code. Set <code>SUMAMI_APP_URL=/app</code> to
+      (<code>https://cdn.jsdelivr.net/gh/sumimi-dev/sumimi@main/js</code>) — the backend serves
+      only a tiny HTML shell and ships no frontend code. Set <code>SUMIMI_APP_URL=/app</code> to
       have the backend serve it from its own <code>js/</code> directory instead. Either way, the
       <em>tracker</em> above is always served by your own server.
     </p>
@@ -138,7 +138,7 @@ cp sumami.js /var/www/html/assets/sumami.js</code></pre>
       <code>data-website</code> instead of <code>data-website-id</code>. The same snippet then
       works on all of them:
     </p>
-    <pre class="shell"><code>&lt;script defer src="https://analytics.example.com/sumami.js"
+    <pre class="shell"><code>&lt;script defer src="https://analytics.example.com/sumimi.js"
         data-website="blog.example.com"&gt;&lt;/script&gt;</code></pre>
     <p>
       Keep in mind that <code>data-website</code> is public in the page source, so it is not a
@@ -148,13 +148,13 @@ cp sumami.js /var/www/html/assets/sumami.js</code></pre>
 
     <h2>Custom events</h2>
     <p>
-      The tracker exposes a small global API, <code>window.sumami</code>. (It also aliases
+      The tracker exposes a small global API, <code>window.sumimi</code>. (It also aliases
       itself as <code>window.umami</code> so existing snippets keep working.)
     </p>
     <pre class="shell"><code><span class="cmt">// a page view is sent automatically; this is for the rest</span>
-sumami.track('signup', { plan: 'free' });
-sumami.identify({ plan: 'free' });
-sumami.pageview();</code></pre>
+sumimi.track('signup', { plan: 'free' });
+sumimi.identify({ plan: 'free' });
+sumimi.pageview();</code></pre>
     <div class="callout warn">
       <p class="callout-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5"/><path d="M12 17.5v.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
@@ -163,13 +163,13 @@ sumami.pageview();</code></pre>
       <p>
         Custom event properties are <strong>free-form data you supply</strong>, and they are
         stored verbatim. If you send an email address, a user id or a phone number, you have
-        created personal data in your database and every privacy guarantee Sumami makes stops
+        created personal data in your database and every privacy guarantee Sumimi makes stops
         applying to it. The tracker never attaches anything sensitive on its own — keep it
         that way. Prefer a coarse flag (<code>{ "plan": "free" }</code>) over an identifier.
       </p>
     </div>
     <p>
-      <code>sumami.identify()</code> attaches data to the current session only. It is not a
+      <code>sumimi.identify()</code> attaches data to the current session only. It is not a
       cross-session identifier, and the session id it belongs to rotates — see the
       <a href="privacy.html">privacy page</a>.
     </p>
@@ -278,12 +278,12 @@ sumami.pageview();</code></pre>
     <h2>Existing Umami snippets</h2>
     <p>
       The API is Umami v2 compatible, so the standard Umami tracker and the official Umami
-      dashboard work against Sumami unchanged. Sumami is an independent project that implements
+      dashboard work against Sumimi unchanged. Sumimi is an independent project that implements
       the Umami v2 HTTP API; it uses no Umami assets.
     </p>
 
     <p class="footnote">
-      The tracker file is original work, Apache-2.0 licensed together with the rest of Sumami. All
+      The tracker file is original work, Apache-2.0 licensed together with the rest of Sumimi. All
       licences are recorded in <code>assets/CREDITS.md</code>.
     </p>
 
@@ -293,8 +293,8 @@ sumami.pageview();</code></pre>
 <footer class="site-footer">
   <div class="wrap">
     <p class="footer-mark">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      Sumami 数猫咪
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      Sumimi 数咪咪
     </p>
     <p>Apache-2.0 licensed. Self-hosted, cookieless, no telemetry.</p>
     <ul>

@@ -1,12 +1,12 @@
 //! The storage abstraction.
 //!
-//! Sumami's reports are defined once and implemented once **per backend**. This module
+//! Sumimi's reports are defined once and implemented once **per backend**. This module
 //! holds the trait and the query types that every backend speaks; the SQL itself lives
 //! in the backend, because SQL is not portable across engines (timestamps, date
 //! bucketing, distinct counting and upsert syntax all differ).
 //!
 //! The DuckDB backend is in [`crate::reports`]. The SQLite and PostgreSQL backends
-//! live in the private `sumami-pro` repository, under `pro/storage/`.
+//! live in the private `sumimi-pro` repository, under `pro/storage/`.
 //!
 //! A backend must produce **exactly** the same numbers as the others — that invariant
 //! is what the cross-backend tests assert.

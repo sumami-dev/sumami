@@ -15,7 +15,7 @@
 //!
 //! * while the version still matches, the answer is exactly right;
 //! * after a write, the answer may still be used for as long as the stale
-//!   window allows (`SUMAMI_CACHE_STALE_SECS`, 30 seconds by default).
+//!   window allows (`SUMIMI_CACHE_STALE_SECS`, 30 seconds by default).
 //!
 //! The window is why the cache is worth having. The writer flushes every
 //! couple of seconds, so a cache that only accepted the current version would
@@ -137,7 +137,7 @@ fn cache_key(spec: &ReportSpec) -> String {
 /// * the answer is not too old — the writer flushes every couple of seconds,
 ///   so on a busy site the version changes all the time and a cache that only
 ///   accepted the current version would never hit. The window is
-///   `SUMAMI_CACHE_STALE_SECS` (30 seconds by default, `0` for "only while the
+///   `SUMIMI_CACHE_STALE_SECS` (30 seconds by default, `0` for "only while the
 ///   data has not changed").
 pub fn cached_report(
     state: &AppState,

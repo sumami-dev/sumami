@@ -1,4 +1,4 @@
-# Sumami — build helpers.
+# Sumimi — build helpers.
 #
 # The default build compiles DuckDB into the executables, so the release is a
 # single self-contained binary. `make build-small` links the prebuilt
@@ -8,7 +8,7 @@ CARGO ?= cargo
 CARGO_HTTP_TIMEOUT ?= 600
 TARGET ?= target/release
 # The version of the release: the crate version, not DuckDB's.
-VERSION ?= 0.1.0
+VERSION ?= 0.2.0
 # The DuckDB release the dynamic build downloads.
 DUCKDB_VERSION ?= v2.0.0
 
@@ -48,24 +48,24 @@ fmt:
 
 ## Run the server locally.
 run:
-	$(CARGO) run -p sumami-service -- serve --db ./dev.duckdb --port 3000
+	$(CARGO) run -p sumimi-service -- serve --db ./dev.duckdb --port 3000
 
 ## Build the release artefact.
 ##
-##   sumami-v<ver>-<os>-<arch>.tar.gz
-##       the `sumami` binary (server + client) + js/ + docs/
+##   sumimi-v<ver>-<os>-<arch>.tar.gz
+##       the `sumimi` binary (server + client) + js/ + docs/
 ##
 ## One binary: the server and the client share the schema, the metric definitions and
 ## the query code, so there is only one copy of DuckDB in it.
 package: release
 	@set -e; \
 	rm -rf dist; mkdir -p dist/bundle; \
-	cp $(TARGET)/sumami dist/bundle/; \
-	ln -sf sumami dist/bundle/sumami-server; \
-	ln -sf sumami dist/bundle/sumami-client; \
+	cp $(TARGET)/sumimi dist/bundle/; \
+	ln -sf sumimi dist/bundle/sumimi-server; \
+	ln -sf sumimi dist/bundle/sumimi-client; \
 	cp -r js dist/bundle/js; cp -r docs dist/bundle/docs; \
-	tar czf sumami-v$(VERSION)-$$(uname -s)-$$(uname -m).tar.gz -C dist/bundle .; \
-	echo "wrote sumami-v$(VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
+	tar czf sumimi-v$(VERSION)-$$(uname -s)-$$(uname -m).tar.gz -C dist/bundle .; \
+	echo "wrote sumimi-v$(VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
 
 ## Remove the build artefacts.
 clean:

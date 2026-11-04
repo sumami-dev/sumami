@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HTTP API — Sumami</title>
-<meta name="description" content="The Sumami HTTP API reference: collection, authentication, website management and statistics endpoints, with request bodies, response shapes and status codes.">
+<title>HTTP API — Sumimi</title>
+<meta name="description" content="The Sumimi HTTP API reference: collection, authentication, website management and statistics endpoints, with request bodies, response shapes and status codes.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23f97316'%3E%3Cellipse cx='7.4' cy='13.2' rx='2.9' ry='3.9' transform='rotate(-20 7.4 13.2)'/%3E%3Cellipse cx='12.8' cy='8.8' rx='2.8' ry='3.9' transform='rotate(-7 12.8 8.8)'/%3E%3Cellipse cx='19.2' cy='8.8' rx='2.8' ry='3.9' transform='rotate(7 19.2 8.8)'/%3E%3Cellipse cx='24.6' cy='13.2' rx='2.9' ry='3.9' transform='rotate(20 24.6 13.2)'/%3E%3Cpath d='M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z'/%3E%3C/g%3E%3C/svg%3E">
@@ -15,9 +15,9 @@
 <header class="site-header">
   <div class="wrap">
     <a class="brand" href="index.html">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      <span>Sumami</span>
-      <span class="brand-cn">数猫咪</span>
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      <span>Sumimi</span>
+      <span class="brand-cn">数咪咪</span>
     </a>
     <nav class="site-nav" aria-label="Main">
       <ul>
@@ -39,9 +39,9 @@
 
     <h1 class="page-title">HTTP API</h1>
     <p class="page-lede">
-      The Sumami API is <strong>Umami v2 compatible</strong>: the collection endpoints, the
+      The Sumimi API is <strong>Umami v2 compatible</strong>: the collection endpoints, the
       authentication flow and the statistics endpoints follow Umami's shape, so existing
-      Umami dashboards and trackers work unchanged. Sumami is an independent open-source project
+      Umami dashboards and trackers work unchanged. Sumimi is an independent open-source project
       that implements the Umami v2 HTTP API; no Umami assets are used.
     </p>
 
@@ -57,7 +57,7 @@
     <p>
       The endpoints that are deliberately public — and only these — are
       <code>POST /api/send</code>, <code>POST /api/collect</code>,
-      <code>GET /api/heartbeat</code> and <code>GET /sumami.js</code>. Everything else is
+      <code>GET /api/heartbeat</code> and <code>GET /sumimi.js</code>. Everything else is
       default-deny: without a valid token you get <code>401</code>.
     </p>
 
@@ -329,7 +329,7 @@
     </div>
     <p>
       Reads only see data that has been committed, which happens every
-      <code>SUMAMI_FLUSH_INTERVAL_SECS</code> seconds (two by default). A page view that was
+      <code>SUMIMI_FLUSH_INTERVAL_SECS</code> seconds (two by default). A page view that was
       just collected may therefore take a couple of seconds to show up.
     </p>
 
@@ -518,14 +518,14 @@
     "website": "3f2a1b4c-...",
     "source": "gsc.csv",
     "rows": [
-      { "date": "2026-03-01", "query": "sumami", "page": "https://example.com/",
+      { "date": "2026-03-01", "query": "sumimi", "page": "https://example.com/",
         "clicks": 42, "impressions": 3100, "ctr": 0.0135, "position": 3.2 }
     ]
   }'</code></pre>
         <pre class="shell"><code>{ "id": 1, "rows": 1, "at": "2026-03-02T09:00:00" }</code></pre>
         <p>
           The command line does the same thing, and reads the CSV file itself:
-          <code>sumami gsc import gsc.csv --website &lt;id&gt;</code>.
+          <code>sumimi gsc import gsc.csv --website &lt;id&gt;</code>.
         </p>
       </div>
     </details>
@@ -537,7 +537,7 @@
         <pre class="shell"><code>[
   {
     "date": "2026-03-01",
-    "query": "sumami",
+    "query": "sumimi",
     "page": "https://example.com/",
     "clicks": 42,
     "impressions": 3100,
@@ -685,7 +685,7 @@
           The cache carries the version of the data it was computed from and the moment it
           was computed. While the version still matches, the answer is exactly right.
           After a write the answer may still be used for as long as the stale window
-          allows — <code>SUMAMI_CACHE_STALE_SECS</code>, 30 seconds by default,
+          allows — <code>SUMIMI_CACHE_STALE_SECS</code>, 30 seconds by default,
           <code>0</code> for "only while the data has not changed". The window is what
           makes the cache worth having: the writer commits every couple of seconds, so a
           cache that only accepted the current version would never hit on a busy site.
@@ -738,9 +738,9 @@
         </thead>
         <tbody>
           <tr><td><code>GET /</code></td><td>The dashboard shell — a small HTML document that loads the frontend JavaScript.</td></tr>
-          <tr><td><code>GET /sumami.js</code></td><td>The tracker.</td></tr>
-          <tr><td><code>GET /app/{path}</code></td><td>The dashboard frontend files, from <code>SUMAMI_JS_DIR</code>.</td></tr>
-          <tr><td><code>GET /docs</code></td><td>This documentation site, from <code>SUMAMI_DOCS_DIR</code>.</td></tr>
+          <tr><td><code>GET /sumimi.js</code></td><td>The tracker.</td></tr>
+          <tr><td><code>GET /app/{path}</code></td><td>The dashboard frontend files, from <code>SUMIMI_JS_DIR</code>.</td></tr>
+          <tr><td><code>GET /docs</code></td><td>This documentation site, from <code>SUMIMI_DOCS_DIR</code>.</td></tr>
           <tr><td><code>GET /docs/{path}</code></td><td>The individual pages of the documentation site.</td></tr>
         </tbody>
       </table>
@@ -774,7 +774,7 @@ curl -s "http://127.0.0.1:3999/api/websites/$SITE/stats" \
   -H "authorization: Bearer $TOKEN"</code></pre>
 
     <p class="footnote">
-      Sumami is an independent open-source project, an open-source alternative to Umami that
+      Sumimi is an independent open-source project, an open-source alternative to Umami that
       implements the Umami v2 HTTP API. Apache-2.0 licensed.
     </p>
 
@@ -784,8 +784,8 @@ curl -s "http://127.0.0.1:3999/api/websites/$SITE/stats" \
 <footer class="site-footer">
   <div class="wrap">
     <p class="footer-mark">
-      <svg viewBox="0 0 32 32" role="img" aria-label="Sumami"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
-      Sumami 数猫咪
+      <svg viewBox="0 0 32 32" role="img" aria-label="Sumimi"><g fill="currentColor"><ellipse cx="7.4" cy="13.2" rx="2.9" ry="3.9" transform="rotate(-20 7.4 13.2)"/><ellipse cx="12.8" cy="8.8" rx="2.8" ry="3.9" transform="rotate(-7 12.8 8.8)"/><ellipse cx="19.2" cy="8.8" rx="2.8" ry="3.9" transform="rotate(7 19.2 8.8)"/><ellipse cx="24.6" cy="13.2" rx="2.9" ry="3.9" transform="rotate(20 24.6 13.2)"/><path d="M9.3 21.2c0-2.8 3-5 6.7-5s6.7 2.2 6.7 5c0 2.5-2.1 4.2-4.4 4.2-.9 0-1.6-.3-2.3-.3s-1.4.3-2.3.3c-2.3 0-4.4-1.7-4.4-4.2z"/></g></svg>
+      Sumimi 数咪咪
     </p>
     <p>Apache-2.0 licensed. Self-hosted, cookieless, no telemetry.</p>
     <ul>

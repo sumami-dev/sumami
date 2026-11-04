@@ -1,6 +1,6 @@
 //! The HTTP API.
 //!
-//! Layout mirrors the Umami v2 API so the existing dashboard (and the Sumami frontend)
+//! Layout mirrors the Umami v2 API so the existing dashboard (and the Sumimi frontend)
 //! can talk to it unchanged.
 
 pub mod admin;
@@ -147,7 +147,7 @@ fn is_public(path: &str) -> bool {
     matches!(
         path,
         "/api/send" | "/api/collect" | "/api/heartbeat" | "/api/login"
-    ) || path == "/sumami.js"
+    ) || path == "/sumimi.js"
         || path == "/"
         || path.starts_with("/app/")
         || path == "/docs"
@@ -304,6 +304,9 @@ pub fn router(state: AppState) -> Router {
             delete(admin::remove_member),
         )
         // --- static ---
+        .route("/sumimi.js", get(crate::static_files::tracker))
+        // The old URL still works: the tracker is in other people's HTML, and
+        // changing the URL would break every site that has it.
         .route("/sumami.js", get(crate::static_files::tracker))
         .route("/app/{*path}", get(crate::static_files::app_asset))
         .route("/docs/{*path}", get(crate::static_files::docs_asset))

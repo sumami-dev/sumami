@@ -2,21 +2,21 @@
 //!
 //! The `--dir` flag says where the instance is. Every command has to agree on
 //! that — the read path used to look in the default directory instead, so
-//! `sumami --dir X seed` wrote into X and `sumami --dir X websites` looked
-//! somewhere else. And `sumami --dir X backup` archived an **empty** database
+//! `sumimi --dir X seed` wrote into X and `sumimi --dir X websites` looked
+//! somewhere else. And `sumimi --dir X backup` archived an **empty** database
 //! (the default path, which did not exist and was therefore created) and
 //! reported it as a successful backup.
 
 use std::path::PathBuf;
 use std::process::Command;
 
-use sumami_service::models::{Hit, HitKind};
-use sumami_service::pool::Db;
-use sumami_service::storage::Storage;
+use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::pool::Db;
+use sumimi_service::storage::Storage;
 
 /// A unique temporary directory.
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-cli-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-cli-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -26,8 +26,8 @@ fn temp_dir(name: &str) -> PathBuf {
 fn hit(website: &str, url: &str) -> Hit {
     Hit {
         website_id: website.to_string(),
-        session_id: sumami_service::ua::uuid_from_text("s1"),
-        visitor_id: sumami_service::ua::uuid_from_text("v1"),
+        session_id: sumimi_service::ua::uuid_from_text("s1"),
+        visitor_id: sumimi_service::ua::uuid_from_text("v1"),
         retention_days: 0,
         kind: HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
@@ -52,7 +52,7 @@ fn instance(dir: &std::path::Path) -> String {
 
 /// Run the command line and return what it said.
 fn run(dir: &std::path::Path, args: &[&str]) -> (bool, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_sumami"))
+    let output = Command::new(env!("CARGO_BIN_EXE_sumimi"))
         .arg("--dir")
         .arg(dir)
         .args(args)

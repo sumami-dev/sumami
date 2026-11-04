@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 /// The tracker source.
 fn tracker() -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("js/sumami.js");
+        .join("js/sumimi.js");
     std::fs::read_to_string(&path)
         .unwrap_or_else(|err| panic!("reading the tracker {}: {err}", path.display()))
 }

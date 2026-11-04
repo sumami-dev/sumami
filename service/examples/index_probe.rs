@@ -14,7 +14,7 @@
 //!   3. how does a user-created `CREATE INDEX` behave?
 //!
 //! ```bash
-//! cargo run --release --example index_probe -p sumami-service
+//! cargo run --release --example index_probe -p sumimi-service
 //! ```
 
 use std::time::Instant;
@@ -25,7 +25,7 @@ use duckdb::Connection;
 const ROWS: usize = 2_000_000;
 
 fn main() -> anyhow::Result<()> {
-    let dir = std::env::temp_dir().join("sumami-index-probe");
+    let dir = std::env::temp_dir().join("sumimi-index-probe");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
 

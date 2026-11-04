@@ -310,7 +310,7 @@ fn new_database_path(path: &Path) -> PathBuf {
     let mut name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "sumami.duckdb".to_string());
+        .unwrap_or_else(|| "sumimi.duckdb".to_string());
     name.push_str(".rebuilt");
     path.with_file_name(name)
 }

@@ -7,14 +7,14 @@
 
 use std::path::PathBuf;
 
-use sumami_cli::{backup, seed};
-use sumami_service::config::Paths;
-use sumami_service::pool::Db;
-use sumami_service::storage::{ReportQuery, Storage, TimeRange};
+use sumimi_cli::{backup, seed};
+use sumimi_service::config::Paths;
+use sumimi_service::pool::Db;
+use sumimi_service::storage::{ReportQuery, Storage, TimeRange};
 
 /// A unique temporary directory.
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-instance-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sumimi-instance-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir

@@ -8,7 +8,7 @@
 //! the one overhead an append-only design does not need.
 //!
 //! ```bash
-//! cargo run --release --example row_cost -p sumami-service -- real 100000
+//! cargo run --release --example row_cost -p sumimi-service -- real 100000
 //! ```
 
 use std::time::Instant;
@@ -35,7 +35,7 @@ fn uuid(text: &str) -> String {
 /// so the ratio means something.
 fn parity() -> anyhow::Result<()> {
     println!("=== the same dataset the PostgreSQL comparison used ===");
-    let dir = std::env::temp_dir().join("sumami-row-cost-parity");
+    let dir = std::env::temp_dir().join("sumimi-row-cost-parity");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
 
@@ -69,7 +69,7 @@ fn parity() -> anyhow::Result<()> {
                400.0 + (i % 900), 60.0 + (i % 220),
                'pageview', NULL, NULL, NULL
              FROM generate_series(1, {rows}) t(i);",
-            ddl = sumami_service::db::EVENT_COLUMNS,
+            ddl = sumimi_service::db::EVENT_COLUMNS,
             session = uuid("md5((1 + (i / 2))::text || '-s')"),
             visitor = uuid("md5((i % 3000)::text || '-v')"),
         ))?;
@@ -120,7 +120,7 @@ struct Level {
 /// DuckDB `UUID` type (16 bytes) cost instead?
 fn ids() -> anyhow::Result<()> {
     println!("=== the cost of the session/visitor ids ===");
-    let dir = std::env::temp_dir().join("sumami-row-cost-ids");
+    let dir = std::env::temp_dir().join("sumimi-row-cost-ids");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
     let level = levels()[1].clone();
@@ -156,7 +156,7 @@ fn build_ids(
     style: &str,
 ) -> anyhow::Result<f64> {
     let conn = Connection::open(path)?;
-    let ddl = sumami_service::db::EVENT_COLUMNS
+    let ddl = sumimi_service::db::EVENT_COLUMNS
         .replace(
             "session_id      UUID NOT NULL",
             &format!("session_id      {id_type} NOT NULL"),
@@ -268,7 +268,7 @@ fn levels() -> Vec<Level> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let dir = std::env::temp_dir().join("sumami-row-cost");
+    let dir = std::env::temp_dir().join("sumimi-row-cost");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
 
@@ -279,7 +279,7 @@ fn main() -> anyhow::Result<()> {
         let path = dir.join(format!("{}.duckdb", level.name));
         let conn = Connection::open(&path)?;
         // The real schema — the one the server creates.
-        sumami_service::db::init_schema(&conn)?;
+        sumimi_service::db::init_schema(&conn)?;
 
         let started = Instant::now();
         fill(&conn, &level, 100_000)?;
@@ -329,7 +329,7 @@ fn main() -> anyhow::Result<()> {
 /// whether the space is actually given back.
 fn migration() -> anyhow::Result<()> {
     println!("=== the v3 -> v4 migration ===");
-    let dir = std::env::temp_dir().join("sumami-row-cost-migrate");
+    let dir = std::env::temp_dir().join("sumimi-row-cost-migrate");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
 
@@ -337,7 +337,7 @@ fn migration() -> anyhow::Result<()> {
     {
         let conn = Connection::open(&path)?;
         // The v3 schema: the same table, with the ids as text.
-        let ddl = sumami_service::db::EVENT_COLUMNS
+        let ddl = sumimi_service::db::EVENT_COLUMNS
             .replace(
                 "session_id      UUID NOT NULL",
                 "session_id      VARCHAR NOT NULL",
@@ -360,7 +360,7 @@ fn migration() -> anyhow::Result<()> {
 
     // Opening it migrates it: the file is rebuilt and swapped in.
     {
-        let db = sumami_service::pool::Db::open(&path, "256MB")?;
+        let db = sumimi_service::pool::Db::open(&path, "256MB")?;
         db.with_read(|conn| {
             conn.execute_batch("CHECKPOINT")?;
             Ok::<_, anyhow::Error>(())
@@ -373,7 +373,7 @@ fn migration() -> anyhow::Result<()> {
     let fresh_path = dir.join("fresh.duckdb");
     {
         let conn = Connection::open(&fresh_path)?;
-        sumami_service::db::init_schema(&conn)?;
+        sumimi_service::db::init_schema(&conn)?;
         fill(&conn, &levels()[1], 100_000)?;
         conn.execute_batch("CHECKPOINT")?;
     }

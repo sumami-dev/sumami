@@ -11,8 +11,8 @@ use axum::response::{IntoResponse, Response};
 
 use crate::api::AppState;
 
-/// The tracker, embedded in the binary so it is always available at `/sumami.js`.
-pub const TRACKER_JS: &str = include_str!("../js/sumami.js");
+/// The tracker, embedded in the binary so it is always available at `/sumimi.js`.
+pub const TRACKER_JS: &str = include_str!("../js/sumimi.js");
 
 /// The dashboard shell. Deliberately tiny: everything else lives in the frontend JS.
 const APP_SHELL: &str = r#"<!doctype html>
@@ -20,19 +20,19 @@ const APP_SHELL: &str = r#"<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sumami</title>
-<link rel="stylesheet" href="{base}/sumami.css">
+<title>Sumimi</title>
+<link rel="stylesheet" href="{base}/sumimi.css">
 </head>
 <body>
-<div id="app"><noscript>Sumami needs JavaScript for the dashboard. The API works without it.</noscript></div>
-<script src="{base}/sumami-app.js" defer></script>
+<div id="app"><noscript>Sumimi needs JavaScript for the dashboard. The API works without it.</noscript></div>
+<script src="{base}/sumimi-app.js" defer></script>
 </body>
 </html>
 "#;
 
 /// `GET /` — the dashboard shell.
 pub async fn index(State(state): State<AppState>) -> Response {
-    // The frontend is served from a CDN by default; `SUMAMI_APP_URL=/app` serves it
+    // The frontend is served from a CDN by default; `SUMIMI_APP_URL=/app` serves it
     // from the backend itself (air-gapped installs).
     let base = state
         .config
@@ -48,7 +48,7 @@ pub async fn index(State(state): State<AppState>) -> Response {
         .into_response()
 }
 
-/// `GET /sumami.js` — the tracker.
+/// `GET /sumimi.js` — the tracker.
 pub async fn tracker() -> Response {
     (
         [

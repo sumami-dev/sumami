@@ -5,8 +5,8 @@
 //! pointing a real site at it.
 //!
 //! ```bash
-//! sumami seed --db ./sumami.duckdb --days 30
-//! sumami seed --backend sqlite --db ./sumami.sqlite --days 30
+//! sumimi seed --db ./sumimi.duckdb --days 30
+//! sumimi seed --backend sqlite --db ./sumimi.sqlite --days 30
 //! ```
 //!
 //! The data is written through the storage backend, so the same seed works on
@@ -15,8 +15,8 @@
 
 use anyhow::Result;
 use chrono::Datelike;
-use sumami_service::models::{Hit, HitKind};
-use sumami_service::storage::Storage;
+use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::storage::Storage;
 use uuid::Uuid;
 
 /// How much data to generate.

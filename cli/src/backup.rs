@@ -6,8 +6,8 @@
 //! written once, never rewritten, readable by anything (DuckDB, Spark, Polars, pandas).
 //!
 //! ```text
-//! sumami backup --out ./archive                 # write the archive
-//! sumami summary --parquet './archive/*'        # analyse the archive
+//! sumimi backup --out ./archive                 # write the archive
+//! sumimi summary --parquet './archive/*'        # analyse the archive
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -213,7 +213,7 @@ fn range_of(
 ///
 /// The archive is read through `read_parquet()` — it is never imported into the hot
 /// database, so analysing ten years of history costs nothing but the query itself.
-pub fn open_archive(pattern: &str) -> Result<sumami_service::pool::Db> {
+pub fn open_archive(pattern: &str) -> Result<sumimi_service::pool::Db> {
     let conn = Connection::open_in_memory()?;
 
     let escape = |value: &str| value.replace('\'', "''");
@@ -244,7 +244,7 @@ pub fn open_archive(pattern: &str) -> Result<sumami_service::pool::Db> {
     // A website table is optional in an archive.
     let _ = conn.execute_batch(&sql);
 
-    Ok(sumami_service::pool::Db::from_connection(
+    Ok(sumimi_service::pool::Db::from_connection(
         std::path::Path::new(pattern),
         conn,
     ))

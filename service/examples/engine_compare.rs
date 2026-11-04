@@ -5,17 +5,17 @@
 //! same numbers.
 //!
 //! ```bash
-//! cargo run --release --example engine_compare -p sumami-service -- 200000
+//! cargo run --release --example engine_compare -p sumimi-service -- 200000
 //! ```
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use chrono::{Duration, NaiveDate};
-use sumami_service::models::{Hit, HitKind};
-use sumami_service::pool::Db;
-use sumami_service::sqlite::SqliteBackend;
-use sumami_service::storage::{Dimension, ReportQuery, Storage, TimeRange};
+use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::pool::Db;
+use sumimi_service::sqlite::SqliteBackend;
+use sumimi_service::storage::{Dimension, ReportQuery, Storage, TimeRange};
 
 fn main() -> anyhow::Result<()> {
     let views: i64 = std::env::args()
@@ -148,10 +148,10 @@ fn file_size(path: &PathBuf) -> u64 {
 
 /// A temporary path.
 fn temp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumami-engine-compare-{name}"));
+    let dir = std::env::temp_dir().join(format!("sumimi-engine-compare-{name}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    dir.join("sumami.data")
+    dir.join("sumimi.data")
 }
 
 /// Traffic that looks like a site's: a handful of pages, a few referrers, and a
@@ -182,8 +182,8 @@ fn generate(views: i64) -> Vec<Hit> {
         let at = base + Duration::seconds(i * 37 % (30 * 86_400));
         out.push(Hit {
             website_id: "w1".to_string(),
-            session_id: sumami_service::ua::uuid_from_text(&format!("session-{session:08x}")),
-            visitor_id: sumami_service::ua::uuid_from_text(&format!("visitor-{:08x}", session % 40_000)),
+            session_id: sumimi_service::ua::uuid_from_text(&format!("session-{session:08x}")),
+            visitor_id: sumimi_service::ua::uuid_from_text(&format!("visitor-{:08x}", session % 40_000)),
             retention_days: 0,
             kind: HitKind::Pageview,
             created_at: at,
