@@ -1,6 +1,6 @@
 # Sumami (数猫咪)
 
-> **Count kitties who visit my websites.** — 由猫开发
+> **Count kitties who visit my websites.**
 
 Sumami is a **self-hosted web analytics service** that fits on a cheap VPS: one small
 binary, one directory, no external database, no cloud account, no telemetry.
