@@ -148,6 +148,30 @@ fn open_storage(config: &Config, backend: &str) -> Result<Arc<dyn Storage>> {
     Ok(storage)
 }
 
+/// Open the instance store — the accounts, the log, the cache and the rest.
+///
+/// It lives in its own small file next to the data, so the accounts survive an
+/// analytics rebuild and can be backed up in a second.
+fn open_instance(
+    config: &Config,
+    _backend: &str,
+) -> Result<Arc<dyn crate::instance::Instance>> {
+    let path = instance_path(&config.db_path);
+    let instance: Arc<dyn crate::instance::Instance> =
+        Arc::new(crate::instance::SqliteInstance::open(&path)?);
+    Ok(instance)
+}
+
+/// Where the instance store lives, given the path of the data file.
+pub fn instance_path(db_path: &std::path::Path) -> std::path::PathBuf {
+    let mut name = db_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "sumami.duckdb".to_string());
+    name.push_str(".instance");
+    db_path.with_file_name(name)
+}
+
 /// Build the configuration from the serve arguments.
 fn config_from(args: &ServeArgs) -> Result<Config> {
     let mut config = Config::from_env_and_flags(
@@ -162,10 +186,11 @@ fn config_from(args: &ServeArgs) -> Result<Config> {
 
     // The default file name follows the engine, so `--backend sqlite` with no
     // `--db` does not create a file called `sumami.duckdb`.
-    if args.db.is_none() && std::env::var("SUMAMI_DB").is_err() {
-        if args.backend.eq_ignore_ascii_case("sqlite") {
-            config.db_path = std::path::PathBuf::from("sumami.sqlite");
-        }
+    if args.db.is_none()
+        && std::env::var("SUMAMI_DB").is_err()
+        && args.backend.eq_ignore_ascii_case("sqlite")
+    {
+        config.db_path = std::path::PathBuf::from("sumami.sqlite");
     }
     Ok(config)
 }
@@ -182,7 +207,7 @@ fn admin(args: AdminArgs) -> Result<()> {
         None,
     )?;
 
-    let storage = open_storage(&config, &args.backend)?;
+    let instance = open_instance(&config, &args.backend)?;
     let password = args
         .password
         .clone()
@@ -190,7 +215,7 @@ fn admin(args: AdminArgs) -> Result<()> {
         .unwrap_or_else(config::random_secret);
     let generated = args.password.is_none() && config.admin_password.is_none();
 
-    storage.set_user_password(&args.username, &auth::hash_password(&password)?)?;
+    instance.set_password(&args.username, &auth::hash_password(&password)?)?;
 
     println!("admin user '{}' ready", args.username);
     if generated {
@@ -220,28 +245,34 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
     config.ssl_port = args.ssl_port;
 
     let storage = open_storage(&config, &args.backend)?;
-    serve_with(Arc::new(config), storage).await
+    let instance = open_instance(&config, &args.backend)?;
+    serve_with(Arc::new(config), storage, instance).await
 }
 
 /// Run the HTTP server with a given storage backend.
 ///
 /// The open-source build only has DuckDB; the private `sumami-pro` build passes a
 /// SQLite or PostgreSQL backend here.
-pub async fn serve_with(config: Arc<Config>, storage: Arc<dyn Storage>) -> Result<()> {
+pub async fn serve_with(
+    config: Arc<Config>,
+    storage: Arc<dyn Storage>,
+    instance: Arc<dyn crate::instance::Instance>,
+) -> Result<()> {
     let jwt_secret = config::resolve_jwt_secret(&config.jwt_secret, &config.db_path)?;
     let jwt_secret = Arc::new(jwt_secret);
 
     config::restrict_permissions(&config.db_path);
 
-    // Make sure there is always an admin account to log in with.
-    let has_admin = storage.user(&config.admin_user)?.is_some();
+    // Make sure there is always an admin account to log in with. The accounts live
+    // in the instance store, not in the analytics file.
+    let has_admin = instance.account(&config.admin_user)?.is_some();
     if !has_admin {
         let password = config
             .admin_password
             .clone()
             .unwrap_or_else(config::random_secret);
         let generated = config.admin_password.is_none();
-        storage.set_user_password(&config.admin_user, &auth::hash_password(&password)?)?;
+        instance.set_password(&config.admin_user, &auth::hash_password(&password)?)?;
         println!("[sumami] created the admin user '{}'", config.admin_user);
         if generated {
             println!("[sumami] password: {password}");
@@ -255,7 +286,13 @@ pub async fn serve_with(config: Arc<Config>, storage: Arc<dyn Storage>) -> Resul
         config.max_queue,
     );
 
-    let state = AppState::new(storage, writer.clone(), config.clone(), jwt_secret);
+    let state = AppState::new(
+        storage,
+        instance,
+        writer.clone(),
+        config.clone(),
+        jwt_secret,
+    );
     let app = api::router(state.clone());
 
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)

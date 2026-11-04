@@ -23,10 +23,15 @@
 //! ```no_run
 //! use std::sync::Arc;
 //! use sumami::service::config::Config;
+//! use sumami::service::instance::Instance;
 //! use sumami::service::storage::Storage;
 //!
-//! # async fn example(config: Config, storage: Arc<dyn Storage>) -> anyhow::Result<()> {
-//! sumami::service::server::serve_with(Arc::new(config), storage).await
+//! # async fn example(
+//! #     config: Config,
+//! #     storage: Arc<dyn Storage>,
+//! #     instance: Arc<dyn Instance>,
+//! # ) -> anyhow::Result<()> {
+//! sumami::service::server::serve_with(Arc::new(config), storage, instance).await
 //! # }
 //! ```
 

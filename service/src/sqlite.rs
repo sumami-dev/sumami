@@ -26,7 +26,7 @@ use crate::models::{
     BreakdownRow, EventRow, Hit, MetricsSummary, MetricValue, Revenue, SessionRow, Website,
 };
 use crate::storage::{
-    Dimension, ReportQuery, Storage, StorageStats, SummaryMetrics, UserRecord, WebsitePatch,
+    Dimension, ReportQuery, Storage, StorageStats, SummaryMetrics, WebsitePatch,
 };
 
 /// The SQLite backend.
@@ -155,13 +155,6 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT
 );
 
-CREATE TABLE IF NOT EXISTS "user" (
-    id            TEXT PRIMARY KEY,
-    username      TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    created_at    INTEGER NOT NULL,
-    role          TEXT NOT NULL DEFAULT 'admin'
-);
 "#,
         )?;
         Ok(())
@@ -632,73 +625,6 @@ INSERT INTO event (
         })
     }
 
-    fn user(&self, username: &str) -> Result<Option<UserRecord>> {
-        self.with(|conn| {
-            Ok(conn
-                .query_row(
-                    "SELECT id, username, role, created_at, password_hash FROM \"user\" WHERE username = ?1",
-                    params![username],
-                    |row| {
-                        Ok(UserRecord {
-                            id: row.get(0)?,
-                            username: row.get(1)?,
-                            role: row.get(2)?,
-                            created_at: from_ts(row.get(3)?),
-                            password_hash: row.get(4)?,
-                        })
-                    },
-                )
-                .optional()?)
-        })
-    }
-
-    fn set_user_password(&self, username: &str, password_hash: &str) -> Result<UserRecord> {
-        self.with(|conn| {
-            // The account is created on the first call — that is how the admin user
-            // comes to exist — and the password is replaced afterwards.
-            let existing: Option<String> = {
-                let mut stmt =
-                    conn.prepare("SELECT id FROM \"user\" WHERE username = ?1")?;
-                let mut rows = stmt.query(params![username])?;
-                match rows.next()? {
-                    Some(row) => Some(row.get(0)?),
-                    None => None,
-                }
-            };
-
-            match existing {
-                Some(_) => {
-                    conn.execute(
-                        "UPDATE \"user\" SET password_hash = ?2 WHERE username = ?1",
-                        params![username, password_hash],
-                    )?;
-                }
-                None => {
-                    let id = uuid::Uuid::new_v4().to_string();
-                    conn.execute(
-                        "INSERT INTO \"user\" (id, username, password_hash, created_at, role)
-                         VALUES (?1, ?2, ?3, ?4, 'admin')",
-                        params![id, username, password_hash, ts(crate_now())],
-                    )?;
-                }
-            }
-
-            conn.query_row(
-                "SELECT id, username, role, created_at, password_hash FROM \"user\" WHERE username = ?1",
-                params![username],
-                |row| {
-                    Ok(UserRecord {
-                        id: row.get(0)?,
-                        username: row.get(1)?,
-                        role: row.get(2)?,
-                        created_at: from_ts(row.get(3)?),
-                        password_hash: row.get(4)?,
-                    })
-                },
-            )
-            .map_err(Into::into)
-        })
-    }
 
     fn stats(&self) -> Result<StorageStats> {
         let websites = self.with(|conn| {

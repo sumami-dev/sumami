@@ -271,6 +271,7 @@ async fn api_matches_the_shared_report_layer() {
 
     let state = AppState::new(
         db.clone(),
+        std::sync::Arc::new(sumami_service::instance::SqliteInstance::open_in_memory().unwrap()),
         writer.clone(),
         std::sync::Arc::new(config),
         std::sync::Arc::new("test-secret".to_string()),
@@ -278,8 +279,30 @@ async fn api_matches_the_shared_report_layer() {
 
     let app = api::router(state);
 
+    // Every route but the collector needs a token.
+    let token = sumami_service::auth::issue_token(
+        "test-secret",
+        "user-1",
+        "admin",
+        "admin",
+    )
+    .unwrap();
+
+    // Without one, the request is refused.
+    let anonymous = Request::builder()
+        .uri("/api/websites/website-1/stats")
+        .body(Body::empty())
+        .unwrap();
+    let refused = app.clone().oneshot(anonymous).await.unwrap();
+    assert_eq!(
+        refused.status(),
+        StatusCode::UNAUTHORIZED,
+        "a request without a token must be refused"
+    );
+
     let request = Request::builder()
         .uri("/api/websites/website-1/stats")
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .unwrap();
     let response = app.clone().oneshot(request).await.unwrap();

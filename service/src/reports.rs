@@ -14,7 +14,7 @@ use duckdb::Connection;
 use crate::models::{BreakdownRow, EventRow, Hit, MetricsSummary, MetricValue, SessionRow, Website};
 use crate::pool::Db;
 use crate::storage::{
-    Dimension, ReportQuery, Storage, StorageStats, SummaryMetrics, UserRecord, WebsitePatch,
+    Dimension, ReportQuery, Storage, StorageStats, SummaryMetrics, WebsitePatch,
 };
 
 impl Storage for Db {
@@ -127,13 +127,6 @@ impl Storage for Db {
         })
     }
 
-    fn user(&self, username: &str) -> Result<Option<UserRecord>> {
-        self.with_read(|conn| user(conn, username))
-    }
-
-    fn set_user_password(&self, username: &str, password_hash: &str) -> Result<UserRecord> {
-        self.with_write(|conn| set_user_password(conn, username, password_hash))
-    }
 
     fn stats(&self) -> Result<StorageStats> {
         let websites = self.with_read(|conn| {
@@ -292,73 +285,6 @@ fn update_website(conn: &Connection, id: &str, patch: &WebsitePatch) -> Result<W
     })
 }
 
-// --------------------------------------------------------------------------------------
-// Users
-// --------------------------------------------------------------------------------------
-
-fn user(conn: &Connection, username: &str) -> Result<Option<UserRecord>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, username, role, created_at, password_hash FROM \"user\" WHERE username = ?",
-    )?;
-    let mut rows = stmt.query([username])?;
-    match rows.next()? {
-        Some(row) => Ok(Some(UserRecord {
-            id: row.get(0)?,
-            username: row.get(1)?,
-            role: row.get(2)?,
-            created_at: row.get(3)?,
-            password_hash: row.get(4)?,
-        })),
-        None => Ok(None),
-    }
-}
-
-fn set_user_password(
-    conn: &Connection,
-    username: &str,
-    password_hash: &str,
-) -> Result<UserRecord> {
-    let now = crate::db::now();
-    let existing: Option<String> = {
-        let mut stmt = conn.prepare("SELECT id FROM \"user\" WHERE username = ?")?;
-        let mut rows = stmt.query([username])?;
-        match rows.next()? {
-            Some(row) => Some(row.get(0)?),
-            None => None,
-        }
-    };
-
-    match existing {
-        Some(id) => {
-            conn.execute(
-                "UPDATE \"user\" SET password_hash = ? WHERE username = ?",
-                duckdb::params![password_hash, username],
-            )?;
-            Ok(UserRecord {
-                id,
-                username: username.to_string(),
-                role: "admin".to_string(),
-                created_at: now,
-                password_hash: password_hash.to_string(),
-            })
-        }
-        None => {
-            let id = uuid::Uuid::new_v4().to_string();
-            conn.execute(
-                "INSERT INTO \"user\" (id, username, password_hash, created_at, role)
-                 VALUES (?, ?, ?, ?, 'admin')",
-                duckdb::params![id, username, password_hash, now],
-            )?;
-            Ok(UserRecord {
-                id,
-                username: username.to_string(),
-                role: "admin".to_string(),
-                created_at: now,
-                password_hash: password_hash.to_string(),
-            })
-        }
-    }
-}
 
 // --------------------------------------------------------------------------------------
 // Reports

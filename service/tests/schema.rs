@@ -48,7 +48,13 @@ fn the_fact_tables_have_no_primary_key() {
         // The small dimension tables keep their keys.
         assert_eq!(primary_keys(conn, "website"), 1);
         assert_eq!(primary_keys(conn, "meta"), 1);
-        assert_eq!(primary_keys(conn, "user"), 1);
+        // The accounts are **not** in the analytics file: they live in the instance
+        // store, in their own small file.
+        assert_eq!(
+            primary_keys(conn, "user"),
+            0,
+            "the accounts must not be in the analytics file"
+        );
         Ok::<_, anyhow::Error>(())
     })
     .unwrap();

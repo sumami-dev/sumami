@@ -18,8 +18,10 @@
 //! The ids are handed out by the writer (`MAX(id) + 1`, answered from the column
 //! statistics in constant time), so the constraint protects nothing.
 //!
-//! The small dimension tables (`website`, `meta`, `user`) keep their keys: they hold
-//! a handful of rows, and `meta` needs its primary key for `ON CONFLICT` to work.
+//! The small dimension table (`website`, `meta`) keeps its keys: they hold a handful
+//! of rows, and `meta` needs its primary key for `ON CONFLICT` to work. The accounts
+//! are **not** here — they live in the instance store (`service/src/instance.rs`),
+//! in their own small file.
 
 use std::path::{Path, PathBuf};
 
@@ -115,21 +117,12 @@ pub const META_COLUMNS: &str = "
     key   VARCHAR PRIMARY KEY,
     value VARCHAR";
 
-/// The columns of the `user` table.
-pub const USER_COLUMNS: &str = "
-    id            VARCHAR PRIMARY KEY,
-    username      VARCHAR NOT NULL UNIQUE,
-    password_hash VARCHAR NOT NULL,
-    created_at    TIMESTAMP NOT NULL,
-    role          VARCHAR NOT NULL DEFAULT 'admin'";
-
 /// The tables of the schema, with their columns.
 const TABLES: &[(&str, &str)] = &[
     ("event", EVENT_COLUMNS),
     ("revenue", REVENUE_COLUMNS),
     ("website", WEBSITE_COLUMNS),
     ("meta", META_COLUMNS),
-    ("user", USER_COLUMNS),
 ];
 
 /// Create the schema if it does not exist.

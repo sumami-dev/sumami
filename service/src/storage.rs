@@ -186,21 +186,6 @@ pub struct StorageStats {
     pub websites: i64,
 }
 
-/// A stored user (the admin account).
-#[derive(Debug, Clone)]
-pub struct UserRecord {
-    /// The user's id.
-    pub id: String,
-    /// The username.
-    pub username: String,
-    /// The role (`admin`).
-    pub role: String,
-    /// When the account was created.
-    pub created_at: NaiveDateTime,
-    /// The Argon2 hash of the password.
-    pub password_hash: String,
-}
-
 /// A change to a website.
 #[derive(Debug, Clone, Default)]
 pub struct WebsitePatch {
@@ -428,12 +413,6 @@ pub trait Storage: Send + Sync {
 
     /// Delete a website and all of its data. Returns the number of rows removed.
     fn erase(&self, website: &str) -> Result<u64>;
-
-    /// Look up a user by name.
-    fn user(&self, username: &str) -> Result<Option<UserRecord>>;
-
-    /// Create or update a user's password.
-    fn set_user_password(&self, username: &str, password_hash: &str) -> Result<UserRecord>;
 
     /// What the backend reports about itself.
     fn stats(&self) -> Result<StorageStats>;

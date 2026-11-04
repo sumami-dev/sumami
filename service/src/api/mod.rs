@@ -15,6 +15,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
+use axum::extract::{Request, State};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 
@@ -37,6 +40,10 @@ pub struct WebsiteMeta {
 pub struct AppState {
     /// The storage backend (DuckDB, SQLite or PostgreSQL).
     pub storage: Arc<dyn Storage>,
+    /// The instance store: the accounts, the log, the cache and the rest — the
+    /// small, transactional half of an instance. It is a **separate** store from
+    /// the events, so the accounts survive an analytics rebuild.
+    pub instance: Arc<dyn crate::instance::Instance>,
     /// The single writer.
     pub writer: Writer,
     /// Runtime configuration.
@@ -55,12 +62,14 @@ impl AppState {
     /// Build the state.
     pub fn new(
         storage: Arc<dyn Storage>,
+        instance: Arc<dyn crate::instance::Instance>,
         writer: Writer,
         config: Arc<Config>,
         jwt_secret: Arc<String>,
     ) -> Self {
         Self {
             storage,
+            instance,
             writer,
             config,
             jwt_secret,
@@ -129,6 +138,53 @@ impl AppState {
     }
 }
 
+/// The routes that answer without a token.
+///
+/// The tracker posts here — it cannot hold a token, it runs on somebody else's
+/// page — and the dashboard's own files are public. Everything else needs one.
+fn is_public(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/send" | "/api/collect" | "/api/heartbeat" | "/api/login"
+    ) || path == "/sumami.js"
+        || path == "/"
+        || path.starts_with("/app/")
+        || path == "/docs"
+        || path.starts_with("/docs/")
+}
+
+/// Refuse every request that does not carry a valid token.
+///
+/// One place, so a new route cannot forget it.
+async fn require_auth(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if is_public(request.uri().path()) {
+        return next.run(request).await;
+    }
+
+    let header = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+    let Some(header) = header else {
+        return ApiError::Unauthorized.into_response();
+    };
+    let token = header
+        .strip_prefix("Bearer ")
+        .or_else(|| header.strip_prefix("bearer "))
+        .unwrap_or(header)
+        .trim();
+
+    if crate::auth::decode_token(&state.jwt_secret, token).is_err() {
+        return ApiError::Unauthorized.into_response();
+    }
+
+    next.run(request).await
+}
+
 /// Build the router.
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -187,5 +243,9 @@ pub fn router(state: AppState) -> Router {
         .route("/docs", get(crate::static_files::docs_index))
         .route("/", get(crate::static_files::index))
         .fallback(get(crate::static_files::not_found))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_auth,
+        ))
         .with_state(state)
 }

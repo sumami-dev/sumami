@@ -13,7 +13,7 @@ pub async fn login(
     State(state): State<AppState>,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ApiError> {
-    let user = state.storage.user(&request.username)?;
+    let user = state.instance.account(&request.username)?;
 
     let Some(user) = user else {
         // The same message as a wrong password, so the endpoint does not leak which
@@ -24,13 +24,20 @@ pub async fn login(
     };
 
     if !crate::auth::verify_password(&request.password, &user.password_hash) {
+        // Record the attempt — successful or not — so the instance knows who tried.
+        let _ = state.instance.record_login(
+            &request.username,
+            false,
+            None,
+            None,
+        );
         return Err(ApiError::BadRequest(
             "invalid username or password".into(),
         ));
     }
 
     let token = crate::auth::issue_token(&state.jwt_secret, &user.id, &user.username, &user.role)?;
-    let _ = &state;
+    let _ = state.instance.record_login(&request.username, true, None, None);
 
     Ok(Json(LoginResponse {
         token,
@@ -51,8 +58,8 @@ pub async fn refresh(
     let token = crate::auth::issue_token(&state.jwt_secret, &user.id, &user.username, &user.role)?;
 
     let created_at = state
-        .storage
-        .user(&user.username)?
+        .instance
+        .account(&user.username)?
         .map(|u| u.created_at)
         .unwrap_or_else(crate::db::now);
 
