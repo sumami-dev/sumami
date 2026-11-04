@@ -6,14 +6,17 @@
 //!
 //! ```bash
 //! sumami seed --db ./sumami.duckdb --days 30
+//! sumami seed --backend sqlite --db ./sumami.sqlite --days 30
 //! ```
 //!
-//! Seeding writes to the database file directly, so the server has to be stopped
-//! while it runs (DuckDB allows a single writer per file).
+//! The data is written through the storage backend, so the same seed works on
+//! DuckDB, on SQLite and on PostgreSQL — and the numbers are the same on all
+//! three.
 
 use anyhow::Result;
 use chrono::Datelike;
-use duckdb::Connection;
+use sumami_service::models::{Hit, HitKind};
+use sumami_service::storage::Storage;
 use uuid::Uuid;
 
 /// How much data to generate.
@@ -34,7 +37,7 @@ struct Rng(u64);
 
 impl Rng {
     fn new(seed: u64) -> Self {
-        Rng(seed ^ 0x9E37_79B9_7F4A_7C15)
+        Self(seed ^ 0x5EED_1234_ABCD_0001)
     }
 
     /// The next random number.
@@ -71,13 +74,13 @@ impl Rng {
 
     /// Pick an item from a weighted list.
     fn weighted(&mut self, items: &[(&'static str, u64)]) -> &'static str {
-        let total: u64 = items.iter().map(|(_, weight)| weight).sum();
+        let total: u64 = items.iter().map(|(_, w)| w).sum();
         let mut roll = self.next() % total;
         for (value, weight) in items {
             if roll < *weight {
                 return value;
             }
-            roll -= weight;
+            roll -= *weight;
         }
         items[0].0
     }
@@ -105,19 +108,9 @@ const REFERRERS: &[(&str, u64)] = &[
     ("https://x.com/", 45),
 ];
 
-const BROWSERS: &[(&str, u64)] = &[
-    ("Chrome", 540),
-    ("Safari", 220),
-    ("Firefox", 90),
-    ("Edge", 80),
-];
+const BROWSERS: &[(&str, u64)] = &[("Chrome", 540), ("Safari", 220), ("Firefox", 90), ("Edge", 80)];
 
-const SYSTEMS: &[(&str, u64)] = &[
-    ("Windows", 330),
-    ("macOS", 300),
-    ("iOS", 170),
-    ("Android", 130),
-];
+const SYSTEMS: &[(&str, u64)] = &[("Windows", 330), ("macOS", 300), ("iOS", 170), ("Android", 130)];
 
 const DEVICES: &[(&str, u64)] = &[("desktop", 620), ("mobile", 330), ("tablet", 50)];
 
@@ -149,226 +142,195 @@ const SCREENS: &[(&str, u64)] = &[
     ("768x1024", 40),
 ];
 
-const SOURCES: &[(&str, u64)] = &[
-    ("twitter", 40),
-    ("newsletter", 35),
-    ("google", 20),
-    ("hn", 15),
-];
+const SOURCES: &[(&str, u64)] = &[("twitter", 40), ("newsletter", 35), ("google", 20), ("hn", 15)];
 
-/// The columns of the `event` table.
-const EVENT_INSERT: &str = r#"INSERT INTO event (
-    id, website_id, session_id, visitor_id, created_at,
-    url, url_query, title, referrer, referrer_path, referrer_query, hostname,
-    browser, browser_version, os, os_version, device, screen, language,
-    country, region, city,
-    utm_source, utm_medium, utm_campaign, utm_content, utm_term,
-    gclid, fbclid, msclkid, ttclid, lifatid, twclid,
-    lcp, inp, cls, fcp, ttfb,
-    event_type, event_name, tag, data
-) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36,?37,?38,?39,?40,?41,?42)"#;
+const EVENTS: &[(&str, u64)] = &[("signup", 4), ("download", 3), ("cta_click", 2), ("newsletter", 1)];
 
 /// Generate the demo data.
 ///
-/// Returns the website id, the number of page views and the number of custom events.
-pub fn seed(conn: &Connection, options: &SeedOptions) -> Result<(String, u64, u64)> {
-    let mut rng = Rng::new(0x5EED_1234_ABCD_0001);
+/// Returns the website id, the number of page views and the number of custom
+/// events.
+pub fn seed(storage: &dyn Storage, options: &SeedOptions) -> Result<(String, u64, u64)> {
+    // The seed must not be the mixing constant itself: `Rng::new` xors the two
+    // together, and xorshift on zero stays zero forever — every session came
+    // out identical.
+    let mut rng = Rng::new(0xA5A5_1234_ABCD_0001);
 
-    let website_id = ensure_website(conn, &options.website, &options.domain)?;
+    // The website, created when it is not there yet.
+    let website_id = match storage.websites()?.into_iter().find(|website| {
+        website.name == options.website || website.domain.as_deref() == Some(&options.domain)
+    }) {
+        Some(website) => website.id,
+        None => storage
+            .create_website(&options.website, Some(&options.domain), 0, None)?
+            .id,
+    };
+
     let now = chrono::Utc::now().naive_utc();
+    let mut hits: Vec<Hit> = Vec::new();
     let mut views = 0u64;
     let mut events = 0u64;
-    let mut next_id: i64 = conn.query_row(
-        "SELECT COALESCE(MAX(id), 0) + 1 FROM event",
-        [],
-        |row| row.get(0),
-    )?;
 
-    conn.execute_batch("BEGIN TRANSACTION")?;
+    for day in (0..options.days).rev() {
+        let day_start = now - chrono::Duration::days(day);
+        let weekday = day_start.weekday().num_days_from_monday() as i64;
 
-    let result = (|| -> Result<()> {
-        for day in (0..options.days).rev() {
-            let day_start = now - chrono::Duration::days(day);
-            let weekday = day_start.weekday().num_days_from_monday() as i64;
+        // Weekends are quieter, and traffic grows a little every week.
+        let weekend = if weekday >= 5 { 0.62 } else { 1.0 };
+        let growth = 1.0 + (options.days - day) as f64 * 0.004;
+        let visitors = (options.visitors_per_day as f64 * weekend * growth) as i64;
 
-            // Weekends are quieter, and traffic grows a little every week.
-            let weekend = if weekday >= 5 { 0.62 } else { 1.0 };
-            let growth = 1.0 + (options.days - day) as f64 * 0.004;
-            let visitors = (options.visitors_per_day as f64 * weekend * growth) as i64;
+        // A pool of visitors for the day: some of them come back, so the
+        // "visitors" count is lower than the "sessions" count, like a real site.
+        let pool: Vec<Uuid> = (0..visitors).map(|_| Uuid::new_v4()).collect();
 
-            // A pool of visitors for the day: some of them come back, so the
-            // "visitors" count is lower than the "sessions" count, like a real site.
-            let pool: Vec<Uuid> = (0..visitors)
-                .map(|_| {
-                    sumami_service::ua::uuid_from_text(&format!(
-                        "seed-visitor-{:012x}",
-                        rng.next() % 0xFFFF_FFFF_FFFF
-                    ))
-                })
-                .collect();
+        for _ in 0..visitors {
+            let session_id = Uuid::new_v4();
+            let visitor_id = pool[rng.below(pool.len())];
+            let started = day_start + chrono::Duration::seconds(rng.between(0, 86_399));
 
-            for index in 0..visitors {
-                let session_id =
-                    sumami_service::ua::uuid_from_text(&format!("seed-session-{day}-{index}"));
-                let visitor_id = pool[rng.below(pool.len())];
-                let started = day_start + chrono::Duration::seconds(rng.between(0, 86_399));
+            // A session is one to four page views.
+            let page_views = match rng.below(100) {
+                0..=44 => 1,
+                45..=69 => 2,
+                70..=84 => 3,
+                _ => 4,
+            };
 
-                // A session is one to four page views.
-                let page_views = match rng.below(100) {
-                    0..=44 => 1,
-                    45..=69 => 2,
-                    70..=84 => 3,
-                    _ => 4,
+            let referrer = rng.weighted(REFERRERS);
+            let (referrer_host, referrer_path, referrer_query) = split_referrer(referrer);
+            let browser = rng.weighted(BROWSERS);
+            let os = rng.weighted(SYSTEMS);
+            let device = rng.weighted(DEVICES);
+            let country = rng.weighted(COUNTRIES);
+            let language = rng.weighted(LANGUAGES);
+            let screen = rng.weighted(SCREENS);
+            let source = rng.weighted(SOURCES);
+
+            let mut last_url = "/".to_string();
+            for view in 0..page_views {
+                let url = rng.weighted(URLS).to_string();
+                last_url = url.clone();
+                let at = started + chrono::Duration::seconds(view * 35);
+
+                let url_query = format!(
+                    "utm_source={}&utm_medium=cpc&utm_campaign=spring&utm_content=cta-{}&utm_term=analytics",
+                    source,
+                    rng.below(5)
+                );
+                let gclid = if rng.chance(9) {
+                    Some(format!("gclid-{:08x}", rng.next() as u32))
+                } else {
+                    None
+                };
+                let fbclid = if rng.chance(11) {
+                    Some(format!("fbclid-{:08x}", rng.next() as u32))
+                } else {
+                    None
                 };
 
-                let referrer = rng.weighted(REFERRERS);
-                let (referrer_host, referrer_path, referrer_query) = split_referrer(referrer);
-                let browser = rng.weighted(BROWSERS);
-                let os = rng.weighted(SYSTEMS);
-                let device = rng.weighted(DEVICES);
-                let country = rng.weighted(COUNTRIES);
-                let language = rng.weighted(LANGUAGES);
-                let screen = rng.weighted(SCREENS);
-                let source = rng.weighted(SOURCES);
+                hits.push(Hit {
+                    website_id: website_id.clone(),
+                    session_id,
+                    visitor_id,
+                    retention_days: 0,
+                    kind: HitKind::Pageview,
+                    created_at: at,
+                    url: Some(url.clone()),
+                    url_query: Some(url_query),
+                    title: Some(title_for(&url)),
+                    referrer: referrer_host.clone(),
+                    referrer_path: referrer_path.clone(),
+                    referrer_query: referrer_query.clone(),
+                    hostname: Some("example.com".to_string()),
+                    browser: Some(browser.to_string()),
+                    browser_version: Some("120".to_string()),
+                    os: Some(os.to_string()),
+                    os_version: Some("10".to_string()),
+                    device: Some(device.to_string()),
+                    screen: Some(screen.to_string()),
+                    language: Some(language.to_string()),
+                    country: Some(country.to_string()),
+                    region: None,
+                    city: None,
+                    utm_source: Some(source.to_string()),
+                    utm_medium: Some("cpc".to_string()),
+                    utm_campaign: Some("spring".to_string()),
+                    utm_content: Some(format!("cta-{}", rng.below(5))),
+                    utm_term: Some("analytics".to_string()),
+                    gclid: gclid.clone(),
+                    fbclid: fbclid.clone(),
+                    msclkid: None,
+                    ttclid: None,
+                    lifatid: None,
+                    twclid: None,
+                    lcp: Some(600.0 + rng.between(0, 1800) as f64),
+                    inp: Some(30.0 + rng.between(0, 260) as f64),
+                    cls: Some(rng.between(0, 120) as f64 / 1000.0),
+                    fcp: Some(400.0 + rng.between(0, 900) as f64),
+                    ttfb: Some(60.0 + rng.between(0, 220) as f64),
+                    name: None,
+                    tag: None,
+                    data: None,
+                });
+                views += 1;
+            }
 
-                let mut last_url = "/".to_string();
-                for view in 0..page_views {
-                    let url = rng.weighted(URLS).to_string();
-                    last_url = url.clone();
-                    let at = started + chrono::Duration::seconds(view * 35);
-
-                    let url_query = format!(
-                        "utm_source={}&utm_medium=cpc&utm_campaign=spring&utm_content=cta-{}&utm_term=analytics",
-                        source,
-                        rng.below(5)
-                    );
-                    let gclid = if rng.chance(9) {
-                        Some(format!("gclid-{:08x}", rng.next() as u32))
-                    } else {
-                        None
-                    };
-                    let fbclid = if rng.chance(11) {
-                        Some(format!("fbclid-{:08x}", rng.next() as u32))
-                    } else {
-                        None
-                    };
-
-                    conn.execute(
-                        EVENT_INSERT,
-                        duckdb::params![
-                            next_id,
-                            website_id,
-                            session_id,
-                            visitor_id,
-                            at,
-                            url,
-                            url_query,
-                            title_for(&url),
-                            referrer_host,
-                            referrer_path,
-                            referrer_query,
-                            "example.com",
-                            browser,
-                            "120",
-                            os,
-                            "10",
-                            device,
-                            screen,
-                            language,
-                            country,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            source,
-                            "cpc",
-                            "spring",
-                            format!("cta-{}", rng.below(5)),
-                            "analytics",
-                            gclid,
-                            fbclid,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            600.0 + rng.between(0, 1800) as f64,
-                            30.0 + rng.between(0, 260) as f64,
-                            rng.between(0, 120) as f64 / 1000.0,
-                            400.0 + rng.between(0, 900) as f64,
-                            60.0 + rng.between(0, 220) as f64,
-                            "pageview",
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                        ],
-                    )?;
-                    next_id += 1;
-                    views += 1;
-                }
-
-                // Every third session fires a custom event.
-                if rng.chance(33) {
-                    conn.execute(
-                        EVENT_INSERT,
-                        duckdb::params![
-                            next_id,
-                            website_id,
-                            session_id,
-                            visitor_id,
-                            started,
-                            last_url,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            "example.com",
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            Option::<String>::None,
-                            "event",
-                            "signup",
-                            "cta",
-                            "{\"plan\":\"pro\"}",
-                        ],
-                    )?;
-                    next_id += 1;
-                    events += 1;
-                }
+            // Every third session fires a custom event.
+            if rng.chance(33) {
+                let name = rng.weighted(EVENTS);
+                hits.push(Hit {
+                    website_id: website_id.clone(),
+                    session_id,
+                    visitor_id,
+                    retention_days: 0,
+                    kind: HitKind::Event,
+                    created_at: started + chrono::Duration::seconds(rng.between(30, 600)),
+                    url: Some(last_url.clone()),
+                    url_query: None,
+                    title: None,
+                    referrer: None,
+                    referrer_path: None,
+                    referrer_query: None,
+                    hostname: Some("example.com".to_string()),
+                    browser: Some(browser.to_string()),
+                    browser_version: Some("120".to_string()),
+                    os: Some(os.to_string()),
+                    os_version: Some("10".to_string()),
+                    device: Some(device.to_string()),
+                    screen: Some(screen.to_string()),
+                    language: Some(language.to_string()),
+                    country: Some(country.to_string()),
+                    region: None,
+                    city: None,
+                    utm_source: None,
+                    utm_medium: None,
+                    utm_campaign: None,
+                    utm_content: None,
+                    utm_term: None,
+                    gclid: None,
+                    fbclid: None,
+                    msclkid: None,
+                    ttclid: None,
+                    lifatid: None,
+                    twclid: None,
+                    lcp: None,
+                    inp: None,
+                    cls: None,
+                    fcp: None,
+                    ttfb: None,
+                    name: Some(name.to_string()),
+                    tag: Some(format!("cta-{name}")),
+                    data: Some("{\"plan\":\"pro\"}".to_string()),
+                });
+                events += 1;
             }
         }
-        Ok(())
-    })();
+    }
 
-    match result {
-        Ok(()) => {
-            conn.execute_batch("COMMIT")?;
-        }
-        Err(err) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            return Err(err);
-        }
+    // Write in batches, the way the server does.
+    for chunk in hits.chunks(1000) {
+        storage.write_batch(chunk)?;
     }
 
     Ok((website_id, views, events))
@@ -411,29 +373,4 @@ fn split_referrer(referrer: &str) -> (Option<String>, Option<String>, Option<Str
         },
         None => (Some(without_scheme.to_string()), None, None),
     }
-}
-
-/// Find or create the website.
-fn ensure_website(conn: &Connection, name: &str, domain: &str) -> Result<String> {
-    let existing: Option<String> = {
-        let mut stmt = conn.prepare("SELECT id FROM website WHERE name = ? OR domain = ?")?;
-        let mut rows = stmt.query(duckdb::params![name, domain])?;
-        match rows.next()? {
-            Some(row) => Some(row.get(0)?),
-            None => None,
-        }
-    };
-
-    if let Some(id) = existing {
-        return Ok(id);
-    }
-
-    let id = Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().naive_utc();
-    conn.execute(
-        "INSERT INTO website (id, name, domain, created_at, updated_at, retention_days, country_header)
-         VALUES (?1, ?2, ?3, ?4, ?5, 0, NULL)",
-        duckdb::params![id, name, domain, now, now],
-    )?;
-    Ok(id)
 }

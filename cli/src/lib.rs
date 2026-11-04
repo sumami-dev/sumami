@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod backup;
+mod gsc;
 mod output;
 mod seed;
 mod source;
@@ -43,6 +44,13 @@ struct Cli {
     /// Analyse a Parquet archive instead of the database (e.g. './archive/*').
     #[arg(long, global = true, env = "SUMAMI_PARQUET")]
     parquet: Option<String>,
+    /// The data engine: `duckdb` (the default) or `sqlite`.
+    #[arg(long, global = true, env = "SUMAMI_BACKEND", default_value = "duckdb")]
+    backend: String,
+    /// The instance directory: the accounts, the log, the imports and the cache
+    /// live in it.
+    #[arg(long, global = true, env = "SUMAMI_DIR", default_value = "sumami")]
+    dir: PathBuf,
     #[command(subcommand)]
     command: Command,
 }
@@ -148,6 +156,9 @@ enum Command {
         #[arg(long, default_value_t = 120)]
         visitors: i64,
     },
+    /// The Google Search Console import.
+    #[command(subcommand)]
+    Gsc(GscCommand),
     /// Store the credentials for a server.
     Login {
         /// The base URL of the server.
@@ -158,6 +169,28 @@ enum Command {
         /// The admin password (asked for interactively when omitted).
         #[arg(long)]
         password: Option<String>,
+    },
+}
+
+/// The Search Console commands.
+#[derive(Debug, Clone, Subcommand)]
+enum GscCommand {
+    /// Import a Search Console export into a website.
+    Import {
+        /// The export (a CSV file).
+        file: PathBuf,
+        /// The website the rows belong to.
+        #[arg(long)]
+        website: String,
+    },
+    /// Show what was imported.
+    List {
+        /// The website.
+        #[arg(long)]
+        website: String,
+        /// How many rows to show.
+        #[arg(long, default_value_t = 20)]
+        limit: i64,
     },
 }
 
@@ -251,16 +284,103 @@ pub fn run() -> Result<()> {
             }
             Ok(())
         }
+        Command::Gsc(command) => match command {
+            GscCommand::Import { file, website } => {
+                let text = std::fs::read_to_string(&file)
+                    .map_err(|err| anyhow!("reading {}: {err}", file.display()))?;
+                let rows = gsc::parse(&text)?;
+
+                // Against a running server, the import goes through the API.
+                if let Some(url) = &cli.url {
+                    let source = Source::remote(
+                        url,
+                        cli.token.as_deref(),
+                        cli.username.as_deref(),
+                        cli.password.as_deref(),
+                    )?;
+                    if let Source::Remote { base, token } = &source {
+                        let body = serde_json::json!({
+                            "website": website,
+                            "rows": rows,
+                            "source": file.display().to_string(),
+                        });
+                        let agent = ureq::Agent::new_with_defaults();
+                        let report: serde_json::Value = agent
+                            .post(&format!("{base}/api/gsc/import"))
+                            .header("authorization", &format!("Bearer {token}"))
+                            .send_json(body)?
+                            .body_mut()
+                            .read_json()?;
+                        println!(
+                            "imported {} rows into {website}",
+                            report["rows"].as_u64().unwrap_or(0)
+                        );
+                    }
+                    return Ok(());
+                }
+
+                // Offline: straight into the instance store.
+                let paths = sumami_service::config::Paths::new(
+                    Some(cli.dir.clone()),
+                    cli.db.clone(),
+                    &cli.backend,
+                );
+                let instance = sumami_service::instance::SqliteInstance::open(&paths.instance)
+                    .map_err(|err| anyhow!("opening the instance store: {err}"))?;
+                let report = instance
+                    .import_gsc(&website, &rows, Some(&file.display().to_string()))
+                    .map_err(|err| anyhow!("the import failed: {err}"))?;
+                println!("imported {} rows into {website}", report.rows);
+                println!(
+                    "the rows are in {}",
+                    paths.instance.display()
+                );
+                Ok(())
+            }
+            GscCommand::List { website, limit } => {
+                let paths = sumami_service::config::Paths::new(
+                    Some(cli.dir.clone()),
+                    cli.db.clone(),
+                    &cli.backend,
+                );
+                let instance = sumami_service::instance::SqliteInstance::open(&paths.instance)
+                    .map_err(|err| anyhow!("opening the instance store: {err}"))?;
+                let rows = instance
+                    .gsc_rows(&website, limit)
+                    .map_err(|err| anyhow!("reading the import: {err}"))?;
+                let table: Vec<Vec<String>> = rows
+                    .iter()
+                    .map(|row| {
+                        vec![
+                            row.date.clone(),
+                            row.query.clone().unwrap_or_default(),
+                            row.page.clone().unwrap_or_default(),
+                            row.clicks.to_string(),
+                            row.impressions.to_string(),
+                            row.position
+                                .map(|position| format!("{position:.1}"))
+                                .unwrap_or_default(),
+                        ]
+                    })
+                    .collect();
+                output::table(
+                    &["DATE", "QUERY", "PAGE", "CLICKS", "IMPRESSIONS", "POSITION"],
+                    &table,
+                );
+                Ok(())
+            }
+        },
         Command::Seed {
             website,
             domain,
             days,
             visitors,
         } => {
-            let path = cli
-                .db
-                .clone()
-                .unwrap_or_else(|| sumami_service::config::Paths::new(None, None, "duckdb").data);
+            let paths = sumami_service::config::Paths::new(
+                Some(cli.dir.clone()),
+                cli.db.clone(),
+                &cli.backend,
+            );
 
             let options = seed::SeedOptions {
                 website,
@@ -269,14 +389,27 @@ pub fn run() -> Result<()> {
                 visitors_per_day: visitors,
             };
 
-            let db = sumami_service::pool::Db::open(&path, "256MB")
-                .map_err(|err| anyhow!("opening {}: {err}", path.display()))?;
+            // The seed goes through the storage backend, so the same data lands in
+            // DuckDB, in SQLite and in PostgreSQL — and the numbers agree.
+            let storage: Box<dyn sumami_service::storage::Storage> =
+                match cli.backend.to_ascii_lowercase().as_str() {
+                    "duckdb" => Box::new(
+                        sumami_service::pool::Db::open(&paths.data, "256MB")
+                            .map_err(|err| anyhow!("opening {}: {err}", paths.data.display()))?,
+                    ),
+                    "sqlite" => Box::new(
+                        sumami_service::sqlite::SqliteBackend::open(&paths.data)
+                            .map_err(|err| anyhow!("opening {}: {err}", paths.data.display()))?,
+                    ),
+                    other => {
+                        return Err(anyhow!("unknown backend '{other}' (duckdb, sqlite)"));
+                    }
+                };
 
-            let (website_id, sessions, events) = db
-                .with_write(|conn| seed::seed(conn, &options))
+            let (website_id, views, events) = seed::seed(storage.as_ref(), &options)
                 .map_err(|err| anyhow!("{err}"))?;
 
-            println!("seeded {sessions} sessions and {events} events");
+            println!("seeded {views} page views and {events} events");
             println!("website: {website_id}");
             println!("start the server and open the dashboard to see it");
             Ok(())
