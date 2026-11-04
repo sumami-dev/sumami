@@ -50,6 +50,18 @@ sumimi.track("signup", { plan: "pro" });
 The tracker itself is still one file of plain JavaScript, served by the server
 at `/sumimi.js` — the package injects it and hands the calls over.
 
+## The analytics, as tools an agent can call
+
+```bash
+sumimi mcp --url http://127.0.0.1:3000 --token '...'   # or: --db ./sumimi/data.duckdb
+```
+
+`sumimi mcp` speaks the [Model Context Protocol](https://modelcontextprotocol.io)
+over stdio, with **three tools**: `sumimi_report` (the numbers), `sumimi_record`
+(log an event) and `sumimi_ask` (ask a question in plain language). There are
+**no write tools** — nothing creates a website, changes a setting or erases
+anything.
+
 ## Install
 
 ```bash

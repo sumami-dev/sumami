@@ -94,6 +94,79 @@ fn the_window_is_read_from_the_question() {
     assert_eq!(intent.range.end, now);
 }
 
+/// "This week" is this week — from Monday until now.
+///
+/// It used to be the week **before** this one: the window ended at the start
+/// of the week instead of at now, so a question about this week answered with
+/// the numbers of the week before it.
+#[test]
+fn this_week_is_this_week() {
+    // The fixed "now" is a Thursday.
+    let now = now();
+    let monday = chrono::NaiveDate::from_ymd_opt(2025, 12, 29)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+
+    let intent = analyst::parse("how many page views this week", now);
+    assert_eq!(intent.range.start, monday);
+    assert_eq!(intent.range.end, now);
+
+    // The answer holds the page views of this week — the three of them, not
+    // the one from ten days ago.
+    let (db, website) = database("this-week");
+    let answer = analyst::ask(&db, &website, "how many page views this week", now).unwrap();
+    assert_eq!(
+        answer.facts.summary.as_ref().unwrap().pageviews.value,
+        3,
+        "{}",
+        answer.text
+    );
+}
+
+/// "Last week" is the week before this one.
+#[test]
+fn last_week_is_the_week_before() {
+    let now = now();
+    let monday = chrono::NaiveDate::from_ymd_opt(2025, 12, 29)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+    let last_monday = chrono::NaiveDate::from_ymd_opt(2025, 12, 22)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+
+    let intent = analyst::parse("how many page views last week", now);
+    assert_eq!(intent.range.start, last_monday);
+    assert_eq!(intent.range.end, monday);
+}
+
+/// "This month" is this month, and "last month" is the calendar month before it.
+#[test]
+fn the_months_are_the_months() {
+    let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 15)
+        .unwrap()
+        .and_hms_opt(12, 0, 0)
+        .unwrap();
+    let january = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+    let december = chrono::NaiveDate::from_ymd_opt(2025, 12, 1)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+
+    let intent = analyst::parse("how many page views this month", now);
+    assert_eq!(intent.range.start, january);
+    assert_eq!(intent.range.end, now);
+
+    let intent = analyst::parse("how many page views last month", now);
+    assert_eq!(intent.range.start, december);
+    assert_eq!(intent.range.end, january);
+}
+
 /// The metric comes from the question.
 #[test]
 fn the_metric_is_read_from_the_question() {

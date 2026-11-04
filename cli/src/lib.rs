@@ -7,6 +7,7 @@
 
 pub mod backup;
 mod gsc;
+pub mod mcp;
 mod output;
 pub mod seed;
 mod source;
@@ -201,6 +202,19 @@ enum Command {
         #[arg(long)]
         password: Option<String>,
     },
+    /// Run the MCP server: the analytics as tools an agent can call.
+    ///
+    /// It speaks JSON-RPC over stdio, the way an MCP client expects, and
+    /// offers three tools: `sumimi_report` (the numbers), `sumimi_record`
+    /// (log an event) and `sumimi_ask` (ask a question).
+    ///
+    /// With `--url` it talks to a running server; with `--db` (or the default
+    /// instance directory) it reads a local database.
+    Mcp {
+        /// The website the tools work on, when a call does not name one.
+        #[arg(long, env = "SUMIMI_MCP_WEBSITE")]
+        website: Option<String>,
+    },
 }
 
 /// The Search Console commands.
@@ -342,6 +356,34 @@ pub fn run() -> Result<()> {
                 println!("logged in to {base}");
             }
             Ok(())
+        }
+        Command::Mcp { website } => {
+            // **stdout belongs to the protocol** — nothing else may be printed
+            // there, or the client cannot read the answers.
+            let (source, writable) = match &cli.url {
+                Some(url) => {
+                    let source = Source::remote(
+                        url,
+                        cli.token.as_deref(),
+                        cli.username.as_deref(),
+                        cli.password.as_deref(),
+                    )?;
+                    (source, true)
+                }
+                None => {
+                    // The data file of the instance — the same one the server
+                    // writes to.
+                    let paths = sumimi_service::config::Paths::new(
+                        Some(cli.dir.clone()),
+                        cli.db.clone(),
+                        &cli.backend,
+                    );
+                    mcp::open_local(&paths.data)?
+                }
+            };
+
+            let server = mcp::Server::new(source, writable, website);
+            server.run()
         }
         Command::Gsc(command) => match command {
             GscCommand::Import { file, website } => {

@@ -267,6 +267,11 @@ pub fn router(state: AppState) -> Router {
             "/api/chat/sessions/{id}/ask",
             post(admin::ask),
         )
+        // The one-shot question: the analyst, without the conversation.
+        .route(
+            "/api/websites/{id}/ask",
+            post(admin::ask_website),
+        )
         .route(
             "/api/cache",
             get(admin::cache_stats).delete(admin::purge_cache),

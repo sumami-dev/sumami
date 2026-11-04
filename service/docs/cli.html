@@ -361,6 +361,51 @@ sumimi uptime --website 3f2a... --check-all</code></pre>
       the problem.
     </p>
 
+    <h2>The MCP server</h2>
+    <p>
+      <code>sumimi mcp</code> speaks the
+      <a href="https://modelcontextprotocol.io">Model Context Protocol</a>: JSON-RPC 2.0
+      over stdio, the way an MCP client expects. It offers the analytics as
+      <strong>three tools</strong> — the numbers, a question, and a way to record an
+      event:
+    </p>
+    <table>
+      <thead>
+        <tr><th>tool</th><th>what it does</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>sumimi_report</code></td>
+          <td>Run a report — the summary, the top pages, the traffic sources, the
+            breakdowns, the sessions, the time series — and get the numbers as JSON.</td>
+        </tr>
+        <tr>
+          <td><code>sumimi_record</code></td>
+          <td>Record a page view or a custom event, through the same endpoint the
+            tracker posts to.</td>
+        </tr>
+        <tr>
+          <td><code>sumimi_ask</code></td>
+          <td>Ask a question in plain language and get the answer computed from the
+            database.</td>
+        </tr>
+      </tbody>
+    </table>
+    <pre class="shell"><code><span class="cmt"># against a running server</span>
+sumimi mcp --url http://127.0.0.1:3999 --token '...'
+
+<span class="cmt"># against a local database (read-only when a server holds it)</span>
+sumimi mcp --db ./sumimi/data.duckdb
+
+<span class="cmt"># register it with a client</span>
+claude mcp add sumimi -- sumimi mcp --url http://127.0.0.1:3999 --token '...'</code></pre>
+    <p>
+      There are <strong>no write tools</strong>: nothing creates a website, changes a
+      setting, prunes data or erases anything. The server can look, count and record —
+      and nothing else. Every number it returns comes from the same reports the
+      dashboard runs, so the agent and the owner cannot see different numbers.
+    </p>
+
     <h2>JSON output</h2>
     <p>
       Every command accepts <code>--json</code>, which is what you want in a script:

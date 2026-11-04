@@ -642,6 +642,27 @@
     </details>
 
     <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/websites/:id/ask</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The same assistant, without the conversation: one question, one answer, nothing
+          written down. It is what the MCP server calls.
+        </p>
+        <pre class="shell"><code>curl -X POST http://127.0.0.1:3999/api/websites/3f2a.../ask \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{ "question": "how many visitors in the last 30 days?" }'</code></pre>
+        <pre class="shell"><code>{
+  "text": "Over the last 30 days: 1,204 visitors.",
+  "facts": { "metric": "visitors", "summary": { ... } },
+  "report": "summary"
+}</code></pre>
+        <p>
+          The website may be named by its id or by its domain.
+        </p>
+      </div>
+    </details>
+
+    <details class="endpoint">
       <summary><span class="method get">POST</span> <span class="endpoint-path">/api/teams</span></summary>
       <div class="endpoint-body">
         <p>

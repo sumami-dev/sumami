@@ -635,6 +635,38 @@ In HTTP mode the equivalent destructive operations go through the authenticated 
 Flags common to all subcommands: `--from`, `--to` (ISO date or relative like `7d`),
 `--json`, `--limit <n>` (default 50), `--no-color`.
 
+### 4.4a cli/src/mcp.rs — the MCP server
+
+`sumimi mcp` speaks the **Model Context Protocol**: JSON-RPC 2.0 over stdio, one
+message per line. It is the same program as the rest of the CLI — the same
+reports, the same analyst — with three tools:
+
+| tool | what it does |
+| --- | --- |
+| `sumimi_report` | run a report (the summary, the top pages, the breakdowns, the sessions, the time series) |
+| `sumimi_record` | record a page view or a custom event |
+| `sumimi_ask` | ask a question and get the answer computed from the database |
+
+**There are no write tools.** Nothing creates a website, changes a setting, prunes
+data or erases anything. The server can look, count and record — recording is the
+one thing that writes, because it is what the tracker does. (This is a scope
+decision, not an omission: see §6.)
+
+The rules:
+
+* **stdout belongs to the protocol.** Nothing else may be printed there; diagnostics
+  go to stderr. A stray `println!` breaks every client.
+* **The numbers come from the same code the dashboard uses** — `reports` and
+  `analyst` — so the agent and the owner cannot see different numbers.
+* **A tool that fails is not a broken protocol**: the failure comes back as the
+  content of the tool result with `isError: true`, so the model can read it. Only
+  protocol problems (an unknown method, an unknown tool) are JSON-RPC errors.
+* The protocol version the client asks for is echoed back when it is one this
+  server knows (`2025-06-18`, `2025-03-26`, `2024-11-05`); otherwise the newest
+  one is returned and the client decides.
+* In HTTP mode the questions go to `POST /api/websites/:id/ask` — the analyst
+  without a conversation. In local mode the analyst is called in-process.
+
 ### 4.5 js/ — the tracker and the dashboard frontend
 
 Two independent, **dependency-free** files (no build step, no npm, no bundler):

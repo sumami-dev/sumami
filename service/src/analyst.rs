@@ -453,13 +453,14 @@ fn window(text: &str, chinese: bool, now: NaiveDateTime) -> TimeRange {
         };
     }
     if text.contains("this week") {
-        let end = start_of_week(now);
+        // This week: from Monday until now.
         return TimeRange {
-            start: end - day * 7,
-            end,
+            start: start_of_week(now),
+            end: now,
         };
     }
     if text.contains("last week") {
+        // Last week: the seven days before this one.
         let end = start_of_week(now);
         return TimeRange {
             start: end - day * 7,
@@ -467,18 +468,22 @@ fn window(text: &str, chinese: bool, now: NaiveDateTime) -> TimeRange {
         };
     }
     if text.contains("this month") {
-        let end = start_of_month(now);
+        // This month: from the first until now.
         return TimeRange {
-            start: end - day * 30,
-            end,
+            start: start_of_month(now),
+            end: now,
         };
     }
     if text.contains("last month") {
+        // Last month: the calendar month before this one.
         let end = start_of_month(now);
-        return TimeRange {
-            start: end - day * 30,
-            end,
-        };
+        let previous = end.date().pred_opt().unwrap_or(end.date());
+        let start = previous
+            .with_day(1)
+            .unwrap_or(previous)
+            .and_hms_opt(0, 0, 0)
+            .unwrap_or(end);
+        return TimeRange { start, end };
     }
     if let Some(days) = days_after(text, &["last", "past", "previous"]) {
         return TimeRange {

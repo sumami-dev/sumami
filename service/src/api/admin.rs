@@ -276,6 +276,39 @@ pub struct AskRequest {
     pub website: Option<String>,
 }
 
+/// `POST /api/websites/{id}/ask` — ask a question, get an answer.
+///
+/// The one-shot version of the chat: the same analyst, without the
+/// conversation. A question does not have to be a conversation — an agent asks
+/// one and gets the numbers back.
+///
+/// The website may be named by its id or by its domain.
+pub async fn ask_website(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<AskRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let question = request.question.trim();
+    if question.is_empty() {
+        return Err(ApiError::BadRequest("the question is empty".into()));
+    }
+
+    let meta = state.website_meta(&id)?;
+
+    let answer = crate::analyst::ask(
+        state.storage.as_ref(),
+        &meta.id,
+        question,
+        crate::db::now(),
+    )?;
+
+    Ok(Json(serde_json::json!({
+        "text": answer.text,
+        "facts": answer.facts,
+        "report": answer.report,
+    })))
+}
+
 /// `POST /api/chat/sessions/{id}/ask` — ask a question, get an answer.
 ///
 /// The question is turned into a report, the report is run, and the answer is
