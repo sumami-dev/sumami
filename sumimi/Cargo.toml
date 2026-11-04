@@ -22,10 +22,17 @@ name = "sumimi"
 path = "src/bin/sumimi.rs"
 
 [features]
-default = ["duckdb-static"]
+default = ["tls", "duckdb-static"]
 # Static DuckDB: the executable is self-contained (one file to deploy).
 # Build with --no-default-features to link libduckdb dynamically instead.
-duckdb-static = ["sumimi-service/duckdb-static"]
+#
+# The features of the two crates below are off by default and forwarded by
+# name: `--no-default-features` has to really be smaller, and it has to really
+# be able to leave the ACME stack out.
+tls = ["sumimi-service/tls"]
+duckdb-static = ["sumimi-service/duckdb-static", "sumimi-cli/duckdb-static"]
+# The dynamic build: the prebuilt library is downloaded, not compiled.
+duckdb-dynamic = ["sumimi-service/duckdb-dynamic", "sumimi-cli/duckdb-dynamic"]
 
 [dependencies]
 anyhow.workspace = true
@@ -35,8 +42,8 @@ tokio.workspace = true
 #
 # The versions are needed for publishing: the paths are used locally, and the
 # versions are what the published crate depends on.
-sumimi-service = { path = "../service", version = "0.2.0" }
-sumimi-cli = { path = "../cli", version = "0.2.0" }
+sumimi-service = { path = "../service", version = "0.2.0", default-features = false }
+sumimi-cli = { path = "../cli", version = "0.2.0", default-features = false }
 
 [dev-dependencies]
 # The tests run the real executable: one sends it a real SIGTERM, the other

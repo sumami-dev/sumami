@@ -25,12 +25,23 @@ release:
 	CARGO_HTTP_TIMEOUT=$(CARGO_HTTP_TIMEOUT) $(CARGO) build --release
 
 ## Build (release) with a dynamically linked DuckDB: smaller, needs libduckdb.
+##
+## The binary looks for the library next to itself (`@loader_path` / `$ORIGIN`),
+## so the release is still a directory you can copy as a whole.
+##
+## The downloaded library is a universal binary (x86_64 + arm64) — the slice for
+## this machine is kept, which halves it.
 build-small:
-	CARGO_HTTP_TIMEOUT=$(CARGO_HTTP_TIMEOUT) $(CARGO) build --release --no-default-features
+	CARGO_HTTP_TIMEOUT=$(CARGO_HTTP_TIMEOUT) $(CARGO) build --release --no-default-features --features duckdb-dynamic
 	@set -e; \
 	dir=$$(ls -d target/duckdb-download/*/$(DUCKDB_VERSION) 2>/dev/null | head -1); \
 	if [ -n "$$dir" ]; then \
-		cp -f $$dir/libduckdb.* $(TARGET)/ 2>/dev/null || true; \
+		for lib in $$dir/libduckdb.*; do \
+			cp -f $$lib $(TARGET)/; \
+			if command -v lipo >/dev/null 2>&1; then \
+				lipo $$lib -thin $$(uname -m) -output $(TARGET)/$$(basename $$lib) 2>/dev/null || true; \
+			fi; \
+		done; \
 		echo "libduckdb copied from $$dir"; \
 	fi
 

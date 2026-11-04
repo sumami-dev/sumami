@@ -26,6 +26,9 @@ tls = ["dep:rustls-acme", "dep:axum-server", "dep:tokio-stream"]
 # Static DuckDB: the executable is self-contained (one file to deploy).
 # Build with --no-default-features to link libduckdb dynamically instead.
 duckdb-static = ["duckdb/bundled"]
+# Dynamic DuckDB: the build downloads the prebuilt library instead of
+# compiling it. The binary is much smaller, and it needs libduckdb next to it.
+duckdb-dynamic = ["duckdb/download-lib"]
 
 [dependencies]
 anyhow.workspace = true

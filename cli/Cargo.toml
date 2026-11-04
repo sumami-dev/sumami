@@ -20,7 +20,12 @@ path = "src/lib.rs"
 default = ["duckdb-static"]
 # Static DuckDB: the executable is self-contained (one file to deploy).
 # Build with --no-default-features to link libduckdb dynamically instead.
-duckdb-static = ["duckdb/bundled"]
+#
+# The feature is forwarded to the service crate: the service links DuckDB too,
+# and one crate can only be built one way.
+duckdb-static = ["duckdb/bundled", "sumimi-service/duckdb-static"]
+# The dynamic build: the prebuilt library is downloaded, not compiled.
+duckdb-dynamic = ["duckdb/download-lib", "sumimi-service/duckdb-dynamic"]
 
 [dependencies]
 anyhow.workspace = true
@@ -37,4 +42,8 @@ uuid = { version = "1", features = ["v4"] }
 #
 # The version is needed for publishing: the path is used locally, and the
 # version is what the published crate depends on.
-sumimi-service = { path = "../service", version = "0.2.0" }
+#
+# The default features are off and the ones that matter are forwarded by name:
+# the client does not need the ACME stack, and `--no-default-features` has to
+# really be smaller.
+sumimi-service = { path = "../service", version = "0.2.0", default-features = false }
