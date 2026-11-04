@@ -16,6 +16,18 @@ use std::time::Instant;
 use duckdb::Connection;
 
 
+/// A UUID from a text expression — the same shape the server hands out.
+///
+/// The ids are 128-bit and stored in **every** row, so how they are written
+/// matters more than anything else in this file.
+fn uuid(text: &str) -> String {
+    format!(
+        "CAST(substr(md5({text}), 1, 8) || '-' || substr(md5({text}), 9, 4) || '-' || \
+         substr(md5({text}), 13, 4) || '-' || substr(md5({text}), 17, 4) || '-' || \
+         substr(md5({text}), 21, 12) AS UUID)"
+    )
+}
+
 /// The apples-to-apples number.
 ///
 /// The PostgreSQL comparison (issue #23) was measured on a dataset whose ids are
@@ -36,7 +48,7 @@ fn parity() -> anyhow::Result<()> {
             "CREATE TABLE event ({ddl});
              INSERT INTO event
              SELECT
-               i, 'w1', md5((1 + (i / 2))::text || '-s'), md5((i % 3000)::text || '-v'),
+               i, 'w1', {session}, {visitor},
                now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE,
                '/post/' || (i % 5000)::VARCHAR,
                'utm_source=twitter&utm_campaign=spring&utm_medium=cpc',
@@ -57,7 +69,9 @@ fn parity() -> anyhow::Result<()> {
                400.0 + (i % 900), 60.0 + (i % 220),
                'pageview', NULL, NULL, NULL
              FROM generate_series(1, {rows}) t(i);",
-            ddl = sumami_service::db::EVENT_COLUMNS
+            ddl = sumami_service::db::EVENT_COLUMNS,
+            session = uuid("md5((1 + (i / 2))::text || '-s')"),
+            visitor = uuid("md5((i % 3000)::text || '-v')"),
         ))?;
         conn.execute_batch("CHECKPOINT")?;
         let size = std::fs::metadata(&path)?.len();
@@ -143,10 +157,18 @@ fn build_ids(
 ) -> anyhow::Result<f64> {
     let conn = Connection::open(path)?;
     let ddl = sumami_service::db::EVENT_COLUMNS
-        .replace("session_id      VARCHAR NOT NULL", &format!("session_id      {id_type} NOT NULL"))
-        .replace("visitor_id      VARCHAR NOT NULL", &format!("visitor_id      {id_type} NOT NULL"));
+        .replace(
+            "session_id      UUID NOT NULL",
+            &format!("session_id      {id_type} NOT NULL"),
+        )
+        .replace(
+            "visitor_id      UUID NOT NULL",
+            &format!("visitor_id      {id_type} NOT NULL"),
+        );
     conn.execute_batch(&format!("CREATE TABLE event ({ddl});"))?;
 
+    // The three forms the ids are measured in: a short text, the 36-character
+    // text the server sends, and the 16 bytes it stores.
     let (session, visitor) = match style {
         "uuid" => (
             // The same shape the server produces: 8-4-4-4-12 hex.
@@ -299,37 +321,42 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// What does the v2 → v3 migration do to the file?
+/// What does the v3 → v4 migration do to the file?
 ///
-/// The v2 database has a primary key on `event`, so it carries a persisted ART
-/// index. The migration rebuilds the table without it — but DuckDB frees the blocks
-/// of a dropped table instead of truncating the file, so the question is whether
-/// the space is actually given back.
+/// The v3 database stores the session and visitor ids as **text**; v4 stores
+/// them as 16-byte UUIDs. The migration rewrites the file — DuckDB frees the
+/// blocks of a dropped table instead of truncating the file, so the question is
+/// whether the space is actually given back.
 fn migration() -> anyhow::Result<()> {
-    println!("=== the v2 -> v3 migration ===");
+    println!("=== the v3 -> v4 migration ===");
     let dir = std::env::temp_dir().join("sumami-row-cost-migrate");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
 
-    let path = dir.join("v2.duckdb");
+    let path = dir.join("v3.duckdb");
     {
         let conn = Connection::open(&path)?;
-        // The v2 schema: the same table, with a primary key.
-        let ddl = sumami_service::db::EVENT_COLUMNS.replace(
-            "id              BIGINT NOT NULL",
-            "id              BIGINT PRIMARY KEY",
-        );
+        // The v3 schema: the same table, with the ids as text.
+        let ddl = sumami_service::db::EVENT_COLUMNS
+            .replace(
+                "session_id      UUID NOT NULL",
+                "session_id      VARCHAR NOT NULL",
+            )
+            .replace(
+                "visitor_id      UUID NOT NULL",
+                "visitor_id      VARCHAR NOT NULL",
+            );
         conn.execute_batch(&format!("CREATE TABLE event ({ddl});"))?;
         conn.execute_batch(
             "CREATE TABLE meta (key VARCHAR PRIMARY KEY, value VARCHAR);
-             INSERT INTO meta VALUES ('schema_version', '2');",
+             INSERT INTO meta VALUES ('schema_version', '3');",
         )?;
-        fill(&conn, &levels()[1], 100_000)?;
+        fill_text(&conn, &levels()[1], 100_000)?;
         conn.execute_batch("CHECKPOINT")?;
     }
 
     let before = std::fs::metadata(&path)?.len();
-    println!("  a v2 database with 100000 views: {}", fmt_bytes(before));
+    println!("  a v3 database with 100000 views: {}", fmt_bytes(before));
 
     // Opening it migrates it: the file is rebuilt and swapped in.
     {
@@ -362,7 +389,8 @@ fn migration() -> anyhow::Result<()> {
 }
 
 /// Fill the event table with a dataset of the given level.
-fn fill(conn: &Connection, level: &Level, rows: i64) -> anyhow::Result<()> {
+/// Fill the table with the ids as **text** — what a v3 database holds.
+fn fill_text(conn: &Connection, level: &Level, rows: i64) -> anyhow::Result<()> {
     let sql = format!(
         "INSERT INTO event
          SELECT
@@ -391,6 +419,47 @@ fn fill(conn: &Connection, level: &Level, rows: i64) -> anyhow::Result<()> {
          FROM generate_series(1, {rows}) t(i);",
         session = level.session,
         visitor = level.visitor,
+        url = level.url,
+        utm = level.utm,
+        title = level.title,
+        referrer = level.referrer,
+        query = level.query,
+        host = level.host,
+        click = level.click,
+    );
+    conn.execute_batch(&sql)?;
+    Ok(())
+}
+
+fn fill(conn: &Connection, level: &Level, rows: i64) -> anyhow::Result<()> {
+    let sql = format!(
+        "INSERT INTO event
+         SELECT
+           i, 'w1', {session}, {visitor},
+           now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE,
+           {url},
+           'utm_source=' || {utm} || '&utm_medium=cpc&utm_campaign=campaign-' || (i % 200)::VARCHAR
+             || '&utm_content=cta&utm_term=term',
+           {title},
+           (ARRAY['news.ycombinator.com','www.google.com','github.com','x.com'])[1 + (i % 4)],
+           {referrer}, {query}, '{host}',
+           (ARRAY['Chrome','Safari','Firefox','Edge'])[1 + (i % 4)], '120',
+           (ARRAY['Windows','macOS','iOS','Android'])[1 + (i % 4)], '10',
+           (ARRAY['desktop','mobile','tablet'])[1 + (i % 3)],
+           (ARRAY['1920x1080','390x844','768x1024'])[1 + (i % 3)],
+           (ARRAY['en-US','zh-CN','de-DE'])[1 + (i % 3)],
+           (ARRAY['US','CN','DE','JP'])[1 + (i % 4)], NULL, NULL,
+           {utm}, 'cpc', 'campaign-' || (i % 200)::VARCHAR,
+           'cta-' || (i % 20)::VARCHAR, 'term-' || (i % 50)::VARCHAR,
+           {click},
+           CASE WHEN i % 11 = 0 THEN 'fbclid-' || i::VARCHAR ELSE NULL END,
+           NULL, NULL, NULL, NULL,
+           600.0 + (i % 1800), 30.0 + (i % 260), (i % 100) / 1000.0,
+           400.0 + (i % 900), 60.0 + (i % 220),
+           'pageview', NULL, NULL, NULL
+         FROM generate_series(1, {rows}) t(i);",
+        session = uuid(&level.session),
+        visitor = uuid(&level.visitor),
         url = level.url,
         utm = level.utm,
         title = level.title,

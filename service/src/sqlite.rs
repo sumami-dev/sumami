@@ -192,6 +192,19 @@ CREATE TABLE IF NOT EXISTS meta (
         self.with_connection(f)
     }
 
+    /// Move the write-ahead log into the database file.
+    ///
+    /// SQLite keeps the recent writes in a separate file (`…-wal`) until it is
+    /// checkpointed. That is what makes it fast, but it means **the file on disk
+    /// is not the whole database** — a copy of it can be missing the newest rows.
+    /// Checkpointing is what a backup does before it copies the file.
+    pub fn checkpoint(&self) -> Result<()> {
+        self.with_connection(|conn| {
+            conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+            Ok(())
+        })
+    }
+
     /// Run `f` with a connection from the reader pool.
     ///
     /// This is what the dashboard uses: the request takes a connection, reads and
