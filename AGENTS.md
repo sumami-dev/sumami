@@ -412,10 +412,12 @@ index_probe -p sumami-service`):
 
 | | with `PRIMARY KEY` | without |
 | --- | ---: | ---: |
-| disk, 2000000 rows | +16.3 MB (**+8.1 B/row**) | — |
+| disk, the real 42-column schema, 20000000 rows | +161 MB (**+8.05 B/row**) | — |
 | disk, the real 42-column schema, 100000 views | +1.0 MB (**+10.5 B/浏览**) | — |
-| append | +9% | — |
-| the dashboard query | identical plan, identical time | — |
+| append (the server's path) | +1.5% | — |
+| peak RSS while serving (20000000 and 60000000 rows) | **the same** | — |
+| a bulk `INSERT … SELECT` under a 128 MB limit | **out of memory** | 17.8 s, fine |
+| the 15 dashboard queries | 0.92–1.07x — **noise** | — |
 
 DuckDB 2.0 **persists** the ART index of a primary key to disk, and it enforces the
 uniqueness constraint on every single row. The ids are handed out by the writer
@@ -423,6 +425,19 @@ uniqueness constraint on every single row. The ids are handed out by the writer
 constraint protects nothing. The small dimension tables (`website`, `meta`, `user`)
 keep their keys — they hold a handful of rows, and `meta` needs its primary key for
 `ON CONFLICT` to work.
+
+**What this is *not*.** Removing the primary key does **not** make queries faster
+(the index was never in a plan) and it does **not** lower the memory the server
+holds: the ART index of a *monotonic* key is a radix tree that collapses to almost
+nothing in RAM — the peak RSS is the same with and without it, at 20M and at 60M
+rows. What it does buy:
+
+* **8 bytes of disk per row** — about 7% of a live database;
+* **the bulk path fits in a small memory budget.** A single
+  `INSERT … SELECT` (what the schema migration, the seed and any import do) runs
+  out of memory at a 128 MB limit **with** the primary key, at 20M and at 60M
+  rows, and completes without it. That matters: the migration that upgrades an
+  older database is itself a bulk copy.
 
 **How many bytes a page view costs** (`cargo run --release --example row_cost -p
 sumami-service`, the real schema, 100000 views):
