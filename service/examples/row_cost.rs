@@ -15,7 +15,69 @@ use std::time::Instant;
 
 use duckdb::Connection;
 
+
+/// The apples-to-apples number.
+///
+/// The PostgreSQL comparison (issue #23) was measured on a dataset whose ids are
+/// `md5(...)` — 32 characters each. This measures **the same dataset** on our side,
+/// so the ratio means something.
+fn parity() -> anyhow::Result<()> {
+    println!("=== the same dataset the PostgreSQL comparison used ===");
+    let dir = std::env::temp_dir().join("sumami-row-cost-parity");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+
+    let mut sizes = Vec::new();
+    for rows in [100_000i64, 1_000_000] {
+        let path = dir.join(format!("parity-{rows}.duckdb"));
+        let conn = Connection::open(&path)?;
+        // The real schema: the same 42 columns, the same expressions.
+        conn.execute_batch(&format!(
+            "CREATE TABLE event ({ddl});
+             INSERT INTO event
+             SELECT
+               i, 'w1', md5((1 + (i / 2))::text || '-s'), md5((i % 3000)::text || '-v'),
+               now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE,
+               '/post/' || (i % 5000)::VARCHAR,
+               'utm_source=twitter&utm_campaign=spring&utm_medium=cpc',
+               'A reasonably long article title number ' || (i % 2000)::VARCHAR,
+               (ARRAY['news.ycombinator.com','www.google.com','github.com','x.com'])[1 + (i % 4)],
+               '/ref/path/' || (i % 1000)::VARCHAR, '?q=search+' || (i % 500)::VARCHAR, 'example.com',
+               (ARRAY['Chrome','Safari','Firefox','Edge'])[1 + (i % 4)], '120',
+               (ARRAY['Windows','macOS','iOS','Android'])[1 + (i % 4)], '10',
+               (ARRAY['desktop','mobile','tablet'])[1 + (i % 3)], (ARRAY['1920x1080','390x844','768x1024'])[1 + (i % 3)],
+               (ARRAY['en-US','zh-CN','de-DE'])[1 + (i % 3)],
+               (ARRAY['US','CN','DE','JP'])[1 + (i % 4)], NULL, NULL,
+               (ARRAY['twitter','newsletter','google','hn'])[1 + (i % 4)], 'cpc', 'spring',
+               'cta-' || (i % 5)::VARCHAR, 'analytics',
+               CASE WHEN i % 9 = 0 THEN 'gclid-' || i::VARCHAR ELSE NULL END,
+               CASE WHEN i % 11 = 0 THEN 'fbclid-' || i::VARCHAR ELSE NULL END,
+               NULL, NULL, NULL, NULL,
+               600.0 + (i % 1800), 30.0 + (i % 260), (i % 100) / 1000.0,
+               400.0 + (i % 900), 60.0 + (i % 220),
+               'pageview', NULL, NULL, NULL
+             FROM generate_series(1, {rows}) t(i);",
+            ddl = sumami_service::db::EVENT_COLUMNS
+        ))?;
+        conn.execute_batch("CHECKPOINT")?;
+        let size = std::fs::metadata(&path)?.len();
+        println!("  {rows:>9} views -> {:>8.2} MB", size as f64 / 1e6);
+        sizes.push(size);
+    }
+
+    let marginal = (sizes[1] as f64 - sizes[0] as f64) / (1_000_000 - 100_000) as f64;
+    println!();
+    println!("  our marginal cost:      {marginal:.1} B/浏览");
+    println!("  PostgreSQL marginal:    4750.0 B/浏览");
+    println!("  ratio:                  {:.0}x", 4750.0 / marginal);
+    println!();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
 /// The three levels of realism.
+#[derive(Clone)]
 struct Level {
     name: &'static str,
     /// How many distinct URLs the traffic uses.
@@ -40,6 +102,109 @@ struct Level {
     visitor: String,
     /// The hostname.
     host: &'static str,
+}
+
+
+/// The ids the server really hands out are 128-bit UUIDs — 36 characters each, and
+/// they are stored in **every** row. How much does that cost, and what would the
+/// DuckDB `UUID` type (16 bytes) cost instead?
+fn ids() -> anyhow::Result<()> {
+    println!("=== the cost of the session/visitor ids ===");
+    let dir = std::env::temp_dir().join("sumami-row-cost-ids");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    let level = levels()[1].clone();
+    let rows = 100_000i64;
+
+    // A short id: what the seed and the benchmarks use.
+    let short = build_ids(&dir.join("short.duckdb"), &level, rows, "VARCHAR", "short")?;
+    // The real thing: a 36-character UUID.
+    let uuid_text = build_ids(&dir.join("uuid.duckdb"), &level, rows, "VARCHAR", "uuid")?;
+    // The same value, but stored as the 16-byte DuckDB UUID type.
+    let uuid_bin = build_ids(&dir.join("uuidbin.duckdb"), &level, rows, "UUID", "uuid")?;
+
+    println!();
+    println!("  short ids (the seed):        {:>7.1} B/浏览", short / rows as f64);
+    println!("  UUID text (what the server does): {:>7.1} B/浏览", uuid_text / rows as f64);
+    println!("  UUID type (16 bytes):        {:>7.1} B/浏览", uuid_bin / rows as f64);
+    println!(
+        "  -> the id format costs {:+.1} B/浏览; the UUID type saves {:+.1} B/浏览",
+        uuid_text / rows as f64 - short / rows as f64,
+        uuid_text / rows as f64 - uuid_bin / rows as f64
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
+/// Build the `event` table with the id columns in a given type.
+fn build_ids(
+    path: &std::path::Path,
+    level: &Level,
+    rows: i64,
+    id_type: &str,
+    style: &str,
+) -> anyhow::Result<f64> {
+    let conn = Connection::open(path)?;
+    let ddl = sumami_service::db::EVENT_COLUMNS
+        .replace("session_id      VARCHAR NOT NULL", &format!("session_id      {id_type} NOT NULL"))
+        .replace("visitor_id      VARCHAR NOT NULL", &format!("visitor_id      {id_type} NOT NULL"));
+    conn.execute_batch(&format!("CREATE TABLE event ({ddl});"))?;
+
+    let (session, visitor) = match style {
+        "uuid" => (
+            // The same shape the server produces: 8-4-4-4-12 hex.
+            "substr(md5('s' || (1 + (i / 2))::VARCHAR), 1, 8) || '-' ||
+             substr(md5('s' || (1 + (i / 2))::VARCHAR), 9, 4) || '-' ||
+             substr(md5('s' || (1 + (i / 2))::VARCHAR), 13, 4) || '-' ||
+             substr(md5('s' || (1 + (i / 2))::VARCHAR), 17, 4) || '-' ||
+             substr(md5('s' || (1 + (i / 2))::VARCHAR), 21, 12)",
+            "substr(md5('v' || (i % 30000)::VARCHAR), 1, 8) || '-' ||
+             substr(md5('v' || (i % 30000)::VARCHAR), 9, 4) || '-' ||
+             substr(md5('v' || (i % 30000)::VARCHAR), 13, 4) || '-' ||
+             substr(md5('v' || (i % 30000)::VARCHAR), 17, 4) || '-' ||
+             substr(md5('v' || (i % 30000)::VARCHAR), 21, 12)",
+        ),
+        _ => (
+            "'s' || (1 + (i / 2))::VARCHAR",
+            "'v' || (i % 30000)::VARCHAR",
+        ),
+    };
+
+    let sql = format!(
+        "INSERT INTO event
+         SELECT
+           i, 'w1', {session}, {visitor},
+           now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE,
+           {url},
+           'utm_source=twitter&utm_medium=cpc&utm_campaign=campaign-' || (i % 200)::VARCHAR
+             || '&utm_content=cta&utm_term=term',
+           {title},
+           (ARRAY['news.ycombinator.com','www.google.com','github.com','x.com'])[1 + (i % 4)],
+           {referrer}, {query}, '{host}',
+           (ARRAY['Chrome','Safari','Firefox','Edge'])[1 + (i % 4)], '120',
+           (ARRAY['Windows','macOS','iOS','Android'])[1 + (i % 4)], '10',
+           (ARRAY['desktop','mobile','tablet'])[1 + (i % 3)], (ARRAY['1920x1080','390x844','768x1024'])[1 + (i % 3)],
+           (ARRAY['en-US','zh-CN','de-DE'])[1 + (i % 3)],
+           (ARRAY['US','CN','DE','JP'])[1 + (i % 4)], NULL, NULL,
+           'twitter', 'cpc', 'campaign-' || (i % 200)::VARCHAR,
+           'cta-' || (i % 20)::VARCHAR, 'term-' || (i % 50)::VARCHAR,
+           CASE WHEN i % 3 = 0 THEN 'gclid-' || i::VARCHAR ELSE NULL END,
+           CASE WHEN i % 11 = 0 THEN 'fbclid-' || i::VARCHAR ELSE NULL END,
+           NULL, NULL, NULL, NULL,
+           600.0 + (i % 1800), 30.0 + (i % 260), (i % 100) / 1000.0,
+           400.0 + (i % 900), 60.0 + (i % 220),
+           'pageview', NULL, NULL, NULL
+         FROM generate_series(1, {rows}) t(i);",
+        url = level.url,
+        title = level.title,
+        referrer = level.referrer,
+        query = level.query,
+        host = level.host,
+    );
+    conn.execute_batch(&sql)?;
+    conn.execute_batch("CHECKPOINT")?;
+    Ok(std::fs::metadata(path)?.len() as f64)
 }
 
 /// The three levels.
@@ -139,6 +304,8 @@ fn main() -> anyhow::Result<()> {
 
     let _ = std::fs::remove_dir_all(&dir);
     migration()?;
+    ids()?;
+    parity()?;
     Ok(())
 }
 

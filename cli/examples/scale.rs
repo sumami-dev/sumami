@@ -178,6 +178,32 @@ FROM generate_series(1, {rows}) t(i);
         Ok(format!("{} 行", rows.len()))
     });
 
+    // The summary query is the one the dashboard asks for first, and the one that
+    // builds the biggest hash tables (two DISTINCT aggregates over the window).
+    // DuckDB preserves the insertion order by default, which costs memory on every
+    // aggregate. Measure what turning that off buys.
+    println!();
+    timed("summary (no order)", &|| {
+        backend.with_connection(|conn| {
+            conn.execute_batch("SET preserve_insertion_order=false")?;
+            let m = conn.query_row(
+                "SELECT COUNT(*), COUNT(DISTINCT visitor_id), COUNT(DISTINCT session_id)
+                 FROM event WHERE website_id = 'w1'
+                   AND created_at >= TIMESTAMP '2024-12-01' AND created_at < TIMESTAMP '2024-12-31'",
+                [],
+                |row| {
+                    Ok(format!(
+                        "{} 次浏览 / {} 访客 / {} 会话",
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?
+                    ))
+                },
+            )?;
+            Ok::<_, anyhow::Error>(m)
+        })
+    });
+
     // Extrapolation to the user's scenario.
     println!("\n=== 外推 ===");
     let visits_per_day = 10_000_000f64;

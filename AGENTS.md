@@ -60,13 +60,20 @@ Measured on 10M and 100M row tables (`cli/examples/scale.rs`, event-row schema,
 All of it inside a **128 MB** DuckDB limit. The limit bounds RAM, not history:
 DuckDB reads what it needs, aggregates it and spills the rest.
 
-> **The session log is the slow one.** It is the only panel that has to *derive*
-> sessions from the event table — a hash aggregate over every event in the window,
-> which spills once the window holds more sessions than fit in the budget. At 20M
-> rows it is ~3 s on a 128 MB budget. The obvious fix is to take the most recent
-> N events first (`ORDER BY created_at DESC LIMIT …`) and derive the sessions from
-> those, instead of aggregating the whole window and throwing away all but 50.
-> Not done yet — see the mneme issue.
+> **The session log is the slow one, and the summary breaks at scale.** The session
+> log is the only panel that has to *derive* sessions from the event table — a hash
+> aggregate over every event in the window, which spills once the window holds more
+> sessions than fit in the budget. At 20M rows it is ~3 s; at 100M rows it is ~24 s.
+> The obvious fix is to take the most recent N events first
+> (`ORDER BY created_at DESC LIMIT …`) and derive the sessions from those, instead of
+> aggregating the whole window and throwing away all but 50.
+>
+> At **100M rows the summary query runs out of memory** and the dashboard's first
+> panel fails. The memory goes into the `COUNT(DISTINCT …)` hash tables — the session
+> and visitor ids are 36-character UUID strings, and there are millions of distinct
+> ones in a 30-day window. The fix is to store the ids as DuckDB's 16-byte `UUID`
+> type (which also makes the database ~10% smaller) rather than to approximate the
+> counts. Not done yet — see the mneme issue.
 
 The thread count matters as much as the limit — see `SUMAMI_DUCKDB_THREADS` above.
 Measured on the same 5M-row table, the summary query:
@@ -416,6 +423,22 @@ uniqueness constraint on every single row. The ids are handed out by the writer
 constraint protects nothing. The small dimension tables (`website`, `meta`, `user`)
 keep their keys — they hold a handful of rows, and `meta` needs its primary key for
 `ON CONFLICT` to work.
+
+**How many bytes a page view costs** (`cargo run --release --example row_cost -p
+sumami-service`, the real schema, 100000 views):
+
+| | B/浏览 |
+| --- | ---: |
+| synthetic traffic (a handful of pages, mostly NULL columns) | 42.1 |
+| realistic traffic (long URLs, titles, UTM, click ids) | **86.6** |
+| the worst case (every URL, title and referrer unique) | 209.8 |
+
+Those numbers use the short ids the benchmark scripts use. The **server** hands out
+36-character UUIDs, and the session and visitor id are stored in *every* row — that
+is worth another **34 B/浏览 (42%)**, so the realistic cost of a live site is
+**115.5 B/浏览**. Storing the ids as DuckDB's 16-byte `UUID` type instead of text
+brings it to 105.0, and keeps the API identical (the strings are only formatted at
+the edge). Not done yet — see the mneme issue.
 
 ### 4.4 cli/ — the analyzer (two sources, one UX)
 
