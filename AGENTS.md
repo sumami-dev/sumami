@@ -135,16 +135,15 @@ Slogan: *Count kitties popping into my websites. — 由猫开发*.
 
 ## 1. Repository map
 
-This repository (`sumimi-dev/sumimi`, **public**) is a workspace of six components:
+This repository (`sumimi-dev/sumimi`, **public**) is a workspace of five components:
 
 | Path       | Language       | What it is                                                                 |
 | ---------- | -------------- | -------------------------------------------------------------------------- |
-| `service/` | Rust           | The server library: collection API, stats API, auth, the writer, TLS, **the shared report layer**, **the instance store**. |
+| `service/` | Rust           | The server library: collection API, stats API, auth, the writer, TLS, **the shared report layer**, **the instance store**. Also holds `service/docs/` — the website & documentation, embedded in the binary. |
 | `cli/`     | Rust           | The analysis client. |
 | `sumimi/`  | Rust           | The facade crate: the server and the client as one library, **and the one executable** (`sumimi`: server + client). |
 | `tracker/` | TypeScript     | The tracker package — `@sumimi/tracker` on npm and on JSR. One source (`src/mod.ts`), two registries. |
 | `js/`      | JavaScript     | The tracker (`sumimi.js`) + the dashboard frontend (`sumimi-app.js`). Published on a CDN. |
-| `docs/`    | HTML/Markdown  | The website & documentation served by the service binary.                  |
 
 The Rust crates are members of one Cargo workspace (root `Cargo.toml`). `service/` and
 `cli/` share the schema and the report code by **code sharing**; the `sumimi/` crate is
@@ -308,7 +307,8 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
   Port 443 must reach the process directly; behind a TLS-terminating proxy, let the proxy
   manage the certificate instead.
 * **Static hosting:** the binary serves `service/js/sumimi.js` (embedded at compile time via
-  `include_str!`, ~7 KB) and the docs site from `docs/` (`/docs`).
+  `include_str!`, ~7 KB) and the docs site from `service/docs/` — **embedded in the binary**
+  by `service/build.rs` (~60 KB), with the on-disk copy taking precedence (`/docs`).
   The **dashboard frontend is not in the binary**: the shell at `/` points at a CDN
   (`SUMIMI_APP_URL`, default `https://cdn.jsdelivr.net/gh/sumimi-dev/sumimi@main/js`),
   which serves this public repository directly. Set `SUMIMI_APP_URL=/app` to serve it
@@ -713,16 +713,21 @@ with a constant, and xorshift on zero stays zero — every session came out iden
 (one view, one event each). The seed constant and the mixing constant must stay
 different.
 
-### 4.6 docs/ — the website
+### 4.6 service/docs/ — the website
 
 A static site (plain HTML + one stylesheet, no build step, no npm) served by the service
 binary at `/docs`:
 
-* `docs/index.html` — the landing page (Sumimi branding, cats, install snippet);
-* `docs/install.html`, `self-host.html`, `tracker.html`, `api.html`, `cli.html`,
+* `service/docs/index.html` — the landing page (Sumimi branding, cats, install snippet);
+* `service/docs/install.html`, `self-host.html`, `tracker.html`, `api.html`, `cli.html`,
   `privacy.html`, `faq.html` — the documentation;
-* `docs/assets/style.css` — one stylesheet, light + dark via `prefers-color-scheme`;
-* `docs/assets/CREDITS.md` — the licence record for every asset (all artwork is original).
+* `service/docs/assets/style.css` — one stylesheet, light + dark via `prefers-color-scheme`;
+* `service/docs/assets/CREDITS.md` — the licence record for every asset (all artwork is original).
+
+The site lives **inside the crate** and is **embedded in the binary** by `service/build.rs`
+(about 60 KB): a server installed with `cargo install` has a documentation site without
+anything else to deploy. The on-disk copy still wins at runtime — the release archive
+ships the documentation next to the executable, and a user may have edited it.
 
 Docs are plain HTML on purpose: no Markdown renderer has to be shipped in the binary, and
 the pages work when opened straight from the filesystem.

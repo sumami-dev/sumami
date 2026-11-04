@@ -14,6 +14,12 @@ use crate::api::AppState;
 /// The tracker, embedded in the binary so it is always available at `/sumimi.js`.
 pub const TRACKER_JS: &str = include_str!("../js/sumimi.js");
 
+// The documentation site, embedded in the binary by `build.rs`.
+//
+// A server installed with `cargo install` has no `docs/` directory next to it —
+// this is what makes `/docs` work anyway.
+include!(concat!(env!("OUT_DIR"), "/docs.rs"));
+
 /// The dashboard shell. Deliberately tiny: everything else lives in the frontend JS.
 const APP_SHELL: &str = r#"<!doctype html>
 <html lang="en">
@@ -98,14 +104,13 @@ pub async fn app_asset(State(state): State<AppState>, Path(path): Path<String>) 
 
 /// `GET /docs` — the documentation index.
 pub async fn docs_index(State(state): State<AppState>) -> Response {
-    let file = state.config.docs_dir.join("index.html");
-    match tokio::fs::read(&file).await {
-        Ok(bytes) => (
+    match read_docs(&state, "index.html").await {
+        Some(bytes) => (
             [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
             bytes,
         )
             .into_response(),
-        Err(_) => not_found().await,
+        None => not_found().await,
     }
 }
 
@@ -115,22 +120,52 @@ pub async fn docs_asset(State(state): State<AppState>, Path(path): Path<String>)
         return not_found().await;
     }
 
-    let mut file = state.config.docs_dir.join(&path);
-    if file.is_dir() {
+    match read_docs(&state, &path).await {
+        Some(bytes) => {
+            let mime = mime_for(&path);
+            (
+                [(header::CONTENT_TYPE, mime)],
+                bytes,
+            )
+                .into_response()
+        }
+        None => not_found().await,
+    }
+}
+
+/// Read a file of the documentation site.
+///
+/// The **on-disk** copy comes first: the release archive ships the documentation
+/// next to the executable, and a user may have edited it. The copy **embedded in
+/// the binary** is the fallback, so a server installed with `cargo install`
+/// still has a documentation site.
+async fn read_docs(state: &AppState, path: &str) -> Option<Vec<u8>> {
+    let relative = path.trim_start_matches('/').trim_end_matches('/');
+
+    let mut file = state.config.docs_dir.join(relative);
+    if is_dir(&file).await {
         file = file.join("index.html");
     }
+    if let Ok(bytes) = tokio::fs::read(&file).await {
+        return Some(bytes);
+    }
 
-    let bytes = match tokio::fs::read(&file).await {
-        Ok(bytes) => bytes,
-        Err(_) => return not_found().await,
-    };
+    embedded(relative).or_else(|| embedded(&format!("{relative}/index.html")))
+}
 
-    let mime = mime_for(&path);
-    (
-        [(header::CONTENT_TYPE, mime)],
-        bytes,
-    )
-        .into_response()
+/// A file of the embedded documentation site.
+fn embedded(path: &str) -> Option<Vec<u8>> {
+    DOCS.iter()
+        .find(|(name, _)| *name == path)
+        .map(|(_, bytes)| bytes.to_vec())
+}
+
+/// Whether a path is a directory.
+async fn is_dir(path: &std::path::Path) -> bool {
+    tokio::fs::metadata(path)
+        .await
+        .map(|meta| meta.is_dir())
+        .unwrap_or(false)
 }
 
 /// The 404 page.

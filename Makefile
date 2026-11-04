@@ -63,7 +63,7 @@ package: release
 	cp $(TARGET)/sumimi dist/bundle/; \
 	ln -sf sumimi dist/bundle/sumimi-server; \
 	ln -sf sumimi dist/bundle/sumimi-client; \
-	cp -r js dist/bundle/js; cp -r docs dist/bundle/docs; \
+	cp -r js dist/bundle/js; cp -r service/docs dist/bundle/docs; \
 	tar czf sumimi-v$(VERSION)-$$(uname -s)-$$(uname -m).tar.gz -C dist/bundle .; \
 	echo "wrote sumimi-v$(VERSION)-$$(uname -s)-$$(uname -m).tar.gz"
 

@@ -1,11 +1,11 @@
-# Credits and licences — `docs/`
+# Credits and licences — `service/docs/`
 
-This file is the licence record for everything in the `docs/` directory of the
+This file is the licence record for everything in the `service/docs/` directory of the
 Sumimi repository, as required by the project's design document (AGENTS.md §3).
 
 ## Summary
 
-Everything shipped in `docs/` is **original work** created for the Sumimi project
+Everything shipped in `service/docs/` is **original work** created for the Sumimi project
 and is covered by the project's own MIT licence (`LICENSE` at the root of the
 repository). No third-party artwork, photographs, icon sets, fonts, CSS
 frameworks, JavaScript libraries or tracking scripts are bundled here.
@@ -23,7 +23,7 @@ completely offline.
 | `logo.svg` | The Sumimi paw logo — the canonical source of the brand mark. Four toes and a pad, drawn by hand; no strokes, no gradients, no filters. Every other copy in the repository (the documentation pages, the dashboard frontend, the favicon) is inlined from this file and kept in sync by `service/tests/logo.rs`. | MIT (original work) |
 | `CREDITS.md` | This file. | MIT (original work) |
 
-The HTML pages live one directory up, in `docs/` itself:
+The HTML pages live one directory up, in `service/docs/` itself:
 
 | File | What it is | Licence |
 | ---- | ---------- | ------- |
@@ -38,7 +38,7 @@ The HTML pages live one directory up, in `docs/` itself:
 
 ## Artwork
 
-**All artwork in `docs/` is original.**
+**All artwork in `service/docs/` is original.**
 
 The paw prints and the cat-and-chart illustration are hand-written inline SVG
 embedded directly in the HTML markup. They were drawn for Sumimi as simple
@@ -58,7 +58,7 @@ built from basic strokes and paths.
 
 **No fonts are bundled, downloaded, embedded or referenced.**
 
-The site uses **system font stacks** only, declared in `docs/assets/style.css`:
+The site uses **system font stacks** only, declared in `service/docs/assets/style.css`:
 
 ```css
 --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
@@ -79,15 +79,15 @@ this repository.
 
 The documentation *names* the following third-party projects, because Sumimi is
 built on or compatible with them. None of their code, binaries, assets or
-artwork is included in `docs/`. The names are used nominatively, to identify
+artwork is included in `service/docs/`. The names are used nominatively, to identify
 compatible and comparable products.
 
 | Project | Role | Licence |
 | ------- | ---- | ------- |
-| [DuckDB](https://github.com/duckdb/duckdb) | The embedded analytics database. Version 2.0.0. The `libduckdb.so` / `libduckdb.dylib` shared library is distributed in the **release archive**, not in `docs/`. | MIT |
+| [DuckDB](https://github.com/duckdb/duckdb) | The embedded analytics database. Version 2.0.0. The `libduckdb.so` / `libduckdb.dylib` shared library is distributed in the **release archive**, not in `service/docs/`. | MIT |
 | [Axum](https://github.com/tokio-rs/axum) | The HTTP framework and router used by the `sumimi-server` service. | MIT |
 | [Tokio](https://github.com/tokio-rs/tokio) | The asynchronous runtime used by the service. | MIT / Apache-2.0 |
-| [Umami](https://github.com/umami-software/umami) | The analytics product whose **v2 HTTP API** Sumimi implements for compatibility. The official Umami dashboard is expected to work against a Sumimi server. | MIT (Umami itself; no Umami assets are used in `docs/`) |
+| [Umami](https://github.com/umami-software/umami) | The analytics product whose **v2 HTTP API** Sumimi implements for compatibility. The official Umami dashboard is expected to work against a Sumimi server. | MIT (Umami itself; no Umami assets are used in `service/docs/`) |
 | [Caddy](https://github.com/caddyserver/caddy) | An optional reverse proxy mentioned in the self-hosting guide. Not bundled. | Apache-2.0 |
 | [nginx](https://nginx.org/) | An optional reverse proxy mentioned in the self-hosting guide. Not bundled. | 2-clause BSD |
 | [Let's Encrypt](https://letsencrypt.org/) | The certificate authority whose ACME certificates are described in the self-hosting guide. Not bundled. | Public domain / MPL-2.0 (ACME client libraries vary) |
@@ -108,8 +108,8 @@ Sumimi is an independent open-source project. It is described factually as
 ## Any future additions
 
 If third-party artwork, photographs, icon sets, web fonts or other media are
-ever added to `docs/`, that asset must be listed in this file with its source
+ever added to `service/docs/`, that asset must be listed in this file with its source
 URL, its author and its licence before it is committed. The design document
 (AGENTS.md §3) requires that marketing and documentation assets are either
-original or properly licensed, and that the licence of every asset in `docs/`
+original or properly licensed, and that the licence of every asset in `service/docs/`
 is recorded here.

@@ -29,7 +29,7 @@ An open-source, high-performance alternative to Umami.
 | `sumimi/`  | The facade crate: the server and the client as one library.       |
 | `tracker/` | The tracker package — `@sumimi/tracker` on npm and on JSR.        |
 | `js/`      | The dashboard frontend. The tracker is in `service/js/`.            |
-| `docs/`    | The website and documentation.                                     |
+| `docs/`    | The website and documentation — in `service/docs/`, so the binary carries them. |
 
 [`AGENTS.md`](AGENTS.md) is the design document: architecture, API contract, privacy
 rules, and the conventions every change has to follow.

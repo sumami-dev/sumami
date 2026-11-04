@@ -1,8 +1,8 @@
 //! The logo is defined once and copied into a few places.
 //!
-//! `docs/assets/logo.svg` is the canonical file. The documentation site inlines it and
-//! the dashboard frontend embeds it as a string — if one of them is edited without the
-//! others, the project ends up with two different paws. This test makes that a build
+//! `service/docs/assets/logo.svg` is the canonical file. The documentation site inlines
+//! it and the dashboard frontend embeds it as a string — if one of them is edited without
+//! the others, the project ends up with two different paws. This test makes that a build
 //! failure instead of a design smell.
 
 use std::path::PathBuf;
@@ -15,9 +15,15 @@ fn root() -> PathBuf {
         .to_path_buf()
 }
 
+/// The documentation site — it lives **in this crate**, because it is embedded in
+/// the binary.
+fn docs() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs")
+}
+
 /// The shapes of the canonical logo: everything between `<g ...>` and `</g>`.
 fn canonical_shapes() -> String {
-    let path = root().join("docs/assets/logo.svg");
+    let path = docs().join("assets/logo.svg");
     let svg = std::fs::read_to_string(&path).expect("docs/assets/logo.svg exists");
     let start = svg.find("<g ").expect("the logo has a group");
     let end = svg.find("</g>").expect("the logo has a closed group") + "</g>".len();
@@ -30,7 +36,7 @@ fn every_logo_copy_matches_the_canonical_file() {
     let shapes = canonical_shapes();
 
     // The documentation site.
-    let docs = root().join("docs");
+    let docs = docs();
     let mut pages = 0;
     for entry in std::fs::read_dir(&docs).expect("docs/ exists") {
         let path = entry.expect("a directory entry").path();
