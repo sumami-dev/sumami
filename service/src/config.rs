@@ -129,6 +129,18 @@ pub struct Config {
     pub max_queue: usize,
     /// Seconds between writer flushes.
     pub flush_interval_secs: u64,
+    /// How old a cached report may be, in seconds.
+    ///
+    /// The cache is thrown away whenever the data changes, and the writer
+    /// flushes every couple of seconds — so on a busy site the cache never hit,
+    /// and the dashboard ran the same query over and over. With a window of
+    /// thirty seconds an answer is reused for half a minute: the numbers on the
+    /// screen are at most that old, and the query runs once instead of a
+    /// hundred times.
+    ///
+    /// `0` means "no window": an answer is only served while the data has not
+    /// changed at all.
+    pub cache_stale_secs: i64,
     /// Default retention window in days (`0` = keep forever).
     pub retention_days: i32,
     /// Header used to derive the country code (e.g. `CF-IPCountry`).
@@ -228,6 +240,14 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(2);
 
+        // How old a cached report may be. Thirty seconds is invisible on a
+        // dashboard and turns a hundred queries into one.
+        let cache_stale_secs = std::env::var("SUMAMI_CACHE_STALE_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30)
+            .max(0);
+
         let retention_days = retention_days
             .or_else(|| std::env::var("SUMAMI_RETENTION_DAYS").ok().and_then(|v| v.parse().ok()))
             .unwrap_or(0);
@@ -278,6 +298,7 @@ impl Config {
             duckdb_threads,
             max_queue,
             flush_interval_secs,
+            cache_stale_secs,
             retention_days,
             country_header,
             keep_query,

@@ -250,3 +250,100 @@ fn the_account_round_trips() {
     assert!(account.team_id.is_none());
     assert!(account.created_at.and_utc().timestamp() > 0);
 }
+
+/// A team holds members, and the members' accounts follow it.
+#[test]
+fn a_team_holds_its_members() {
+    let store = store();
+    store.set_password("alice", "hash-alice").unwrap();
+    store.set_password("bob", "hash-bob").unwrap();
+
+    // A team is created.
+    let team = store.create_team("Marketing").unwrap();
+    assert_eq!(team.name, "Marketing");
+    assert_eq!(store.teams().unwrap().len(), 1);
+    assert_eq!(store.team(&team.id).unwrap().unwrap().name, "Marketing");
+
+    // A member is added. The account follows: it is in the team, with the role.
+    let member = store.add_member(&team.id, "alice", "owner").unwrap();
+    assert_eq!(member.username, "alice");
+    assert_eq!(member.role, "owner");
+
+    let account = store.account("alice").unwrap().unwrap();
+    assert_eq!(account.team_id.as_deref(), Some(team.id.as_str()));
+    // The instance role is not the team role: being in a team does not take
+    // the instance rights away.
+    assert_eq!(account.role, "admin");
+
+    // And another one.
+    store.add_member(&team.id, "bob", "member").unwrap();
+    let members = store.members(&team.id).unwrap();
+    assert_eq!(members.len(), 2);
+    // Sorted by name.
+    assert_eq!(members[0].username, "alice");
+    assert_eq!(members[1].username, "bob");
+
+    // The role of a member can be changed.
+    store.add_member(&team.id, "bob", "viewer").unwrap();
+    assert_eq!(store.members(&team.id).unwrap()[1].role, "viewer");
+
+    // A member that does not exist cannot be added.
+    assert!(store.add_member(&team.id, "nobody", "member").is_err());
+    // A role that does not exist cannot be used.
+    assert!(store.add_member(&team.id, "bob", "wizard").is_err());
+    // A team that does not exist cannot hold members.
+    assert!(store.add_member("no-team", "bob", "member").is_err());
+}
+
+/// Removing a member leaves the account alone.
+#[test]
+fn removing_a_member_leaves_the_account() {
+    let store = store();
+    store.set_password("alice", "hash").unwrap();
+    let team = store.create_team("Marketing").unwrap();
+    store.add_member(&team.id, "alice", "member").unwrap();
+
+    assert!(store.remove_member(&team.id, "alice").unwrap());
+    assert!(store.members(&team.id).unwrap().is_empty());
+    // The account is still there, and not in a team any more.
+    let account = store.account("alice").unwrap().unwrap();
+    assert_eq!(account.team_id, None);
+    // Removing twice is not an error, it just does nothing.
+    assert!(!store.remove_member(&team.id, "alice").unwrap());
+}
+
+/// Deleting a team leaves the accounts alone.
+#[test]
+fn deleting_a_team_leaves_the_accounts() {
+    let store = store();
+    store.set_password("alice", "hash").unwrap();
+    let team = store.create_team("Marketing").unwrap();
+    store.add_member(&team.id, "alice", "owner").unwrap();
+
+    assert!(store.delete_team(&team.id).unwrap());
+    assert!(store.teams().unwrap().is_empty());
+    assert!(store.members(&team.id).unwrap().is_empty());
+
+    let account = store.account("alice").unwrap().unwrap();
+    assert_eq!(account.team_id, None);
+    assert!(!store.delete_team(&team.id).unwrap());
+}
+
+/// Resetting a password does not take the role away.
+#[test]
+fn resetting_a_password_keeps_the_role() {
+    let store = store();
+    store.set_password("alice", "hash-1").unwrap();
+    let team = store.create_team("Marketing").unwrap();
+    store.add_member(&team.id, "alice", "viewer").unwrap();
+
+    let account = store.set_password("alice", "hash-2").unwrap();
+    assert_eq!(account.password_hash, "hash-2");
+    assert_eq!(
+        account.role, "admin",
+        "the role belongs to the instance, not to the password"
+    );
+    assert_eq!(account.team_id.as_deref(), Some(team.id.as_str()));
+    // The team role is in the membership, and it did not change either.
+    assert_eq!(store.members(&team.id).unwrap()[0].role, "viewer");
+}

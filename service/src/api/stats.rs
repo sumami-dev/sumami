@@ -9,11 +9,19 @@
 //!   * `bounces`      — sessions with exactly one page view
 //!   * `visitDuration` — average session duration in seconds
 //!
-//! The reports are also **cached** in the instance store, and the cache is thrown
-//! away whenever the data changes: the writer bumps a version number with every
-//! flush, and the version is part of every cached answer. So the dashboard never
-//! shows numbers from before the last write, and two people looking at the same
-//! dashboard do not run the same query twice.
+//! The reports are also **cached** in the instance store. Every cached answer
+//! carries the version of the data it was computed from and the moment it was
+//! computed:
+//!
+//! * while the version still matches, the answer is exactly right;
+//! * after a write, the answer may still be used for as long as the stale
+//!   window allows (`SUMAMI_CACHE_STALE_SECS`, 30 seconds by default).
+//!
+//! The window is why the cache is worth having. The writer flushes every
+//! couple of seconds, so a cache that only accepted the current version would
+//! never hit on a busy site — and the dashboard would run the same query over
+//! and over. With the window, the query runs once, and the numbers on the
+//! screen are at most half a minute old.
 
 use axum::extract::{Path, Query, State};
 use axum::Json;
@@ -121,36 +129,75 @@ fn cache_key(spec: &ReportSpec) -> String {
 
 /// Run a report, through the cache.
 ///
-/// The cached answer carries the version of the data it was computed from: as
-/// soon as the writer flushes a batch, the version changes and every cached
-/// answer is a miss again.
+/// The cached answer carries **the version of the data it was computed from**
+/// and **the moment it was computed**. Two things make it usable:
+///
+/// * the version still matches — the data has not changed, so the answer is
+///   exactly right;
+/// * the answer is not too old — the writer flushes every couple of seconds,
+///   so on a busy site the version changes all the time and a cache that only
+///   accepted the current version would never hit. The window is
+///   `SUMAMI_CACHE_STALE_SECS` (30 seconds by default, `0` for "only while the
+///   data has not changed").
 pub fn cached_report(
     state: &AppState,
     spec: &ReportSpec,
 ) -> Result<serde_json::Value, ApiError> {
     let key = cache_key(spec);
-    let version = state.writer.version();
+    let version = state.writer.version().load(std::sync::atomic::Ordering::Relaxed);
+    let stale = state.config.cache_stale_secs;
 
     if let Some(cached) = state.instance.cache_get(&key)? {
-        // The cached answer is "<version>|<json>".
-        if let Some((cached_version, payload)) = cached.split_once('|') {
-            if cached_version.parse::<u64>().ok() == Some(version.load(std::sync::atomic::Ordering::Relaxed)) {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) {
-                    return Ok(value);
-                }
-            }
+        if let Some(value) = decode(&cached, version, stale) {
+            return Ok(value);
         }
     }
 
     let value = run_report(state.storage.as_ref(), spec)?;
     let payload = serde_json::to_string(&value)?;
-    // The cache entry lives for an hour; the version is what makes it stale.
+    // The entry outlives the window it is served in, so a stale answer can
+    // still be found.
     let _ = state.instance.cache_put(
         &key,
-        &format!("{}|{}", version.load(std::sync::atomic::Ordering::Relaxed), payload),
-        Some(3600),
+        &encode(version, now_millis(), &payload),
+        Some(stale.max(0) + 3600),
     );
     Ok(value)
+}
+
+/// The cached answer: `<version>|<written at>|<json>`.
+fn encode(version: u64, written_at: i64, payload: &str) -> String {
+    format!("{version}|{written_at}|{payload}")
+}
+
+/// Read a cached answer, if it may still be used.
+///
+/// The version is the exact answer: while the data has not changed, the answer
+/// is right. The window is the practical one: an answer that is not too old is
+/// good enough for a dashboard, and it saves the query.
+fn decode(cached: &str, version: u64, max_stale_secs: i64) -> Option<serde_json::Value> {
+    let mut parts = cached.splitn(3, '|');
+    let cached_version = parts.next()?.parse::<u64>().ok()?;
+    let written_at = parts.next()?.parse::<i64>().ok()?;
+    let payload = parts.next()?;
+
+    if cached_version == version {
+        return serde_json::from_str(payload).ok();
+    }
+
+    if max_stale_secs > 0 {
+        let age = (now_millis() - written_at) / 1000;
+        if (0..=max_stale_secs).contains(&age) {
+            return serde_json::from_str(payload).ok();
+        }
+    }
+
+    None
+}
+
+/// Now, in milliseconds.
+fn now_millis() -> i64 {
+    chrono::Utc::now().timestamp_millis()
 }
 
 /// `GET /api/websites/{id}/stats` — the summary metrics.

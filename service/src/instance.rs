@@ -95,6 +95,23 @@ pub trait Instance: Send + Sync {
     fn chat_sessions(&self) -> Result<Vec<ChatSession>>;
     /// The messages of a conversation, oldest first.
     fn chat_messages(&self, session_id: &str) -> Result<Vec<ChatMessage>>;
+
+    /// The teams of this instance.
+    fn teams(&self) -> Result<Vec<Team>>;
+    /// One team.
+    fn team(&self, id: &str) -> Result<Option<Team>>;
+    /// Create a team.
+    fn create_team(&self, name: &str) -> Result<Team>;
+    /// Delete a team, and every membership in it.
+    fn delete_team(&self, id: &str) -> Result<bool>;
+    /// The members of a team.
+    fn members(&self, team_id: &str) -> Result<Vec<Member>>;
+    /// Add a member to a team, or change their role.
+    fn add_member(&self, team_id: &str, username: &str, role: &str) -> Result<Member>;
+    /// Remove a member from a team.
+    fn remove_member(&self, team_id: &str, username: &str) -> Result<bool>;
+    /// Put an account in a team, or take it out of it.
+    fn set_account_team(&self, username: &str, team_id: Option<&str>) -> Result<Account>;
 }
 
 /// The instance store, in SQLite.
@@ -279,7 +296,10 @@ pub struct Account {
     pub password_hash: String,
     /// When the account was created.
     pub created_at: chrono::NaiveDateTime,
-    /// The role: `admin`, `member` or `viewer`.
+    /// The instance role: `admin` (everything) or `member`.
+    ///
+    /// This is **not** the role in a team — that one belongs to the membership
+    /// and is `owner`, `member` or `viewer`.
     pub role: String,
     /// The team the account belongs to.
     pub team_id: Option<String>,
@@ -363,26 +383,31 @@ impl SqliteInstance {
             };
 
             match existing {
-                Some(id) => {
+                Some(_) => {
+                    // Only the password changes. The role and the team are the
+                    // instance's business, not the password's: resetting the
+                    // password of a team member must not make them an admin
+                    // again.
                     conn.execute(
                         "UPDATE \"user\" SET password_hash = ?2 WHERE username = ?1",
                         params![username, password_hash],
                     )?;
-                    Ok(Account {
-                        id,
-                        username: username.to_string(),
-                        password_hash: password_hash.to_string(),
-                        created_at: from_ts(
-                            conn.query_row(
-                                "SELECT created_at FROM \"user\" WHERE username = ?1",
-                                params![username],
-                                |row| row.get(0),
-                            )
-                            .unwrap_or_default(),
-                        ),
-                        role: "admin".to_string(),
-                        team_id: None,
-                    })
+                    let account = conn.query_row(
+                        "SELECT id, username, password_hash, created_at, role, team_id
+                         FROM \"user\" WHERE username = ?1",
+                        params![username],
+                        |row| {
+                            Ok(Account {
+                                id: row.get(0)?,
+                                username: row.get(1)?,
+                                password_hash: row.get(2)?,
+                                created_at: from_ts(row.get(3)?),
+                                role: row.get(4)?,
+                                team_id: row.get(5)?,
+                            })
+                        },
+                    )?;
+                    Ok(account)
                 }
                 None => {
                     let id = uuid::Uuid::new_v4().to_string();
@@ -921,6 +946,266 @@ impl SqliteInstance {
 }
 
 // --------------------------------------------------------------------------------------
+// The teams
+// --------------------------------------------------------------------------------------
+
+/// A team: several people, several websites, one set of permissions.
+///
+/// The teams live in the **control plane**, next to the accounts — not in the
+/// analytics database. The events of a site belong to the site; who may see
+/// them is a question about the instance, and it belongs with the accounts.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Team {
+    /// The team id.
+    pub id: String,
+    /// Its name.
+    pub name: String,
+    /// When it was created.
+    pub created_at: chrono::NaiveDateTime,
+}
+
+/// One member of a team.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Member {
+    /// The team the membership belongs to.
+    pub team_id: String,
+    /// The account.
+    pub username: String,
+    /// The role in that team: `owner`, `member` or `viewer`.
+    pub role: String,
+}
+
+/// The roles a member of a team can have.
+///
+/// | role | what they may do |
+/// | --- | --- |
+/// | `owner` | everything, including managing the team |
+/// | `member` | read and write the data |
+/// | `viewer` | read only |
+///
+/// The instance admin (`admin` on the account) is above all of them.
+pub const TEAM_ROLES: [&str; 3] = ["owner", "member", "viewer"];
+
+/// Is this a role a member can have?
+pub fn is_team_role(role: &str) -> bool {
+    TEAM_ROLES.contains(&role)
+}
+
+impl SqliteInstance {
+    /// The teams of this instance.
+    pub fn teams(&self) -> Result<Vec<Team>> {
+        self.with_connection(|conn| {
+            let mut stmt = conn.prepare("SELECT id, name, created_at FROM team ORDER BY name")?;
+            let mut rows = stmt.query([])?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                out.push(Team {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    created_at: from_ts(row.get(2)?),
+                });
+            }
+            Ok(out)
+        })
+    }
+
+    /// One team.
+    pub fn team(&self, id: &str) -> Result<Option<Team>> {
+        self.with_connection(|conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT id, name, created_at FROM team WHERE id = ?1",
+                    params![id],
+                    |row| {
+                        Ok(Team {
+                            id: row.get(0)?,
+                            name: row.get(1)?,
+                            created_at: from_ts(row.get(2)?),
+                        })
+                    },
+                )
+                .optional()?)
+        })
+    }
+
+    /// Create a team.
+    pub fn create_team(&self, name: &str) -> Result<Team> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(anyhow::anyhow!("the team needs a name"));
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = ts(crate_now());
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO team (id, name, created_at) VALUES (?1, ?2, ?3)",
+                params![id, name, now],
+            )?;
+            Ok(())
+        })?;
+        Ok(Team {
+            id,
+            name: name.to_string(),
+            created_at: from_ts(now),
+        })
+    }
+
+    /// Delete a team, and every membership in it.
+    ///
+    /// The accounts that were in it keep their accounts; they just are not in a
+    /// team any more.
+    pub fn delete_team(&self, id: &str) -> Result<bool> {
+        self.with_connection(|conn| {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "UPDATE \"user\" SET team_id = NULL WHERE team_id = ?1",
+                params![id],
+            )?;
+            tx.execute("DELETE FROM membership WHERE team_id = ?1", params![id])?;
+            let removed = tx.execute("DELETE FROM team WHERE id = ?1", params![id])?;
+            tx.commit()?;
+            Ok(removed > 0)
+        })
+    }
+
+    /// The members of a team.
+    pub fn members(&self, team_id: &str) -> Result<Vec<Member>> {
+        self.with_connection(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT team_id, username, role FROM membership WHERE team_id = ?1
+                 ORDER BY username",
+            )?;
+            let mut rows = stmt.query(params![team_id])?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                out.push(Member {
+                    team_id: row.get(0)?,
+                    username: row.get(1)?,
+                    role: row.get(2)?,
+                });
+            }
+            Ok(out)
+        })
+    }
+
+    /// Add a member to a team, or change their role.
+    ///
+    /// The account has to exist: a membership of an account that is not there
+    /// would be a row nobody can use.
+    ///
+    /// **Two roles, not one.** The account keeps its instance role (`admin`),
+    /// and the *team* role lives in the membership — that is what the
+    /// `membership.role` column is for. Putting an account in a team therefore
+    /// never takes its instance rights away, and taking it out of the team
+    /// never gives it any back.
+    pub fn add_member(&self, team_id: &str, username: &str, role: &str) -> Result<Member> {
+        if !is_team_role(role) {
+            return Err(anyhow::anyhow!(
+                "'{role}' is not a role (owner, member, viewer)"
+            ));
+        }
+        let now = ts(crate_now());
+        self.with_connection(|conn| {
+            let tx = conn.transaction()?;
+
+            let exists: i64 = tx.query_row(
+                "SELECT count(*) FROM team WHERE id = ?1",
+                params![team_id],
+                |row| row.get(0),
+            )?;
+            if exists == 0 {
+                return Err(anyhow::anyhow!("no team '{team_id}'"));
+            }
+
+            let account: i64 = tx.query_row(
+                "SELECT count(*) FROM \"user\" WHERE username = ?1",
+                params![username],
+                |row| row.get(0),
+            )?;
+            if account == 0 {
+                return Err(anyhow::anyhow!("no account '{username}'"));
+            }
+
+            tx.execute(
+                "INSERT INTO membership (team_id, username, role) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(team_id, username) DO UPDATE SET role = excluded.role",
+                params![team_id, username, role],
+            )?;
+            tx.execute(
+                "UPDATE \"user\" SET team_id = ?2 WHERE username = ?1",
+                params![username, team_id],
+            )?;
+            tx.commit()?;
+            Ok(())
+        })?;
+
+        let _ = now;
+        Ok(Member {
+            team_id: team_id.to_string(),
+            username: username.to_string(),
+            role: role.to_string(),
+        })
+    }
+
+    /// Remove a member from a team.
+    pub fn remove_member(&self, team_id: &str, username: &str) -> Result<bool> {
+        self.with_connection(|conn| {
+            let tx = conn.transaction()?;
+            let removed = tx.execute(
+                "DELETE FROM membership WHERE team_id = ?1 AND username = ?2",
+                params![team_id, username],
+            )?;
+            // The account stays, but it is not in a team any more.
+            tx.execute(
+                "UPDATE \"user\" SET team_id = NULL WHERE username = ?1 AND team_id = ?2",
+                params![username, team_id],
+            )?;
+            tx.commit()?;
+            Ok(removed > 0)
+        })
+    }
+
+    /// Put an account in a team, or take it out of it.
+    pub fn set_account_team(&self, username: &str, team_id: Option<&str>) -> Result<Account> {
+        self.with_connection(|conn| {
+            if let Some(team_id) = team_id {
+                let exists: i64 = conn.query_row(
+                    "SELECT count(*) FROM team WHERE id = ?1",
+                    params![team_id],
+                    |row| row.get(0),
+                )?;
+                if exists == 0 {
+                    return Err(anyhow::anyhow!("no team '{team_id}'"));
+                }
+            }
+            conn.execute(
+                "UPDATE \"user\" SET team_id = ?2 WHERE username = ?1",
+                params![username, team_id],
+            )?;
+            conn.query_row(
+                "SELECT id, username, password_hash, created_at, role, team_id
+                 FROM \"user\" WHERE username = ?1",
+                params![username],
+                |row| {
+                    Ok(Account {
+                        id: row.get(0)?,
+                        username: row.get(1)?,
+                        password_hash: row.get(2)?,
+                        created_at: from_ts(row.get(3)?),
+                        role: row.get(4)?,
+                        team_id: row.get(5)?,
+                    })
+                },
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("no account '{username}'"))
+        })
+    }
+}
+
+// --------------------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------------------
 
@@ -1045,5 +1330,37 @@ impl Instance for SqliteInstance {
 
     fn chat_messages(&self, session_id: &str) -> Result<Vec<ChatMessage>> {
         SqliteInstance::chat_messages(self, session_id)
+    }
+
+    fn teams(&self) -> Result<Vec<Team>> {
+        SqliteInstance::teams(self)
+    }
+
+    fn team(&self, id: &str) -> Result<Option<Team>> {
+        SqliteInstance::team(self, id)
+    }
+
+    fn create_team(&self, name: &str) -> Result<Team> {
+        SqliteInstance::create_team(self, name)
+    }
+
+    fn delete_team(&self, id: &str) -> Result<bool> {
+        SqliteInstance::delete_team(self, id)
+    }
+
+    fn members(&self, team_id: &str) -> Result<Vec<Member>> {
+        SqliteInstance::members(self, team_id)
+    }
+
+    fn add_member(&self, team_id: &str, username: &str, role: &str) -> Result<Member> {
+        SqliteInstance::add_member(self, team_id, username, role)
+    }
+
+    fn remove_member(&self, team_id: &str, username: &str) -> Result<bool> {
+        SqliteInstance::remove_member(self, team_id, username)
+    }
+
+    fn set_account_team(&self, username: &str, team_id: Option<&str>) -> Result<Account> {
+        SqliteInstance::set_account_team(self, username, team_id)
     }
 }

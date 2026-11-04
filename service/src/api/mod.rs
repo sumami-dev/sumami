@@ -271,6 +271,23 @@ pub fn router(state: AppState) -> Router {
             "/api/cache",
             get(admin::cache_stats).delete(admin::purge_cache),
         )
+        // --- the teams ---
+        .route(
+            "/api/teams",
+            get(admin::teams).post(admin::create_team),
+        )
+        .route(
+            "/api/teams/{id}",
+            get(admin::team).delete(admin::delete_team),
+        )
+        .route(
+            "/api/teams/{id}/members",
+            get(admin::members).post(admin::add_member),
+        )
+        .route(
+            "/api/teams/{id}/members/{username}",
+            delete(admin::remove_member),
+        )
         // --- static ---
         .route("/sumami.js", get(crate::static_files::tracker))
         .route("/app/{*path}", get(crate::static_files::app_asset))

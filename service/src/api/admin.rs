@@ -322,6 +322,132 @@ pub async fn ask(
 }
 
 // --------------------------------------------------------------------------------------
+// The teams
+// --------------------------------------------------------------------------------------
+
+/// The body of a new team.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRequest {
+    /// The name of the team.
+    pub name: String,
+}
+
+/// The body of a new member.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberRequest {
+    /// The account.
+    pub username: String,
+    /// The role in the team: `owner`, `member` or `viewer`.
+    #[serde(default)]
+    pub role: Option<String>,
+}
+
+/// `GET /api/teams` — the teams of this instance.
+pub async fn teams(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<crate::instance::Team>>, ApiError> {
+    Ok(Json(state.instance.teams()?))
+}
+
+/// `POST /api/teams` — create a team.
+pub async fn create_team(
+    State(state): State<AppState>,
+    Json(request): Json<TeamRequest>,
+) -> Result<Json<crate::instance::Team>, ApiError> {
+    let name = request.name.trim();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest("the team needs a name".into()));
+    }
+    let team = state.instance.create_team(name)?;
+    state.instance.log(&LogEntry {
+        at: crate::db::now(),
+        level: "info".to_string(),
+        kind: "team".to_string(),
+        actor: None,
+        website_id: None,
+        message: format!("created the team '{}'", team.name),
+        data: None,
+    })?;
+    Ok(Json(team))
+}
+
+/// `GET /api/teams/{id}` — one team.
+pub async fn team(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::instance::Team>, ApiError> {
+    state
+        .instance
+        .team(&id)?
+        .map(Json)
+        .ok_or_else(|| ApiError::NotFound(format!("no team '{id}'")))
+}
+
+/// `DELETE /api/teams/{id}` — delete a team.
+pub async fn delete_team(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    if state.instance.delete_team(&id)? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound(format!("no team '{id}'")))
+    }
+}
+
+/// `GET /api/teams/{id}/members` — the members of a team.
+pub async fn members(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<crate::instance::Member>>, ApiError> {
+    Ok(Json(state.instance.members(&id)?))
+}
+
+/// `POST /api/teams/{id}/members` — add a member, or change their role.
+pub async fn add_member(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<MemberRequest>,
+) -> Result<Json<crate::instance::Member>, ApiError> {
+    let role = request.role.as_deref().unwrap_or("member");
+    if !crate::instance::is_team_role(role) {
+        return Err(ApiError::BadRequest(format!(
+            "'{role}' is not a role (owner, member, viewer)"
+        )));
+    }
+    let member = state
+        .instance
+        .add_member(&id, &request.username, role)
+        .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    state.instance.log(&LogEntry {
+        at: crate::db::now(),
+        level: "info".to_string(),
+        kind: "team".to_string(),
+        actor: None,
+        website_id: None,
+        message: format!("added '{}' to the team as {role}", member.username),
+        data: None,
+    })?;
+    Ok(Json(member))
+}
+
+/// `DELETE /api/teams/{id}/members/{username}` — remove a member.
+pub async fn remove_member(
+    State(state): State<AppState>,
+    Path((id, username)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    if state.instance.remove_member(&id, &username)? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound(format!(
+            "'{username}' is not in the team '{id}'"
+        )))
+    }
+}
+
+// --------------------------------------------------------------------------------------
 // The cache
 // --------------------------------------------------------------------------------------
 
