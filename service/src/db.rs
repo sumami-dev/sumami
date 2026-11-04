@@ -15,8 +15,8 @@
 //! nothing. It would cost a lot: DuckDB 2.0 persists the ART index of a primary key
 //! to disk (measured: **+10.5 bytes per row**, about 12% of a realistic database),
 //! slows every append by ~9%, and enforces the uniqueness constraint on every row.
-//! The ids are handed out by the writer (`MAX(id) + 1`, answered from the column
-//! statistics in constant time), so the constraint protects nothing.
+//! The ids are handed out by the writer (from a counter in memory, seeded from
+//! the table when the database is opened), so the constraint protects nothing.
 //!
 //! The small dimension table (`website`, `meta`) keeps its keys: they hold a handful
 //! of rows, and `meta` needs its primary key for `ON CONFLICT` to work. The accounts
