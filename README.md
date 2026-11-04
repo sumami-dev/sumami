@@ -73,8 +73,8 @@ Or download the release archive (it ships the dashboard frontend and the
 documentation next to the executable):
 
 ```bash
-curl -LO https://github.com/sumimi-dev/sumimi/releases/download/v0.2.0/sumimi-v0.2.0-Darwin-arm64.tar.gz
-tar xzf sumimi-v0.2.0-Darwin-arm64.tar.gz && cd sumimi-v0.2.0-Darwin-arm64
+curl -LO https://github.com/sumimi-dev/sumimi/releases/download/v0.3.0/sumimi-v0.3.0-Darwin-arm64.tar.gz
+tar xzf sumimi-v0.3.0-Darwin-arm64.tar.gz && cd sumimi-v0.3.0-Darwin-arm64
 ./sumimi serve --dir ./sumimi --port 3000
 ```
 

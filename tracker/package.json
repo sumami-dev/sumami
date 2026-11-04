@@ -1,6 +1,6 @@
 {
   "name": "@sumimi/tracker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The Sumimi tracker, typed — self-hosted web analytics with no cookies, no fingerprints and no raw IP addresses",
   "license": "Apache-2.0",
   "type": "module",

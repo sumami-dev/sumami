@@ -8,7 +8,7 @@ CARGO ?= cargo
 CARGO_HTTP_TIMEOUT ?= 600
 TARGET ?= target/release
 # The version of the release: the crate version, not DuckDB's.
-VERSION ?= 0.2.0
+VERSION ?= 0.3.0
 # The DuckDB release the dynamic build downloads.
 DUCKDB_VERSION ?= v2.0.0
 

@@ -46,4 +46,4 @@ uuid = { version = "1", features = ["v4"] }
 # The default features are off and the ones that matter are forwarded by name:
 # the client does not need the ACME stack, and `--no-default-features` has to
 # really be smaller.
-sumimi-service = { path = "../service", version = "0.2.0", default-features = false }
+sumimi-service = { path = "../service", version = "0.3.0", default-features = false }
