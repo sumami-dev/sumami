@@ -7,10 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-# The project was called `sumami` until v0.2.0. The crates published under
-# the old names (sumami, sumami-service, sumami-cli v0.1.0) stay there — **a
-# crates.io name is permanent**: a version can be yanked, but a crate cannot be
-# renamed. These are the ones to use.
+# **A crates.io name is permanent**: a version can be yanked, but a crate cannot
+# be renamed. The project was called `sumami` until v0.2.0 — the old crate
+# (sumami v0.1.0) stays where it is; this is the one to use.
 
 [lib]
 name = "sumimi"
