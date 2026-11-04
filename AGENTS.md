@@ -433,8 +433,8 @@ nothing in RAM — the peak RSS is the same with and without it, at 20M and at 6
 rows, and it does not grow with the row count. What it does buy:
 
 * **8 bytes of disk per row** — about 7% of a live database;
-* **bulk loads fit in a small memory budget.** Writing a lot of rows into a table
-  that *has* a primary key needs a **~1 GB** memory limit (60000000 rows: out of
+* **one memory budget for every path.** Writing a lot of rows into a table that
+  *has* a primary key needs a **~1 GB** memory limit (60000000 rows: out of
   memory at 128 MB, 256 MB and 512 MB; fine at 1 GB). Writing the same rows into
   a table without one needs **128 MB**. Chunking does not help — with a primary
   key the bulk load still runs out of memory, at the 13-millionth row.
@@ -442,6 +442,15 @@ rows, and it does not grow with the row count. What it does buy:
   The schema migration is unaffected (it writes into the new table, which has no
   primary key): 60000000 rows at a 128 MB limit, 53 s. But a future *import* into
   a live database is not — that is the case this buys.
+
+**What it does *not* save: steady-state memory.** While the server is serving, the
+peak RSS is the same with and without the primary key (60000000 rows: 30.5 MB
+either way; 20000000 rows: 258 MB without, 239 MB with — noise), and it does not
+grow with the row count. The index of a *monotonic* key is a radix tree that
+collapses to almost nothing in RAM; it costs 8 bytes per row **on disk**, not in
+memory. So: **disk yes, steady-state memory no.** The memory difference is in
+the *budget a bulk load needs* — with a primary key DuckDB has to be given ~1 GB
+to get through it, and it will then use it.
 
 **How many bytes a page view costs** (`cargo run --release --example row_cost -p
 sumami-service`, the real schema, 100000 views):
