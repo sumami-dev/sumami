@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["service", "cli"]
+members = ["service", "cli", "sumami"]
 
 [workspace.package]
 version = "0.1.0"

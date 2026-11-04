@@ -1,0 +1,32 @@
+[package]
+name = "sumami"
+description = "Sumami — the self-hosted analytics service, as a library: the server, the client and both data engines"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "sumami"
+path = "src/lib.rs"
+
+# The one and only executable: the server and the client in a single binary,
+# sharing one copy of DuckDB and one implementation of every report.
+[[bin]]
+name = "sumami"
+path = "src/bin/sumami.rs"
+
+[features]
+default = ["duckdb-static"]
+# Static DuckDB: the executable is self-contained (one file to deploy).
+# Build with --no-default-features to link libduckdb dynamically instead.
+duckdb-static = ["sumami-service/duckdb-static"]
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+
+# The two halves of the open-source build.
+sumami-service = { path = "../service" }
+sumami-cli = { path = "../cli" }

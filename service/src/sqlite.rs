@@ -666,13 +666,12 @@ INSERT INTO event (
                 }
             };
 
-            let id = match existing {
-                Some(id) => {
+            match existing {
+                Some(_) => {
                     conn.execute(
                         "UPDATE \"user\" SET password_hash = ?2 WHERE username = ?1",
                         params![username, password_hash],
                     )?;
-                    id
                 }
                 None => {
                     let id = uuid::Uuid::new_v4().to_string();
@@ -681,9 +680,8 @@ INSERT INTO event (
                          VALUES (?1, ?2, ?3, ?4, 'admin')",
                         params![id, username, password_hash, ts(crate_now())],
                     )?;
-                    id
                 }
-            };
+            }
 
             conn.query_row(
                 "SELECT id, username, role, created_at, password_hash FROM \"user\" WHERE username = ?1",

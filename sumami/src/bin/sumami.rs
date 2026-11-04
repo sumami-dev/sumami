@@ -35,8 +35,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     if wants_server && !matches!(first, "summary" | "websites" | "pages" | "referrers" | "browsers" | "os" | "devices" | "countries" | "languages" | "screens" | "events" | "sessions" | "timeseries" | "export" | "prune" | "erase" | "login" | "seed" | "help" | "--help" | "-h") {
-        tokio::runtime::Runtime::new()?.block_on(sumami_service::server::run())
+        tokio::runtime::Runtime::new()?.block_on(sumami::service::server::run())
     } else {
-        sumami_cli::run()
+        sumami::cli::run()
     }
 }
