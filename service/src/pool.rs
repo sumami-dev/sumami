@@ -60,8 +60,63 @@ impl Db {
             }
         }
 
-        let conn = Connection::open(path)
+        let mut conn = Connection::open(path)
             .map_err(|e| anyhow::anyhow!("opening duckdb database {}: {e}", path.display()))?;
+        Self::configure(
+            &conn,
+            memory_limit,
+            flush_threshold,
+            temp_limit,
+            threads,
+        )?;
+
+        // An older database is rewritten into a new file: DuckDB cannot drop a
+        // constraint, and it never gives the blocks of a dropped table back to the
+        // filesystem, so an in-place rebuild would leave the file twice as large.
+        let version = crate::db::schema_version(&conn);
+        if version > 0 && version < crate::db::SCHEMA_VERSION {
+            tracing::info!(
+                "the database was written by schema v{version}; rebuilding it as v{}",
+                crate::db::SCHEMA_VERSION
+            );
+            let rebuilt = crate::db::rebuild_to_new_file(path, &conn)?;
+            // The old file is locked by this connection — close it before the swap.
+            drop(conn);
+            std::fs::rename(&rebuilt, path).map_err(|e| {
+                anyhow::anyhow!(
+                    "swapping the rebuilt database {} in: {e}",
+                    rebuilt.display()
+                )
+            })?;
+            conn = Connection::open(path).map_err(|e| {
+                anyhow::anyhow!("opening the rebuilt duckdb database {}: {e}", path.display())
+            })?;
+            Self::configure(
+                &conn,
+                memory_limit,
+                flush_threshold,
+                temp_limit,
+                threads,
+            )?;
+        }
+
+        crate::db::init_schema(&conn)?;
+
+        Ok(Self {
+            path: path.to_path_buf(),
+            memory_limit: memory_limit.to_string(),
+            conn: Mutex::new(conn),
+        })
+    }
+
+    /// Apply the full set of DuckDB settings.
+    fn configure(
+        conn: &Connection,
+        memory_limit: &str,
+        flush_threshold: &str,
+        temp_limit: &str,
+        threads: usize,
+    ) -> Result<()> {
         conn.execute_batch(&format!("SET memory_limit='{memory_limit}'"))?;
         // Hand freed memory back to the OS sooner than DuckDB's 128 MB default, so a
         // small box does not stay big after a traffic burst.
@@ -84,14 +139,7 @@ impl Db {
             )
         };
         conn.execute_batch(&format!("SET threads={threads}"))?;
-
-        crate::db::init_schema(&conn)?;
-
-        Ok(Self {
-            path: path.to_path_buf(),
-            memory_limit: memory_limit.to_string(),
-            conn: Mutex::new(conn),
-        })
+        Ok(())
     }
 
     /// The database path.
@@ -114,7 +162,7 @@ impl Db {
         let escape = |value: &str| value.replace('\'', "''");
         let root = pattern.trim_end_matches("/*").trim_end_matches('/');
 
-        for (table, sub) in [("session", "sessions"), ("event", "events")] {
+        for (table, sub) in [("event", "events"), ("revenue", "revenue")] {
             let directory = format!("{root}/{sub}");
             if !has_parquet_files(std::path::Path::new(&directory)) {
                 continue;

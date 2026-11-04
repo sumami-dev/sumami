@@ -46,8 +46,10 @@ impl Storage for Db {
 
     fn delete_website(&self, id: &str) -> Result<bool> {
         self.with_write(|conn| {
+            // The event table is the only fact table: sessions and visitors are
+            // derived from it, so deleting the events deletes them too.
             conn.execute("DELETE FROM event WHERE website_id = ?", [id])?;
-            conn.execute("DELETE FROM session WHERE website_id = ?", [id])?;
+            conn.execute("DELETE FROM revenue WHERE website_id = ?", [id])?;
             let removed = conn.execute("DELETE FROM website WHERE id = ?", [id])?;
             Ok(removed > 0)
         })
@@ -747,15 +749,6 @@ fn revenue(conn: &Connection, query: &ReportQuery) -> Result<Vec<crate::models::
 // Writes
 // --------------------------------------------------------------------------------------
 
-/// The columns of the `event` table, in order.
-const EVENT_COLUMNS: &str = "website_id, session_id, visitor_id, created_at, \
-    url, url_query, title, referrer, referrer_path, referrer_query, hostname, \
-    browser, browser_version, os, os_version, device, screen, language, country, region, city, \
-    utm_source, utm_medium, utm_campaign, utm_content, utm_term, \
-    gclid, fbclid, msclkid, ttclid, lifatid, twclid, \
-    lcp, inp, cls, fcp, ttfb, \
-    event_type, event_name, tag, data";
-
 /// Persist a batch of hits.
 ///
 /// The event table is append only: every hit becomes one row and nothing is ever
@@ -781,7 +774,10 @@ fn write_batch(conn: &Connection, batch: &[Hit]) -> Result<()> {
     }
 
     // The appender does not apply column defaults, so the id is assigned here:
-    // one query per batch, not per row.
+    // one query per batch, not per row. `MAX(id)` is answered from the column
+    // statistics, so it costs nothing even on a table with hundreds of millions
+    // of rows. There is no primary key on `event` to enforce uniqueness (see
+    // `db.rs`), so the single writer is what keeps the ids unique.
     let mut next_id: i64 = conn.query_row(
         "SELECT COALESCE(MAX(id), 0) + 1 FROM event",
         [],

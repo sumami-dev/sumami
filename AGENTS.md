@@ -45,17 +45,28 @@ The defaults are chosen for the deployment target, not for a workstation:
 | `SUMAMI_STORE_TITLES` | off | The page title is roughly half of the stored bytes and almost nobody looks at it. |
 | `SUMAMI_STORE_FULL_REFERRER` | off | The referrer breakdown groups by host (that is what Umami shows too), and the full URL is the largest field we would store. |
 
-Measured on 10M and 100M row tables (`cli/examples/scale.rs`):
+Measured on 10M and 100M row tables (`cli/examples/scale.rs`, event-row schema,
+128 MB DuckDB limit, the production thread derivation — 2 threads on a 128 MB budget):
 
-| | 10M rows | 100M rows | 20M rows, realistic cardinality |
-| --- | ---: | ---: | ---: |
-| summary (30-day window) | 53 ms | 1 486 ms | 112 ms |
-| timeseries | 13 ms | 174 ms | 25 ms |
-| pages / referrers | 5 ms | 74–84 ms | 12–100 ms |
-| sessions (50 rows) | 10 ms | 20 ms | 17 ms |
+| | 10M rows | 20M rows, realistic cardinality |
+| --- | ---: | ---: |
+| summary (30-day window) | 98 ms | 434 ms |
+| timeseries | 12 ms | 40 ms |
+| pages (top 50) | 5 ms | 158 ms |
+| referrers | 5 ms | 18 ms |
+| browsers | 25 ms | 105 ms |
+| **sessions (50 rows)** | **675 ms** | **2 957 ms** |
 
 All of it inside a **128 MB** DuckDB limit. The limit bounds RAM, not history:
 DuckDB reads what it needs, aggregates it and spills the rest.
+
+> **The session log is the slow one.** It is the only panel that has to *derive*
+> sessions from the event table — a hash aggregate over every event in the window,
+> which spills once the window holds more sessions than fit in the budget. At 20M
+> rows it is ~3 s on a 128 MB budget. The obvious fix is to take the most recent
+> N events first (`ORDER BY created_at DESC LIMIT …`) and derive the sessions from
+> those, instead of aggregating the whole window and throwing away all but 50.
+> Not done yet — see the mneme issue.
 
 The thread count matters as much as the limit — see `SUMAMI_DUCKDB_THREADS` above.
 Measured on the same 5M-row table, the summary query:
@@ -346,7 +357,7 @@ so nothing can drift apart, and the page attribution is exact.
 
 ```sql
 event(
-    id BIGINT PK,            -- monotonic, assigned by the writer
+    id BIGINT,               -- monotonic, assigned by the writer, NOT a primary key
     website_id, session_id, visitor_id, created_at,
 
     url, url_query, title,                       -- the page
@@ -366,7 +377,7 @@ event(
 )
 
 revenue(                    -- what the owner earned, imported (not tracked)
-    id BIGINT PK, website_id, session_id, event_id,
+    id BIGINT, website_id, session_id, event_id,
     event_name, currency, revenue, created_at
 )
 ```
@@ -384,6 +395,27 @@ and counted the page views in a column. It was smaller and it was **wrong**: a s
 views were all attributed to the page it happened to end on. With one row per view the
 attribution is exact by construction, the write is an append (the fastest path the
 engine has), and the extra rows cost a fraction of what they save.
+
+**Why there is no index on the fact table** (schema v3): `event` and `revenue` are
+append only, and every query over them is a filtered scan
+(`WHERE website_id = ? AND created_at BETWEEN ?`). DuckDB prunes those with **zone
+maps** — one min/max per column per row group, maintained automatically and stored
+with the data — so an index buys nothing. Measured (`cargo run --release --example
+index_probe -p sumami-service`):
+
+| | with `PRIMARY KEY` | without |
+| --- | ---: | ---: |
+| disk, 2000000 rows | +16.3 MB (**+8.1 B/row**) | — |
+| disk, the real 42-column schema, 100000 views | +1.0 MB (**+10.5 B/浏览**) | — |
+| append | +9% | — |
+| the dashboard query | identical plan, identical time | — |
+
+DuckDB 2.0 **persists** the ART index of a primary key to disk, and it enforces the
+uniqueness constraint on every single row. The ids are handed out by the writer
+(`MAX(id) + 1`, answered from the column statistics in constant time), so the
+constraint protects nothing. The small dimension tables (`website`, `meta`, `user`)
+keep their keys — they hold a handful of rows, and `meta` needs its primary key for
+`ON CONFLICT` to work.
 
 ### 4.4 cli/ — the analyzer (two sources, one UX)
 
