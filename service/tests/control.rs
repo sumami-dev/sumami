@@ -417,3 +417,60 @@ async fn an_uptime_check_is_recorded() {
     assert_eq!(checks[0]["websiteId"], "w1");
     assert_eq!(history["availability"]["checks"], 1);
 }
+
+/// The watched endpoints of a website can be managed.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_watched_endpoints_can_be_managed() {
+    let (app, _db, _writer, _guard) = app("endpoints").await;
+
+    // Add one.
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/websites/w1/uptime/endpoints",
+        Some(r#"{"url": "https://example.com/health"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "the endpoint is watched");
+
+    // It is listed.
+    let (status, listed) = call(&app, "GET", "/api/websites/w1/uptime/endpoints", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let endpoints = listed["endpoints"].as_array().unwrap();
+    assert_eq!(endpoints.len(), 1);
+    assert_eq!(endpoints[0], "https://example.com/health");
+
+    // Adding it twice does not make two of them.
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/websites/w1/uptime/endpoints",
+        Some(r#"{"url": "https://example.com/health"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, listed) = call(&app, "GET", "/api/websites/w1/uptime/endpoints", None).await;
+    assert_eq!(listed["endpoints"].as_array().unwrap().len(), 1);
+
+    // And it can be removed.
+    let (status, _) = call(
+        &app,
+        "DELETE",
+        "/api/websites/w1/uptime/endpoints?url=https%3A%2F%2Fexample.com%2Fhealth",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, listed) = call(&app, "GET", "/api/websites/w1/uptime/endpoints", None).await;
+    assert!(listed["endpoints"].as_array().unwrap().is_empty());
+
+    // Removing one that is not watched says so.
+    let (status, _) = call(
+        &app,
+        "DELETE",
+        "/api/websites/w1/uptime/endpoints?url=https%3A%2F%2Fexample.com%2Fnope",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

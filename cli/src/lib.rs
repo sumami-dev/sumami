@@ -132,8 +132,13 @@ enum Command {
     ///
     /// When the site does not answer, two references are asked as well, so
     /// "the site is down" and "this machine has no internet" are not confused.
+    ///
+    /// With `--website`, the endpoints of that website can be managed:
+    /// `--add` watches one more, `--list` shows them, `--remove` stops watching
+    /// one, and `--check-all` checks every one of them now.
     Uptime {
         /// The URL to check.
+        #[arg(default_value = "")]
         url: String,
         /// How long to wait for an answer, in seconds.
         #[arg(long, default_value_t = 10)]
@@ -141,6 +146,18 @@ enum Command {
         /// The website the check belongs to — it is recorded.
         #[arg(long)]
         website: Option<String>,
+        /// Watch this endpoint of the website as well.
+        #[arg(long)]
+        add: Option<String>,
+        /// List the watched endpoints of the website.
+        #[arg(long)]
+        list: bool,
+        /// Stop watching this endpoint.
+        #[arg(long)]
+        remove: Option<String>,
+        /// Check every endpoint of the website now.
+        #[arg(long)]
+        check_all: bool,
     },
     /// Delete data that is older than the retention window.
     Prune {
@@ -481,10 +498,130 @@ pub fn run() -> Result<()> {
             url,
             timeout,
             website,
+            add,
+            list,
+            remove,
+            check_all,
         } => {
             let checker = sumami_service::uptime::Checker::with_timeout(
                 std::time::Duration::from_secs(timeout.clamp(1, 60)),
             );
+
+            // --- managing the watched endpoints ---
+            if let Some(website) = &website {
+                let paths = sumami_service::config::Paths::new(
+                    Some(cli.dir.clone()),
+                    cli.db.clone(),
+                    &cli.backend,
+                );
+
+                // Against a running server, the endpoints go through the API.
+                let remote = cli.url.as_ref().map(|base| {
+                    Source::remote(
+                        base,
+                        cli.token.as_deref(),
+                        cli.username.as_deref(),
+                        cli.password.as_deref(),
+                    )
+                });
+
+                if let Some(Ok(Source::Remote { base, token })) = &remote {
+                    let agent = ureq::Agent::new_with_defaults();
+                    if let Some(url) = &add {
+                        agent
+                            .post(&format!("{base}/api/websites/{website}/uptime/endpoints"))
+                            .header("authorization", &format!("Bearer {token}"))
+                            .send_json(serde_json::json!({ "url": url }))?;
+                        println!("watching {url}");
+                    }
+                    if list {
+                        let value: serde_json::Value = agent
+                            .get(&format!("{base}/api/websites/{website}/uptime/endpoints"))
+                            .header("authorization", &format!("Bearer {token}"))
+                            .call()?
+                            .body_mut()
+                            .read_json()?;
+                        for endpoint in value["endpoints"].as_array().unwrap_or(&vec![]) {
+                            println!("{}", endpoint.as_str().unwrap_or(""));
+                        }
+                    }
+                    if let Some(url) = &remove {
+                        agent
+                            .delete(&format!(
+                                "{base}/api/websites/{website}/uptime/endpoints?url={}",
+                                encode(url)
+                            ))
+                            .header("authorization", &format!("Bearer {token}"))
+                            .call()?;
+                        println!("stopped watching {url}");
+                    }
+                    if check_all {
+                        let value: serde_json::Value = agent
+                            .post(&format!("{base}/api/websites/{website}/uptime/check"))
+                            .header("authorization", &format!("Bearer {token}"))
+                            .send_json(serde_json::json!({ "timeout": timeout }))?
+                            .body_mut()
+                            .read_json()?;
+                        for check in value["checks"].as_array().unwrap_or(&vec![]) {
+                            println!(
+                                "{}: {}",
+                                check["websiteId"].as_str().unwrap_or(""),
+                                if check["ok"].as_bool().unwrap_or(false) {
+                                    "up"
+                                } else {
+                                    "down"
+                                }
+                            );
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // Offline: straight into the instance store.
+                let instance = sumami_service::instance::SqliteInstance::open(&paths.instance)
+                    .map_err(|err| anyhow!("opening the instance store: {err}"))?;
+
+                if let Some(url) = &add {
+                    instance.add_uptime_endpoint(website, url)?;
+                    println!("watching {url}");
+                }
+                if list {
+                    for endpoint in instance.uptime_endpoints(website)? {
+                        println!("{endpoint}");
+                    }
+                }
+                if let Some(url) = &remove {
+                    if instance.remove_uptime_endpoint(website, url)? {
+                        println!("stopped watching {url}");
+                    } else {
+                        println!("{url} was not being watched");
+                    }
+                }
+                if check_all {
+                    let mut urls = Vec::new();
+                    let domain = instance
+                        .uptime_endpoints(website)?
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    urls.extend(domain);
+                    for endpoint in urls {
+                        let check = checker.record(website, &endpoint);
+                        instance.record_uptime(&check)?;
+                        println!(
+                            "{endpoint}: {}",
+                            if check.ok { "up" } else { "down" }
+                        );
+                    }
+                }
+                if add.is_some() || list || remove.is_some() || check_all {
+                    return Ok(());
+                }
+            }
+
+            // --- checking one URL now ---
+            if url.is_empty() {
+                anyhow::bail!("give a URL, or a --website with --check-all");
+            }
             let verdict = checker.check(&url);
 
             if cli.json {
@@ -701,6 +838,23 @@ pub fn run() -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// Percent-encode a value for a query string.
+///
+/// Only the characters a URL may not carry are escaped; everything else is
+/// left alone, so the endpoint stays readable in the log.
+fn encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
 }
 
 /// Open the configured source.

@@ -339,6 +339,28 @@ sumami prune --db /var/lib/sumami/sumami.duckdb 3f2a...</code></pre>
       <code>DELETE /api/websites/:id</code> against the API instead.
     </p>
 
+    <h3><code>uptime</code></h3>
+    <p>
+      Check whether a website is up. When the site does not answer, two references
+      are asked as well — <code>bing.com</code> and <code>8.8.8.8:53</code> — so
+      "the site is down" and "this machine has no internet" are not confused.
+    </p>
+    <pre class="shell"><code><span class="cmt"># is it up?</span>
+sumami uptime https://example.com
+
+<span class="cmt"># watch more endpoints of a website</span>
+sumami uptime --website 3f2a... --add https://example.com/health
+sumami uptime --website 3f2a... --list
+sumami uptime --website 3f2a... --remove https://example.com/health
+
+<span class="cmt"># check every endpoint of a website now</span>
+sumami uptime --website 3f2a... --check-all</code></pre>
+    <p>
+      The checks are recorded in the instance store (or sent to the API when
+      <code>--url</code> is used). A failed check says whether the network was
+      the problem.
+    </p>
+
     <h2>JSON output</h2>
     <p>
       Every command accepts <code>--json</code>, which is what you want in a script:

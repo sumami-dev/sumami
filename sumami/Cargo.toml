@@ -39,6 +39,8 @@ sumami-service = { path = "../service", version = "0.1.0" }
 sumami-cli = { path = "../cli", version = "0.1.0" }
 
 [dev-dependencies]
-# The shutdown test sends a real SIGTERM to the real executable.
+# The tests run the real executable: one sends it a real SIGTERM, the other
+# reads the instance it was pointed at.
+chrono.workspace = true
 libc = "0.2"
 serde_json.workspace = true

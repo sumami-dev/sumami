@@ -463,6 +463,22 @@ pub struct UptimeRequest {
     pub timeout: Option<u64>,
 }
 
+/// The body of an endpoint to watch.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndpointRequest {
+    /// The URL to watch.
+    pub url: String,
+}
+
+/// The query of the endpoint endpoints.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndpointQuery {
+    /// The URL to stop watching.
+    pub url: String,
+}
+
 /// `POST /api/websites/{id}/uptime` — check the website and record the answer.
 ///
 /// The check rules out **our** network: when the site does not answer, two
@@ -497,6 +513,106 @@ pub async fn check_uptime(
     Ok(Json(serde_json::json!({
         "check": check,
         "availability": crate::uptime::Availability::of(std::slice::from_ref(&check)),
+    })))
+}
+
+/// `GET /api/websites/{id}/uptime/endpoints` — the extra endpoints of a
+/// website.
+///
+/// The website's own domain is always watched; these are the **other** ones —
+/// the health check, the login page, the API.
+pub async fn uptime_endpoints(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    Ok(Json(serde_json::json!({
+        "endpoints": state.instance.uptime_endpoints(&id)?,
+    })))
+}
+
+/// `POST /api/websites/{id}/uptime/endpoints` — watch another endpoint.
+pub async fn add_uptime_endpoint(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<EndpointRequest>,
+) -> Result<StatusCode, ApiError> {
+    let url = request.url.trim();
+    if url.is_empty() {
+        return Err(ApiError::BadRequest("the endpoint needs a URL".into()));
+    }
+    state
+        .instance
+        .add_uptime_endpoint(&id, url)
+        .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `DELETE /api/websites/{id}/uptime/endpoints?url=…` — stop watching an
+/// endpoint.
+///
+/// The URL is a query parameter, not a body: a `DELETE` with a body is awkward
+/// in every HTTP client.
+pub async fn remove_uptime_endpoint(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<EndpointQuery>,
+) -> Result<StatusCode, ApiError> {
+    let url = query.url.trim();
+    if url.is_empty() {
+        return Err(ApiError::BadRequest("which endpoint?".into()));
+    }
+    if state.instance.remove_uptime_endpoint(&id, url)? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound(format!(
+            "'{url}' was not being watched"
+        )))
+    }
+}
+
+/// `POST /api/websites/{id}/uptime/check` — check **every** endpoint of a
+/// website and record the answers.
+///
+/// The website's own domain and each of the extra endpoints are checked.
+pub async fn check_all_uptime(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<UptimeRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let website = state
+        .storage
+        .website(&id)?
+        .ok_or_else(|| ApiError::NotFound(format!("no website '{id}'")))?;
+
+    let mut urls = Vec::new();
+    if let Some(domain) = website.domain.as_deref() {
+        let url = website_url(domain);
+        if !url.is_empty() {
+            urls.push(url);
+        }
+    }
+    urls.extend(state.instance.uptime_endpoints(&id)?);
+
+    let timeout = std::time::Duration::from_secs(request.timeout.unwrap_or(10).clamp(1, 60));
+    let checker = crate::uptime::Checker::with_timeout(timeout);
+
+    let mut checks = Vec::new();
+    for url in urls {
+        let checked = tokio::task::spawn_blocking({
+            let checker = checker.clone();
+            let id = id.clone();
+            let url = url.clone();
+            move || checker.record(&id, &url)
+        })
+        .await
+        .map_err(|err| ApiError::BadRequest(format!("the check failed: {err}")))?;
+        state.instance.record_uptime(&checked)?;
+        checks.push(checked);
+    }
+
+    Ok(Json(serde_json::json!({
+        "checks": checks,
+        "availability": crate::uptime::Availability::of(&checks),
     })))
 }
 

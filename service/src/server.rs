@@ -422,28 +422,35 @@ pub async fn serve_with(
 async fn check_the_websites(state: &AppState, timeout: std::time::Duration) {
     let websites = state.storage.websites().unwrap_or_default();
     for website in websites {
-        let Some(domain) = website.domain.clone() else {
-            continue;
-        };
-        let domain = domain.trim();
-        if domain.is_empty() {
-            continue;
-        }
-        let url = if domain.starts_with("http://") || domain.starts_with("https://") {
-            domain.to_string()
-        } else {
-            format!("https://{domain}")
-        };
-
-        let checker = crate::uptime::Checker::with_timeout(timeout);
         let id = website.id.clone();
-        let checked = tokio::task::spawn_blocking(move || checker.record(&id, &url)).await;
-        let Ok(check) = checked else {
-            continue;
-        };
 
-        if let Err(err) = state.instance.record_uptime(&check) {
-            tracing::error!(error = %err, "could not record the uptime check");
+        // The website's own domain, plus every endpoint that was configured
+        // for it — the health check, the login page, the API.
+        let mut urls: Vec<String> = Vec::new();
+        if let Some(domain) = website.domain.as_deref() {
+            let domain = domain.trim();
+            if !domain.is_empty() {
+                urls.push(if domain.starts_with("http://") || domain.starts_with("https://") {
+                    domain.to_string()
+                } else {
+                    format!("https://{domain}")
+                });
+            }
+        }
+        urls.extend(state.instance.uptime_endpoints(&id).unwrap_or_default());
+
+        for url in urls {
+            let checker = crate::uptime::Checker::with_timeout(timeout);
+            let id = id.clone();
+            let checked =
+                tokio::task::spawn_blocking(move || checker.record(&id, &url)).await;
+            let Ok(check) = checked else {
+                continue;
+            };
+
+            if let Err(err) = state.instance.record_uptime(&check) {
+                tracing::error!(error = %err, "could not record the uptime check");
+            }
         }
     }
 }

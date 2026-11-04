@@ -276,6 +276,16 @@ pub fn router(state: AppState) -> Router {
             "/api/websites/{id}/uptime",
             get(admin::uptime_history).post(admin::check_uptime),
         )
+        .route(
+            "/api/websites/{id}/uptime/check",
+            post(admin::check_all_uptime),
+        )
+        .route(
+            "/api/websites/{id}/uptime/endpoints",
+            get(admin::uptime_endpoints)
+                .post(admin::add_uptime_endpoint)
+                .delete(admin::remove_uptime_endpoint),
+        )
         // --- the teams ---
         .route(
             "/api/teams",

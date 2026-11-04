@@ -115,6 +115,15 @@ pub trait Instance: Send + Sync {
 
     /// Record an uptime check.
     fn record_uptime(&self, check: &crate::uptime::UptimeCheck) -> Result<()>;
+    /// Watch another endpoint of a website.
+    ///
+    /// The website's own domain is always watched; this is for the **other**
+    /// endpoints — the health check, the login page, the API.
+    fn add_uptime_endpoint(&self, website_id: &str, url: &str) -> Result<()>;
+    /// The extra endpoints of a website.
+    fn uptime_endpoints(&self, website_id: &str) -> Result<Vec<String>>;
+    /// Stop watching an endpoint.
+    fn remove_uptime_endpoint(&self, website_id: &str, url: &str) -> Result<bool>;
     /// The uptime checks of a website, newest first.
     fn uptime_checks(&self, website_id: &str, limit: i64) -> Result<Vec<crate::uptime::UptimeCheck>>;
 
@@ -315,6 +324,14 @@ CREATE TABLE IF NOT EXISTS uptime_check (
     network_ok  INTEGER
 );
 CREATE INDEX IF NOT EXISTS uptime_check_website_at ON uptime_check (website_id, at);
+
+-- The extra endpoints of a website: the health check, the login page, the API.
+CREATE TABLE IF NOT EXISTS uptime_endpoint (
+    website_id  TEXT NOT NULL,
+    url         TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (website_id, url)
+);
 "#,
         )?;
         Ok(())
@@ -1012,6 +1029,49 @@ impl SqliteInstance {
         })
     }
 
+    /// Watch another endpoint of a website.
+    pub fn add_uptime_endpoint(&self, website_id: &str, url: &str) -> Result<()> {
+        let url = url.trim();
+        if url.is_empty() {
+            return Err(anyhow::anyhow!("the endpoint needs a URL"));
+        }
+        let now = ts(crate_now());
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO uptime_endpoint (website_id, url, created_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (website_id, url) DO NOTHING",
+                params![website_id, url, now],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// The extra endpoints of a website.
+    pub fn uptime_endpoints(&self, website_id: &str) -> Result<Vec<String>> {
+        self.with_connection(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT url FROM uptime_endpoint WHERE website_id = ?1 ORDER BY url",
+            )?;
+            let mut rows = stmt.query(params![website_id])?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                out.push(row.get(0)?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// Stop watching an endpoint.
+    pub fn remove_uptime_endpoint(&self, website_id: &str, url: &str) -> Result<bool> {
+        self.with_connection(|conn| {
+            let removed = conn.execute(
+                "DELETE FROM uptime_endpoint WHERE website_id = ?1 AND url = ?2",
+                params![website_id, url],
+            )?;
+            Ok(removed > 0)
+        })
+    }
+
     /// The uptime checks of a website, newest first.
     pub fn uptime_checks(
         &self,
@@ -1471,6 +1531,18 @@ impl Instance for SqliteInstance {
         limit: i64,
     ) -> Result<Vec<crate::uptime::UptimeCheck>> {
         SqliteInstance::uptime_checks(self, website_id, limit)
+    }
+
+    fn add_uptime_endpoint(&self, website_id: &str, url: &str) -> Result<()> {
+        SqliteInstance::add_uptime_endpoint(self, website_id, url)
+    }
+
+    fn uptime_endpoints(&self, website_id: &str) -> Result<Vec<String>> {
+        SqliteInstance::uptime_endpoints(self, website_id)
+    }
+
+    fn remove_uptime_endpoint(&self, website_id: &str, url: &str) -> Result<bool> {
+        SqliteInstance::remove_uptime_endpoint(self, website_id, url)
     }
 
     fn checkpoint(&self) -> Result<()> {

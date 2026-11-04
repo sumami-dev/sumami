@@ -693,6 +693,43 @@
       </div>
     </details>
 
+    <details class="endpoint">
+      <summary><span class="method post">POST</span> <span class="endpoint-path">/api/websites/:id/uptime/check</span></summary>
+      <div class="endpoint-body">
+        <p>
+          Check <strong>every</strong> endpoint of a website — its own domain and
+          each of the extra ones — and record the answers.
+        </p>
+        <p>
+          A failed check also asks two references (<code>bing.com</code> and
+          <code>8.8.8.8:53</code>), so "the site is down" and "this machine has no
+          internet" are never confused.
+        </p>
+        <pre class="shell"><code>curl -X POST http://127.0.0.1:3999/api/websites/3f2a.../uptime/check \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{ "timeout": 10 }'</code></pre>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary><span class="method get">POST</span> <span class="endpoint-path">/api/websites/:id/uptime/endpoints</span></summary>
+      <div class="endpoint-body">
+        <p>
+          The <strong>extra</strong> endpoints of a website — the health check,
+          the login page, the API. The website's own domain is always watched;
+          these are the others.
+        </p>
+        <pre class="shell"><code>curl -X POST http://127.0.0.1:3999/api/websites/3f2a.../uptime/endpoints \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{ "url": "https://example.com/health" }'</code></pre>
+        <p>
+          <code>GET</code> lists them, <code>DELETE</code> stops watching one
+          (the URL goes in the query string:
+          <code>?url=https%3A%2F%2Fexample.com%2Fhealth</code>).
+        </p>
+      </div>
+    </details>
+
     <h2>Static files</h2>
     <div class="table-wrap">
       <table>
