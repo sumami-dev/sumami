@@ -544,14 +544,15 @@ fn timeseries(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow
     let filters = Filters::new(query);
 
     // Bucket by hour for short windows, by day for long ones.
-    let format = if (query.range.end - query.range.start).num_seconds() <= 2 * 24 * 3600 {
-        "%Y-%m-%dT%H:00:00Z"
-    } else {
-        "%Y-%m-%dT00:00:00Z"
-    };
+    let (truncate, format) =
+        if (query.range.end - query.range.start).num_seconds() <= 2 * 24 * 3600 {
+            ("hour", "%Y-%m-%dT%H:00:00Z")
+        } else {
+            ("day", "%Y-%m-%dT00:00:00Z")
+        };
 
     let sql = format!(
-        "SELECT strftime(date_trunc('day', created_at), '{format}') AS bucket, COUNT(*) AS value
+        "SELECT strftime(date_trunc('{truncate}', created_at), '{format}') AS bucket, COUNT(*) AS value
          FROM event WHERE {where_clause}
          GROUP BY bucket
          ORDER BY bucket ASC",
@@ -674,7 +675,7 @@ fn sessions(conn: &Connection, query: &ReportQuery) -> Result<Vec<SessionRow>> {
                 epoch(MAX(created_at) - MIN(created_at))
          FROM event WHERE {where_clause}
          GROUP BY session_id
-         ORDER BY MIN(created_at) DESC
+         ORDER BY MIN(created_at) DESC, session_id ASC
          LIMIT {limit} OFFSET {offset}",
         where_clause = filters.clause(),
         limit = query.limit.clamp(1, 1000),
@@ -721,7 +722,7 @@ fn revenue(conn: &Connection, query: &ReportQuery) -> Result<Vec<crate::models::
     let sql = format!(
         "SELECT website_id, session_id, event_id, event_name, currency, revenue, created_at
          FROM revenue WHERE {where_clause}
-         ORDER BY created_at DESC
+         ORDER BY created_at DESC, id DESC
          LIMIT {limit} OFFSET {offset}",
         where_clause = filters.clause(),
         limit = query.limit.clamp(1, 1000),
