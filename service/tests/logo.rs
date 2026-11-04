@@ -56,7 +56,7 @@ fn every_logo_copy_matches_the_canonical_file() {
     );
 
     // The tracker must not carry a logo of its own.
-    let tracker = root().join("js/sumami.js");
+    let tracker = root().join("service/js/sumami.js");
     let js = std::fs::read_to_string(&tracker).expect("js/sumami.js exists");
     assert!(
         !js.contains("currentColor"),

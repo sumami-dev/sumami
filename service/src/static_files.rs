@@ -12,7 +12,7 @@ use axum::response::{IntoResponse, Response};
 use crate::api::AppState;
 
 /// The tracker, embedded in the binary so it is always available at `/sumami.js`.
-pub const TRACKER_JS: &str = include_str!("../../js/sumami.js");
+pub const TRACKER_JS: &str = include_str!("../js/sumami.js");
 
 /// The dashboard shell. Deliberately tiny: everything else lives in the frontend JS.
 const APP_SHELL: &str = r#"<!doctype html>

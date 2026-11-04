@@ -306,7 +306,7 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
   renews it in the background — no certbot, no cron, no reverse proxy needed just for TLS.
   Port 443 must reach the process directly; behind a TLS-terminating proxy, let the proxy
   manage the certificate instead.
-* **Static hosting:** the binary serves `js/sumami.js` (embedded at compile time via
+* **Static hosting:** the binary serves `service/js/sumami.js` (embedded at compile time via
   `include_str!`, ~7 KB) and the docs site from `docs/` (`/docs`).
   The **dashboard frontend is not in the binary**: the shell at `/` points at a CDN
   (`SUMAMI_APP_URL`, default `https://cdn.jsdelivr.net/gh/sumami-dev/sumami@main/js`),
@@ -638,7 +638,7 @@ Flags common to all subcommands: `--from`, `--to` (ISO date or relative like `7d
 
 Two independent, **dependency-free** files (no build step, no npm, no bundler):
 
-**`js/sumami.js` — the tracker** (embedded in the binary, served at `/sumami.js`):
+**`service/js/sumami.js` — the tracker** (embedded in the binary, served at `/sumami.js`):
 
 * sends pageviews and custom events to `/api/send` via `sendBeacon` (fallback `fetch`
   with `keepalive`), as `application/json`;
