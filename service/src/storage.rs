@@ -65,6 +65,24 @@ pub struct Dimensions {
     pub country: Option<String>,
 }
 
+impl Dimensions {
+    /// The filters a report applies: every dimension and its value.
+    ///
+    /// The list lives here so that the three backends filter on **the same
+    /// dimensions** — a filter one engine knows and another does not is a
+    /// number that differs between them.
+    pub fn filters(&self) -> [(&'static str, &Option<String>); 6] {
+        [
+            ("url", &self.url),
+            ("referrer", &self.referrer),
+            ("browser", &self.browser),
+            ("os", &self.os),
+            ("device", &self.device),
+            ("country", &self.country),
+        ]
+    }
+}
+
 /// Everything a report needs.
 #[derive(Debug, Clone)]
 pub struct ReportQuery {
@@ -92,6 +110,23 @@ impl ReportQuery {
         }
     }
 }
+
+/// The condition that selects the **page views**.
+///
+/// A custom event is not a page view, and neither is an identify call. The
+/// reference implementation excludes them from every pageview metric
+/// (`event_type NOT IN (2, 5)`), and so do we — otherwise a site with a lot
+/// of custom events would show them as pages, and its "bounce rate" would be
+/// wrong (a session that only fired a custom event is not a bounce, but it
+/// would look like one).
+///
+/// The **logs** — the session list and the event list — keep everything: they
+/// are logs.
+///
+/// The three backends speak the same SQL here (`'…'` quotes work in all of
+/// them), so the rule lives in one place: a metric that means "page views"
+/// means the same thing in all of them.
+pub const PAGEVIEWS: &str = "event_type NOT IN ('event', 'identify')";
 
 /// The dimensions a breakdown can be computed over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -270,120 +305,6 @@ pub struct WebsitePatch {
     /// A new country header.
     pub country_header: Option<String>,
 }
-
-/// One session, aggregated from the hits of a batch.
-#[derive(Debug, Clone)]
-pub struct SessionAggregate {
-    /// The session id.
-    pub id: Uuid,
-    /// The website it belongs to.
-    pub website_id: String,
-    /// The rotating visitor id.
-    pub visitor_id: Option<Uuid>,
-    /// When the session started.
-    pub created_at: NaiveDateTime,
-    /// When the session was last seen.
-    pub updated_at: NaiveDateTime,
-    /// The hostname of the site.
-    pub hostname: Option<String>,
-    /// The last URL.
-    pub url: Option<String>,
-    /// The page title.
-    pub title: Option<String>,
-    /// The referring host.
-    pub referrer: Option<String>,
-    /// The first URL.
-    pub entry_url: Option<String>,
-    /// The browser family.
-    pub browser: Option<String>,
-    /// The browser version.
-    pub browser_version: Option<String>,
-    /// The operating system.
-    pub os: Option<String>,
-    /// The operating system version.
-    pub os_version: Option<String>,
-    /// The device class.
-    pub device: Option<String>,
-    /// The country.
-    pub country: Option<String>,
-    /// The region.
-    pub region: Option<String>,
-    /// The city.
-    pub city: Option<String>,
-    /// The interface language.
-    pub language: Option<String>,
-    /// The viewport size.
-    pub screen: Option<String>,
-    /// Free-form data attached to the session.
-    pub data: Option<String>,
-    /// How many page views the session had.
-    pub views: i64,
-}
-
-impl SessionAggregate {
-    /// Start from a hit.
-    fn from(hit: &crate::models::Hit) -> Self {
-        Self {
-            id: hit.session_id,
-            website_id: hit.website_id.clone(),
-            visitor_id: Some(hit.visitor_id),
-            created_at: hit.created_at,
-            updated_at: hit.created_at,
-            hostname: hit.hostname.clone(),
-            url: hit.url.clone(),
-            title: hit.title.clone(),
-            referrer: hit.referrer.clone(),
-            entry_url: hit.url.clone(),
-            browser: hit.browser.clone(),
-            browser_version: hit.browser_version.clone(),
-            os: hit.os.clone(),
-            os_version: hit.os_version.clone(),
-            device: hit.device.clone(),
-            country: hit.country.clone(),
-            region: hit.region.clone(),
-            city: hit.city.clone(),
-            language: hit.language.clone(),
-            screen: hit.screen.clone(),
-            data: hit.data.clone(),
-            // The first pageview of a session counts as one view.
-            views: if hit.kind == crate::models::HitKind::Pageview {
-                1
-            } else {
-                0
-            },
-        }
-    }
-
-    /// Fold another hit of the same session into it.
-    fn merge(&mut self, hit: &crate::models::Hit) {
-        self.updated_at = hit.created_at;
-        self.views += 1;
-        if hit.url.is_some() {
-            self.url = hit.url.clone();
-        }
-        if hit.title.is_some() {
-            self.title = hit.title.clone();
-        }
-        if hit.referrer.is_some() {
-            self.referrer = hit.referrer.clone();
-        }
-        if hit.screen.is_some() {
-            self.screen = hit.screen.clone();
-        }
-        if hit.data.is_some() {
-            self.data = hit.data.clone();
-        }
-    }
-}
-
-/// A batch of hits, grouped the way every backend wants it.
-pub struct Batch<'a> {
-    /// The sessions to upsert.
-    pub sessions: Vec<SessionAggregate>,
-    /// The custom events to insert.
-    pub events: Vec<&'a crate::models::Hit>,
-}
-
 /// One event of the session log: the fields a session row is built from.
 #[derive(Debug, Clone)]
 pub struct SessionEvent {
@@ -525,39 +446,6 @@ pub fn group_sessions(
     let offset = offset.max(0) as usize;
     rows.into_iter().skip(offset).take(limit.max(0) as usize).collect()
 }
-
-/// Group a batch of hits into sessions and events.
-///
-/// The grouping is backend-agnostic — every backend upserts the same sessions and
-/// inserts the same events, only the SQL differs.
-pub fn aggregate_batch<'a>(hits: &'a [crate::models::Hit]) -> Batch<'a> {
-    let mut sessions: Vec<SessionAggregate> = Vec::new();
-    let mut events: Vec<&crate::models::Hit> = Vec::new();
-
-    for hit in hits {
-        match hit.kind {
-            crate::models::HitKind::Pageview => {
-                match sessions.iter_mut().find(|s| s.id == hit.session_id) {
-                    Some(existing) => existing.merge(hit),
-                    None => sessions.push(SessionAggregate::from(hit)),
-                }
-            }
-            crate::models::HitKind::Event | crate::models::HitKind::Screenview => events.push(hit),
-            crate::models::HitKind::Identify => {
-                if let Some(existing) = sessions.iter_mut().find(|s| s.id == hit.session_id) {
-                    existing.data = hit.data.clone();
-                } else {
-                    let mut aggregate = SessionAggregate::from(hit);
-                    aggregate.views = 0;
-                    sessions.push(aggregate);
-                }
-            }
-        }
-    }
-
-    Batch { sessions, events }
-}
-
 /// A storage backend.
 pub trait Storage: Send + Sync {
     /// The backend's name.

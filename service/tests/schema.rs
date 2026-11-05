@@ -6,6 +6,57 @@ use sumimi_service::models::HitKind;
 use sumimi_service::pool::Db;
 use sumimi_service::storage::Storage;
 
+/// The `event` table of a v3 SQLite database.
+///
+/// The v3 file is written out by hand in the tests — a v3 file has text ids
+/// and no channel — and it is written out twice, so it lives here once.
+const V3_SQLITE_EVENT: &str = r#"
+CREATE TABLE event (
+    id              INTEGER PRIMARY KEY,
+    website_id      TEXT NOT NULL,
+    session_id      TEXT NOT NULL,
+    visitor_id      TEXT NOT NULL,
+    created_at      INTEGER NOT NULL,
+    url             TEXT,
+    url_query       TEXT,
+    title           TEXT,
+    referrer        TEXT,
+    referrer_path   TEXT,
+    referrer_query  TEXT,
+    hostname        TEXT,
+    browser         TEXT,
+    browser_version TEXT,
+    os              TEXT,
+    os_version      TEXT,
+    device          TEXT,
+    screen          TEXT,
+    language        TEXT,
+    country         TEXT,
+    region          TEXT,
+    city            TEXT,
+    utm_source      TEXT,
+    utm_medium      TEXT,
+    utm_campaign    TEXT,
+    utm_content     TEXT,
+    utm_term        TEXT,
+    gclid           TEXT,
+    fbclid          TEXT,
+    msclkid         TEXT,
+    ttclid          TEXT,
+    lifatid         TEXT,
+    twclid          TEXT,
+    lcp             REAL,
+    inp             REAL,
+    cls             REAL,
+    fcp             REAL,
+    ttfb            REAL,
+    event_type      TEXT,
+    event_name      TEXT,
+    tag             TEXT,
+    data            TEXT
+);
+"#;
+
 /// A unique temporary database path.
 fn temp_db(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("sumimi-schema-{name}-{}", std::process::id()));
@@ -828,60 +879,16 @@ fn a_v3_sqlite_database_is_migrated_all_the_way() {
     // A v3 SQLite file: text ids, no channel.
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
-        conn.execute_batch(
-            r#"
-            CREATE TABLE event (
-                id              INTEGER PRIMARY KEY,
-                website_id      TEXT NOT NULL,
-                session_id      TEXT NOT NULL,
-                visitor_id      TEXT NOT NULL,
-                created_at      INTEGER NOT NULL,
-                url             TEXT,
-                url_query       TEXT,
-                title           TEXT,
-                referrer        TEXT,
-                referrer_path   TEXT,
-                referrer_query  TEXT,
-                hostname        TEXT,
-                browser         TEXT,
-                browser_version TEXT,
-                os              TEXT,
-                os_version      TEXT,
-                device          TEXT,
-                screen          TEXT,
-                language        TEXT,
-                country         TEXT,
-                region          TEXT,
-                city            TEXT,
-                utm_source      TEXT,
-                utm_medium      TEXT,
-                utm_campaign    TEXT,
-                utm_content     TEXT,
-                utm_term        TEXT,
-                gclid           TEXT,
-                fbclid          TEXT,
-                msclkid         TEXT,
-                ttclid          TEXT,
-                lifatid         TEXT,
-                twclid          TEXT,
-                lcp             REAL,
-                inp             REAL,
-                cls             REAL,
-                fcp             REAL,
-                ttfb            REAL,
-                event_type      TEXT,
-                event_name      TEXT,
-                tag             TEXT,
-                data            TEXT
-            );
+        conn.execute_batch(&format!(
+            r#"{V3_SQLITE_EVENT}
             CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
             INSERT INTO meta VALUES ('schema_version', '3');
             INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url)
             VALUES (1, 'w1', 'session-a', 'visitor-a', 1700000000, '/one'),
                    (2, 'w1', 'session-a', 'visitor-a', 1700000060, '/two'),
                    (3, 'w1', 'session-b', 'visitor-a', 1700000120, '/three');
-            "#,
-        )
+            "#
+        ))
         .unwrap();
     }
 

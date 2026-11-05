@@ -29,7 +29,7 @@ use crate::models::{
 use crate::pool::{Pool, Pooled};
 use crate::storage::{
     group_sessions, session_scan_limit, Dimension, ReportQuery, SessionEvent, Storage, StorageStats,
-    SummaryMetrics, WebsitePatch,
+    SummaryMetrics, WebsitePatch, PAGEVIEWS,
 };
 
 /// The SQLite backend.
@@ -409,14 +409,7 @@ impl Filters {
         filters.push_value("created_at >= ?", ts(query.range.start));
         filters.push_value("created_at < ?", ts(query.range.end));
 
-        for (column, value) in [
-            ("url", &query.dimensions.url),
-            ("referrer", &query.dimensions.referrer),
-            ("browser", &query.dimensions.browser),
-            ("os", &query.dimensions.os),
-            ("device", &query.dimensions.device),
-            ("country", &query.dimensions.country),
-        ] {
+        for (column, value) in query.dimensions.filters() {
             if let Some(value) = value.as_ref().filter(|v| !v.is_empty()) {
                 filters.clauses.push(format!("{column} = ?"));
                 filters.values.push(value.clone().into());
@@ -884,12 +877,6 @@ INSERT INTO event (
 // --------------------------------------------------------------------------------------
 // The reports
 // --------------------------------------------------------------------------------------
-
-/// The condition that selects the **page views**.
-///
-/// A custom event is not a page view, and neither is an identify call — the
-/// same rule the DuckDB backend and the reference implementation use.
-const PAGEVIEWS: &str = "event_type NOT IN ('event', 'identify')";
 
 /// Compute the summary metrics for a window.
 fn summary(conn: &Connection, query: &ReportQuery) -> Result<SummaryMetrics> {

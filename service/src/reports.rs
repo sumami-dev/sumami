@@ -17,7 +17,7 @@ use crate::models::{BreakdownRow, EventRow, Hit, MetricsSummary, MetricValue, Se
 use crate::pool::Db;
 use crate::storage::{
     group_sessions, session_scan_limit, Dimension, ReportQuery, SessionEvent, Storage, StorageStats,
-    SummaryMetrics, WebsitePatch,
+    SummaryMetrics, WebsitePatch, PAGEVIEWS,
 };
 
 impl Storage for Db {
@@ -310,19 +310,6 @@ fn update_website(conn: &Connection, id: &str, patch: &WebsitePatch) -> Result<W
 // session table to keep in sync, and nothing is stored twice.
 // --------------------------------------------------------------------------------------
 
-/// The condition that selects the **page views**.
-///
-/// A custom event is not a page view, and neither is an identify call. The
-/// reference implementation excludes them from every pageview metric
-/// (`event_type NOT IN (2, 5)`), and so do we — otherwise a site with a lot
-/// of custom events would show them as pages, and its "bounce rate" would be
-/// wrong (a session that only fired a custom event is not a bounce, but it
-/// would look like one).
-///
-/// The **logs** — the session list and the event list — keep everything: they
-/// are logs.
-const PAGEVIEWS: &str = "event_type NOT IN ('event', 'identify')";
-
 /// A WHERE clause and its parameters.
 struct Filters {
     clauses: Vec<String>,
@@ -339,14 +326,7 @@ impl Filters {
         filters.push_value("created_at >= ?", timestamp(query.range.start));
         filters.push_value("created_at < ?", timestamp(query.range.end));
 
-        for (column, value) in [
-            ("url", &query.dimensions.url),
-            ("referrer", &query.dimensions.referrer),
-            ("browser", &query.dimensions.browser),
-            ("os", &query.dimensions.os),
-            ("device", &query.dimensions.device),
-            ("country", &query.dimensions.country),
-        ] {
+        for (column, value) in query.dimensions.filters() {
             if let Some(value) = value.as_ref().filter(|v| !v.is_empty()) {
                 filters.push_text(&format!("{column} = ?"), value);
             }
