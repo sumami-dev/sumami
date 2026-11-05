@@ -89,6 +89,10 @@ impl Storage for Db {
         self.with_read(|conn| events(conn, query))
     }
 
+    fn query_strings(&self, query: &ReportQuery) -> Result<Vec<(String, i64)>> {
+        self.with_read(|conn| query_strings(conn, query))
+    }
+
     fn event_log(&self, query: &ReportQuery) -> Result<Vec<EventRow>> {
         self.with_read(|conn| event_log(conn, query))
     }
@@ -478,6 +482,26 @@ fn breakdown(
     Ok(out)
 }
 
+/// The query strings of the visited pages, with how often each was seen.
+fn query_strings(conn: &Connection, query: &ReportQuery) -> Result<Vec<(String, i64)>> {
+    let filters = Filters::new(query);
+
+    let sql = format!(
+        "SELECT url_query, COUNT(*) AS value FROM event
+         WHERE {where_clause} AND url_query IS NOT NULL AND url_query <> ''
+         GROUP BY url_query ORDER BY value DESC LIMIT 1000",
+        where_clause = filters.clause(),
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(filters.params().as_slice())?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push((row.get(0)?, row.get(1)?));
+    }
+    Ok(out)
+}
+
 /// Page views over time.
 fn timeseries(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
     let filters = Filters::new(query);
@@ -545,7 +569,7 @@ fn events(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
 fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
     let filters = Filters::new(query);
     let sql = format!(
-        "SELECT id, website_id, session_id, created_at, event_name, url, hostname, data,
+        "SELECT id, website_id, session_id, created_at, event_name, url, hostname, channel, data,
                 referrer, referrer_path, referrer_query, country, city, browser, os, device,
                 utm_source, utm_medium, utm_campaign, lcp, inp, cls
          FROM event WHERE {where_clause}
@@ -568,15 +592,16 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
             name: row.get(4)?,
             url: row.get(5)?,
             hostname: row.get(6)?,
-            data: row.get(7)?,
-            referrer: row.get(8)?,
-            referrer_path: row.get(9)?,
-            referrer_query: row.get(10)?,
-            country: row.get(11)?,
-            city: row.get(12)?,
-            browser: row.get(13)?,
-            os: row.get(14)?,
-            device: row.get(15)?,
+            channel: row.get(7)?,
+            data: row.get(8)?,
+            referrer: row.get(9)?,
+            referrer_path: row.get(10)?,
+            referrer_query: row.get(11)?,
+            country: row.get(12)?,
+            city: row.get(13)?,
+            browser: row.get(14)?,
+            os: row.get(15)?,
+            device: row.get(22)?,
             utm_source: row.get(16)?,
             utm_medium: row.get(17)?,
             utm_campaign: row.get(18)?,
@@ -597,7 +622,7 @@ fn recent_events(conn: &Connection, query: &ReportQuery, limit: i64) -> Result<V
     let filters = Filters::new(query);
     let sql = format!(
         "SELECT id, session_id, visitor_id, created_at, url, title, referrer, referrer_path,
-                hostname, browser, os, device, country, region, city, language, screen
+                hostname, channel, browser, os, device, country, region, city, language, screen
          FROM event WHERE {where_clause}
          ORDER BY created_at DESC, id DESC
          LIMIT {limit}",
@@ -619,14 +644,15 @@ fn recent_events(conn: &Connection, query: &ReportQuery, limit: i64) -> Result<V
             referrer: row.get(6)?,
             referrer_path: row.get(7)?,
             hostname: row.get(8)?,
-            browser: row.get(9)?,
-            os: row.get(10)?,
-            device: row.get(11)?,
-            country: row.get(12)?,
-            region: row.get(13)?,
-            city: row.get(14)?,
-            language: row.get(15)?,
-            screen: row.get(16)?,
+            channel: row.get(9)?,
+            browser: row.get(10)?,
+            os: row.get(11)?,
+            device: row.get(12)?,
+            country: row.get(13)?,
+            region: row.get(14)?,
+            city: row.get(15)?,
+            language: row.get(16)?,
+            screen: row.get(17)?,
         });
     }
     Ok(out)
@@ -710,6 +736,7 @@ fn write_batch(conn: &Connection, batch: &[Hit], next_id: &AtomicI64) -> Result<
             hit.referrer_path,
             hit.referrer_query,
             hit.hostname,
+            hit.channel,
             hit.browser,
             hit.browser_version,
             hit.os,

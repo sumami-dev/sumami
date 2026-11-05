@@ -43,6 +43,8 @@ pub struct Hit {
     pub referrer_query: Option<String>,
     /// The hostname of the site.
     pub hostname: Option<String>,
+    /// The traffic channel: direct, search, social, email or ads.
+    pub channel: Option<String>,
 
     // --- the visitor's environment ---
     /// The browser family.
@@ -340,6 +342,8 @@ pub struct SessionRow {
     pub updated_at: chrono::NaiveDateTime,
     /// The hostname of the site.
     pub hostname: Option<String>,
+    /// The traffic channel: direct, search, social, email or ads.
+    pub channel: Option<String>,
     /// The last page of the session.
     pub url: Option<String>,
     /// The title of the last page.
@@ -390,6 +394,8 @@ pub struct EventRow {
     pub url: Option<String>,
     /// The hostname of the site.
     pub hostname: Option<String>,
+    /// The traffic channel: direct, search, social, email or ads.
+    pub channel: Option<String>,
     /// Free-form event data.
     pub data: Option<String>,
     /// The referrer host.
@@ -505,6 +511,18 @@ pub enum ReportKind {
     Screens,
     /// The custom events.
     Events,
+    /// The traffic channels.
+    Channels,
+    /// The regions of the visitors.
+    Regions,
+    /// The cities of the visitors.
+    Cities,
+    /// The hostnames of the sites.
+    Hosts,
+    /// The tags of the custom events.
+    Tags,
+    /// The query parameters of the visited pages.
+    QueryParameters,
     /// The session log.
     Sessions,
     /// The raw event log.
@@ -513,7 +531,7 @@ pub enum ReportKind {
 
 impl ReportKind {
     /// Every report, in the order the API lists them.
-    pub fn all() -> [ReportKind; 12] {
+    pub fn all() -> [ReportKind; 18] {
         [
             ReportKind::Summary,
             ReportKind::Timeseries,
@@ -523,9 +541,15 @@ impl ReportKind {
             ReportKind::Os,
             ReportKind::Devices,
             ReportKind::Countries,
+            ReportKind::Regions,
+            ReportKind::Cities,
             ReportKind::Languages,
             ReportKind::Screens,
+            ReportKind::Channels,
+            ReportKind::Hosts,
             ReportKind::Events,
+            ReportKind::Tags,
+            ReportKind::QueryParameters,
             ReportKind::Sessions,
         ]
     }

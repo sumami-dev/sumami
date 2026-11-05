@@ -112,6 +112,16 @@ pub enum Dimension {
     Language,
     /// The viewport size.
     Screen,
+    /// The traffic channel: direct, search, social, email or ads.
+    Channel,
+    /// The region of the visitor.
+    Region,
+    /// The city of the visitor.
+    City,
+    /// The hostname of the site the visit was on.
+    Host,
+    /// The tag of a custom event.
+    Tag,
 }
 
 impl Dimension {
@@ -126,22 +136,28 @@ impl Dimension {
             Dimension::Country => "country",
             Dimension::Language => "language",
             Dimension::Screen => "screen",
+            Dimension::Channel => "channel",
+            Dimension::Region => "region",
+            Dimension::City => "city",
+            Dimension::Host => "hostname",
+            Dimension::Tag => "tag",
         }
     }
 
     /// How the rows of a breakdown are counted.
     ///
-    /// Content dimensions (pages, referrers) count views; audience dimensions
-    /// (browser, OS, device, country, language, screen) count unique visitors.
+    /// Content dimensions (pages, referrers, hosts, tags) count views; audience
+    /// dimensions (browser, OS, device, country, region, city, language, screen,
+    /// channel) count unique visitors.
     pub fn aggregate(self) -> &'static str {
         match self {
-            Dimension::Url | Dimension::Referrer => "views",
+            Dimension::Url | Dimension::Referrer | Dimension::Host | Dimension::Tag => "views",
             _ => "visitors",
         }
     }
 
     /// Every dimension, in the order the API exposes them.
-    pub fn all() -> [Dimension; 8] {
+    pub fn all() -> [Dimension; 13] {
         [
             Dimension::Url,
             Dimension::Referrer,
@@ -151,6 +167,11 @@ impl Dimension {
             Dimension::Country,
             Dimension::Language,
             Dimension::Screen,
+            Dimension::Channel,
+            Dimension::Region,
+            Dimension::City,
+            Dimension::Host,
+            Dimension::Tag,
         ]
     }
 }
@@ -185,6 +206,56 @@ pub struct StorageStats {
     pub size_bytes: i64,
     /// How many websites are stored.
     pub websites: i64,
+}
+
+/// One query parameter of the visited pages.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct QueryParameterRow {
+    /// The name of the parameter (`utm_source`).
+    pub name: String,
+    /// Its value (`twitter`).
+    pub value: String,
+    /// How often the pair was seen.
+    pub count: i64,
+}
+
+/// The query parameters of a set of query strings.
+///
+/// The parameters are split **here**, not in the database: the three engines
+/// do not agree on how to split a query string, and the answer has to be the
+/// same in all of them.
+pub fn parse_query_parameters(rows: &[(String, i64)]) -> Vec<QueryParameterRow> {
+    let mut out: Vec<QueryParameterRow> = Vec::new();
+
+    for (query, count) in rows {
+        for pair in query.split('&') {
+            if pair.is_empty() {
+                continue;
+            }
+            let (name, value) = match pair.split_once('=') {
+                Some((name, value)) => (name, value),
+                None => (pair, ""),
+            };
+            if name.is_empty() {
+                continue;
+            }
+
+            match out
+                .iter_mut()
+                .find(|row| row.name == name && row.value == value)
+            {
+                Some(row) => row.count += count,
+                None => out.push(QueryParameterRow {
+                    name: name.to_string(),
+                    value: value.to_string(),
+                    count: *count,
+                }),
+            }
+        }
+    }
+
+    out.sort_by(|a, b| b.count.cmp(&a.count).then(a.name.cmp(&b.name)));
+    out
 }
 
 /// A change to a website.
@@ -334,6 +405,8 @@ pub struct SessionEvent {
     pub referrer_path: Option<String>,
     /// The hostname of the site.
     pub hostname: Option<String>,
+    /// The traffic channel: direct, search, social, email or ads.
+    pub channel: Option<String>,
     /// The browser family.
     pub browser: Option<String>,
     /// The operating system.
@@ -425,6 +498,7 @@ pub fn group_sessions(
                 title: newest_with(|event| event.title.as_ref()),
                 referrer: oldest_with(|event| event.referrer.as_ref()),
                 referrer_path: oldest_with(|event| event.referrer_path.as_ref()),
+                channel: oldest_with(|event| event.channel.as_ref()),
                 entry_url: first.url.clone(),
                 browser: newest_with(|event| event.browser.as_ref()),
                 os: newest_with(|event| event.os.as_ref()),
@@ -524,6 +598,12 @@ pub trait Storage: Send + Sync {
 
     /// Custom events, grouped by name.
     fn events(&self, query: &ReportQuery) -> Result<Vec<BreakdownRow>>;
+
+    /// The query strings of the visited pages, with how often each was seen.
+    ///
+    /// The parameters are split by [`parse_query_parameters`] — in Rust, so
+    /// that every engine answers the same.
+    fn query_strings(&self, query: &ReportQuery) -> Result<Vec<(String, i64)>>;
 
     /// The raw event log.
     fn event_log(&self, query: &ReportQuery) -> Result<Vec<EventRow>>;

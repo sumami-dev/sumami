@@ -98,6 +98,18 @@ pub enum Report {
     Screens,
     /// Custom events.
     Events,
+    /// The traffic channels.
+    Channels,
+    /// The regions of the visitors.
+    Regions,
+    /// The cities of the visitors.
+    Cities,
+    /// The hostnames of the sites.
+    Hosts,
+    /// The tags of the custom events.
+    Tags,
+    /// The query parameters of the visited pages.
+    QueryParameters,
     /// The session log.
     Sessions,
     /// The time series.
@@ -356,6 +368,12 @@ fn remote_report(
                 Report::Languages => "/stats/languages",
                 Report::Screens => "/stats/screens",
                 Report::Events => "/stats/events",
+                Report::Channels => "/stats/channels",
+                Report::Regions => "/stats/regions",
+                Report::Cities => "/stats/cities",
+                Report::Hosts => "/stats/hosts",
+                Report::Tags => "/stats/tags",
+                Report::QueryParameters => "/stats/query-parameters",
                 Report::Sessions => "/sessions",
                 Report::Timeseries => "/stats/timeseries",
                 Report::Websites => unreachable!(),
@@ -425,6 +443,14 @@ fn local_report(
         }
         Report::Screens => serde_json::to_value(storage.breakdown(&query, Dimension::Screen)?)?,
         Report::Events => serde_json::to_value(storage.events(&query)?)?,
+        Report::Channels => serde_json::to_value(storage.breakdown(&query, Dimension::Channel)?)?,
+        Report::Regions => serde_json::to_value(storage.breakdown(&query, Dimension::Region)?)?,
+        Report::Cities => serde_json::to_value(storage.breakdown(&query, Dimension::City)?)?,
+        Report::Hosts => serde_json::to_value(storage.breakdown(&query, Dimension::Host)?)?,
+        Report::Tags => serde_json::to_value(storage.breakdown(&query, Dimension::Tag)?)?,
+        Report::QueryParameters => serde_json::to_value(
+            sumimi_service::storage::parse_query_parameters(&storage.query_strings(&query)?),
+        )?,
         Report::Sessions => serde_json::to_value(storage.sessions(&query)?)?,
     };
 

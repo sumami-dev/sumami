@@ -57,6 +57,11 @@ pub struct AppState {
     website_cache: Arc<RwLock<HashMap<String, WebsiteMeta>>>,
     /// When the cache was last refreshed (unix seconds).
     cache_stamp: Arc<AtomicU64>,
+    /// The geolocation resolver: where an IP address is.
+    ///
+    /// The open-source build has none — it uses the country header a proxy
+    /// sends. The private edition adds one.
+    pub geo: Option<Arc<dyn crate::geo::Resolver>>,
 }
 
 impl AppState {
@@ -77,7 +82,17 @@ impl AppState {
             started_at: Instant::now(),
             website_cache: Arc::new(RwLock::new(HashMap::new())),
             cache_stamp: Arc::new(AtomicU64::new(0)),
+            geo: None,
         }
+    }
+
+    /// Add the geolocation resolver.
+    ///
+    /// The resolver is looked up on the collection path, so it has to be fast:
+    /// an in-memory table, not a query.
+    pub fn with_geo(mut self, resolver: Arc<dyn crate::geo::Resolver>) -> Self {
+        self.geo = Some(resolver);
+        self
     }
 
     /// Look up a website by id or domain, with a short-lived cache.
@@ -233,6 +248,15 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/websites/{id}/stats/screens", get(stats::screens))
         .route("/api/websites/{id}/stats/events", get(stats::events))
+        .route("/api/websites/{id}/stats/channels", get(stats::channels))
+        .route("/api/websites/{id}/stats/regions", get(stats::regions))
+        .route("/api/websites/{id}/stats/cities", get(stats::cities))
+        .route("/api/websites/{id}/stats/hosts", get(stats::hosts))
+        .route("/api/websites/{id}/stats/tags", get(stats::tags))
+        .route(
+            "/api/websites/{id}/stats/query-parameters",
+            get(stats::query_parameters),
+        )
         .route("/api/websites/{id}/stats/urls", get(stats::urls))
         // --- raw data ---
         .route("/api/websites/{id}/sessions", get(sessions::list))

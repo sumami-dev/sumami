@@ -41,6 +41,7 @@ fn hit(website_id: &str, url: &str) -> Hit {
         url_query: Some("utm_source=twitter".to_string()),
         title: Some("Example".to_string()),
         referrer: Some("news.ycombinator.com".to_string()),
+        channel: Some("social".to_string()),
         referrer_path: Some("/item".to_string()),
         referrer_query: Some("?id=1".to_string()),
         hostname: Some("example.com".to_string()),

@@ -299,6 +299,11 @@ fn report_for(dimension: Dimension) -> ReportKind {
         Dimension::Country => ReportKind::Countries,
         Dimension::Language => ReportKind::Languages,
         Dimension::Screen => ReportKind::Screens,
+        Dimension::Channel => ReportKind::Channels,
+        Dimension::Region => ReportKind::Regions,
+        Dimension::City => ReportKind::Cities,
+        Dimension::Host => ReportKind::Hosts,
+        Dimension::Tag => ReportKind::Tags,
     }
 }
 
@@ -313,6 +318,11 @@ fn dimension_name(dimension: Dimension) -> &'static str {
         Dimension::Country => "countries",
         Dimension::Language => "languages",
         Dimension::Screen => "screens",
+        Dimension::Channel => "channels",
+        Dimension::Region => "regions",
+        Dimension::City => "cities",
+        Dimension::Host => "hosts",
+        Dimension::Tag => "tags",
     }
 }
 
@@ -593,8 +603,20 @@ fn dimension(text: &str, chinese: bool) -> Option<Dimension> {
         if text.contains("设备") {
             return Some(Dimension::Device);
         }
-        if text.contains("国家") || text.contains("地区") {
+        if text.contains("国家") {
             return Some(Dimension::Country);
+        }
+        if text.contains("地区") || text.contains("省份") || text.contains("州") {
+            return Some(Dimension::Region);
+        }
+        if text.contains("城市") {
+            return Some(Dimension::City);
+        }
+        if text.contains("渠道") || text.contains("来源渠道") {
+            return Some(Dimension::Channel);
+        }
+        if text.contains("域名") || text.contains("主机") {
+            return Some(Dimension::Host);
         }
         if text.contains("语言") {
             return Some(Dimension::Language);
@@ -625,8 +647,20 @@ fn dimension(text: &str, chinese: bool) -> Option<Dimension> {
     if text.contains("device") {
         return Some(Dimension::Device);
     }
-    if text.contains("country") || text.contains("countries") || text.contains("region") {
+    if text.contains("country") || text.contains("countries") {
         return Some(Dimension::Country);
+    }
+    if text.contains("region") || text.contains("state") || text.contains("province") {
+        return Some(Dimension::Region);
+    }
+    if text.contains("city") || text.contains("cities") {
+        return Some(Dimension::City);
+    }
+    if text.contains("channel") {
+        return Some(Dimension::Channel);
+    }
+    if text.contains("hostname") || text.contains("host name") || text.contains("hosts") {
+        return Some(Dimension::Host);
     }
     if text.contains("language") {
         return Some(Dimension::Language);

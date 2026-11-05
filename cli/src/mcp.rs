@@ -44,7 +44,7 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub const SUPPORTED_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// The reports the `sumimi_report` tool can run, and what each one is.
-pub const REPORTS: [(&str, &str); 13] = [
+pub const REPORTS: [(&str, &str); 19] = [
     (
         "summary",
         "The headline numbers: page views, visitors, sessions, bounces and the average visit, with the change against the period before.",
@@ -88,6 +88,30 @@ pub const REPORTS: [(&str, &str); 13] = [
     (
         "events",
         "The custom events, by name.",
+    ),
+    (
+        "channels",
+        "The traffic channels: direct, search, social, email, ads.",
+    ),
+    (
+        "regions",
+        "The regions of the visitors.",
+    ),
+    (
+        "cities",
+        "The cities of the visitors.",
+    ),
+    (
+        "hosts",
+        "The hostnames of the sites.",
+    ),
+    (
+        "tags",
+        "The tags of the custom events.",
+    ),
+    (
+        "query-parameters",
+        "The query parameters of the visited pages.",
     ),
     (
         "sessions",

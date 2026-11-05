@@ -242,6 +242,9 @@ pub fn seed(storage: &dyn Storage, options: &SeedOptions) -> Result<(String, u64
                     referrer: referrer_host.clone(),
                     referrer_path: referrer_path.clone(),
                     referrer_query: referrer_query.clone(),
+                    channel: Some(
+                        sumimi_service::channels::channel(referrer_host.as_deref()).to_string(),
+                    ),
                     hostname: Some("example.com".to_string()),
                     browser: Some(browser.to_string()),
                     browser_version: Some("120".to_string()),
@@ -292,6 +295,7 @@ pub fn seed(storage: &dyn Storage, options: &SeedOptions) -> Result<(String, u64
                     referrer: None,
                     referrer_path: None,
                     referrer_query: None,
+                    channel: Some("direct".to_string()),
                     hostname: Some("example.com".to_string()),
                     browser: Some(browser.to_string()),
                     browser_version: Some("120".to_string()),

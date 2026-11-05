@@ -97,6 +97,24 @@ pub fn run_report(
         ReportKind::Screens => {
             serde_json::to_value(storage.breakdown(&query, Dimension::Screen)?)?
         }
+        ReportKind::Channels => {
+            serde_json::to_value(storage.breakdown(&query, Dimension::Channel)?)?
+        }
+        ReportKind::Regions => {
+            serde_json::to_value(storage.breakdown(&query, Dimension::Region)?)?
+        }
+        ReportKind::Cities => {
+            serde_json::to_value(storage.breakdown(&query, Dimension::City)?)?
+        }
+        ReportKind::Hosts => {
+            serde_json::to_value(storage.breakdown(&query, Dimension::Host)?)?
+        }
+        ReportKind::Tags => {
+            serde_json::to_value(storage.breakdown(&query, Dimension::Tag)?)?
+        }
+        ReportKind::QueryParameters => serde_json::to_value(
+            crate::storage::parse_query_parameters(&storage.query_strings(&query)?),
+        )?,
         ReportKind::Events => serde_json::to_value(storage.events(&query)?)?,
         ReportKind::Sessions => serde_json::to_value(storage.sessions(&query)?)?,
         ReportKind::EventLog => serde_json::to_value(storage.event_log(&query)?)?,
@@ -352,6 +370,61 @@ pub async fn urls(
     Query(query): Query<crate::models::StatsQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     breakdown(state, id, query, ReportKind::Pages).await
+}
+
+/// `GET /api/websites/{id}/stats/channels` — the traffic channels.
+pub async fn channels(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<crate::models::StatsQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    breakdown(state, id, query, ReportKind::Channels).await
+}
+
+/// `GET /api/websites/{id}/stats/regions` — the regions of the visitors.
+pub async fn regions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<crate::models::StatsQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    breakdown(state, id, query, ReportKind::Regions).await
+}
+
+/// `GET /api/websites/{id}/stats/cities` — the cities of the visitors.
+pub async fn cities(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<crate::models::StatsQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    breakdown(state, id, query, ReportKind::Cities).await
+}
+
+/// `GET /api/websites/{id}/stats/hosts` — the hostnames of the sites.
+pub async fn hosts(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<crate::models::StatsQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    breakdown(state, id, query, ReportKind::Hosts).await
+}
+
+/// `GET /api/websites/{id}/stats/tags` — the tags of the custom events.
+pub async fn tags(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<crate::models::StatsQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    breakdown(state, id, query, ReportKind::Tags).await
+}
+
+/// `GET /api/websites/{id}/stats/query-parameters` — the query parameters of
+/// the visited pages.
+pub async fn query_parameters(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<crate::models::StatsQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    breakdown(state, id, query, ReportKind::QueryParameters).await
 }
 
 /// Shared breakdown handler.

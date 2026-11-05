@@ -90,6 +90,18 @@ enum Command {
     Screens(WindowArgs),
     /// Show the custom events.
     Events(WindowArgs),
+    /// Show the traffic channels.
+    Channels(WindowArgs),
+    /// Show the regions of the visitors.
+    Regions(WindowArgs),
+    /// Show the cities of the visitors.
+    Cities(WindowArgs),
+    /// Show the hostnames of the sites.
+    Hosts(WindowArgs),
+    /// Show the tags of the custom events.
+    Tags(WindowArgs),
+    /// Show the query parameters of the visited pages.
+    QueryParameters(WindowArgs),
     /// Show the sessions.
     Sessions(WindowArgs),
     /// Show the time series.
@@ -859,6 +871,42 @@ pub fn run() -> Result<()> {
                 ),
                 Command::Events(args) => (
                     Report::Events,
+                    Some(args.website.clone()),
+                    window(args.from.as_deref(), args.to.as_deref())?,
+                    args.limit,
+                ),
+                Command::Channels(args) => (
+                    Report::Channels,
+                    Some(args.website.clone()),
+                    window(args.from.as_deref(), args.to.as_deref())?,
+                    args.limit,
+                ),
+                Command::Regions(args) => (
+                    Report::Regions,
+                    Some(args.website.clone()),
+                    window(args.from.as_deref(), args.to.as_deref())?,
+                    args.limit,
+                ),
+                Command::Cities(args) => (
+                    Report::Cities,
+                    Some(args.website.clone()),
+                    window(args.from.as_deref(), args.to.as_deref())?,
+                    args.limit,
+                ),
+                Command::Hosts(args) => (
+                    Report::Hosts,
+                    Some(args.website.clone()),
+                    window(args.from.as_deref(), args.to.as_deref())?,
+                    args.limit,
+                ),
+                Command::Tags(args) => (
+                    Report::Tags,
+                    Some(args.website.clone()),
+                    window(args.from.as_deref(), args.to.as_deref())?,
+                    args.limit,
+                ),
+                Command::QueryParameters(args) => (
+                    Report::QueryParameters,
                     Some(args.website.clone()),
                     window(args.from.as_deref(), args.to.as_deref())?,
                     args.limit,

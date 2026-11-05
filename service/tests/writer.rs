@@ -186,6 +186,10 @@ impl Storage for FlakyStorage {
     fn timeseries(&self, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
         self.inner.timeseries(query)
     }
+    fn query_strings(&self, _query: &ReportQuery) -> Result<Vec<(String, i64)>> {
+        Ok(Vec::new())
+    }
+
     fn events(&self, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
         self.inner.events(query)
     }

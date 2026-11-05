@@ -198,6 +198,10 @@ fn generate(views: i64) -> Vec<Hit> {
                     Some(referrer.to_string())
                 }
             },
+            channel: Some(
+                sumimi_service::channels::channel(Some(referrers[(i as usize) % referrers.len()]))
+                    .to_string(),
+            ),
             referrer_path: Some("/item?id=1".to_string()),
             referrer_query: Some("?id=1".to_string()),
             hostname: Some("example.com".to_string()),

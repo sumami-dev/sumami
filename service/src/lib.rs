@@ -8,9 +8,11 @@
 pub mod analyst;
 pub mod api;
 pub mod auth;
+pub mod channels;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod geo;
 pub mod instance;
 pub mod models;
 pub mod pool;

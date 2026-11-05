@@ -36,7 +36,10 @@ use duckdb::Connection;
 /// * v3 — the fact tables lost their primary keys (no index on an append-only table).
 /// * v4 — the session and visitor ids are **UUIDs**: 16 bytes instead of a
 ///   36-character string.
-pub const SCHEMA_VERSION: i64 = 4;
+/// * v5 — the traffic **channel** is stored with the event (direct, search,
+///   social, email, ads) instead of being worked out from the referrer at
+///   report time.
+pub const SCHEMA_VERSION: i64 = 5;
 
 /// The columns of the `event` table.
 ///
@@ -57,6 +60,7 @@ pub const EVENT_COLUMNS: &str = "
     referrer_path   VARCHAR,
     referrer_query  VARCHAR,
     hostname        VARCHAR,
+    channel         VARCHAR,
 
     browser         VARCHAR,
     browser_version VARCHAR,

@@ -235,16 +235,39 @@ fn build_hit(
         None => (None, None, None),
     };
 
+    // The country: the header first — a proxy in front of the server knows it
+    // exactly — and the resolver second.
     let country_header = meta
         .country_header
         .clone()
         .or_else(|| state.config.country_header.clone());
-    let country = country_header
+    let mut country = country_header
         .as_ref()
         .and_then(|header| headers.get(header.as_str()))
         .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim().to_uppercase())
-        .filter(|v| !v.is_empty() && v.len() <= 8);
+        .and_then(crate::geo::country_from_header);
+    let mut region = raw.str("region");
+    let mut city = raw.str("city");
+
+    if country.is_none() {
+        let location = state.geo.as_ref().and_then(|resolver| {
+            ip.parse::<std::net::IpAddr>()
+                .ok()
+                .and_then(|address| resolver.lookup(address))
+        });
+        if let Some(location) = location {
+            country = location.country;
+            region = region.or(location.region);
+            city = city.or(location.city);
+        }
+    }
+
+    // The channel: the bucket the referrer falls into. It is worked out once,
+    // here, and stored with the event.
+    let channel = Some(
+        crate::channels::channel(referrer.as_deref())
+            .to_string(),
+    );
 
     // The web vitals, if the tracker reported them.
     let metric = |name: &str| -> Option<f64> { raw.number(name) };
@@ -269,6 +292,7 @@ fn build_hit(
         referrer_path,
         referrer_query,
         hostname: raw.str("hostname"),
+        channel,
 
         browser: info.browser,
         browser_version: info.browser_version,
@@ -278,8 +302,8 @@ fn build_hit(
         screen: raw.str("screen"),
         language: raw.str("language"),
         country,
-        region: raw.str("region"),
-        city: raw.str("city"),
+        region,
+        city,
 
         utm_source: param("utm_source"),
         utm_medium: param("utm_medium"),

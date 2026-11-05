@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS event (
     referrer_path   TEXT,
     referrer_query  TEXT,
     hostname        TEXT,
+    channel         TEXT,
 
     browser         TEXT,
     browser_version TEXT,
@@ -242,7 +243,7 @@ fn ts(value: chrono::NaiveDateTime) -> i64 {
 ///
 /// * v3 — the event-row model, the ids as text.
 /// * v4 — the session and visitor ids are **UUIDs**: 16 bytes, not a string.
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 /// Teach SQLite how to turn an old text id into a UUID.
 ///
@@ -288,6 +289,14 @@ fn migrate(conn: &Connection) -> Result<()> {
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
 
+    if version > 0 && version < 5 {
+        // The traffic channel was added: it is worked out once, when the event
+        // is collected, and stored with it.
+        if !has_column(conn, "event", "channel")? {
+            conn.execute("ALTER TABLE event ADD COLUMN channel TEXT", [])?;
+        }
+    }
+
     if version > 0 && version < 4 {
         // The session and visitor ids were 36-character strings; they are now
         // 16-byte UUIDs. The conversion is deterministic, so no session is split
@@ -308,6 +317,19 @@ fn migrate(conn: &Connection) -> Result<()> {
         params![SCHEMA_VERSION.to_string()],
     )?;
     Ok(())
+}
+
+/// Whether a table has a column.
+fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Read a UUID out of a row.
@@ -585,6 +607,10 @@ impl Storage for SqliteBackend {
         self.with_reader(|conn| events(conn, query))
     }
 
+    fn query_strings(&self, query: &ReportQuery) -> Result<Vec<(String, i64)>> {
+        self.with_reader(|conn| query_strings(conn, query))
+    }
+
     fn event_log(&self, query: &ReportQuery) -> Result<Vec<EventRow>> {
         self.with_reader(|conn| event_log(conn, query))
     }
@@ -626,7 +652,7 @@ impl Storage for SqliteBackend {
 INSERT INTO event (
     id, website_id, session_id, visitor_id, created_at,
     url, url_query, title,
-    referrer, referrer_path, referrer_query, hostname,
+    referrer, referrer_path, referrer_query, hostname, channel,
     browser, browser_version, os, os_version, device, screen, language,
     country, region, city,
     utm_source, utm_medium, utm_campaign, utm_content, utm_term,
@@ -636,13 +662,13 @@ INSERT INTO event (
 ) VALUES (
     NULL, ?1, ?2, ?3, ?4,
     ?5, ?6, ?7,
-    ?8, ?9, ?10, ?11,
-    ?12, ?13, ?14, ?15, ?16, ?17, ?18,
-    ?19, ?20, ?21,
-    ?22, ?23, ?24, ?25, ?26,
-    ?27, ?28, ?29, ?30, ?31, ?32,
-    ?33, ?34, ?35, ?36, ?37,
-    ?38, ?39, ?40, ?41
+    ?8, ?9, ?10, ?11, ?12,
+    ?13, ?14, ?15, ?16, ?17, ?18, ?19,
+    ?20, ?21, ?22,
+    ?23, ?24, ?25, ?26, ?27,
+    ?28, ?29, ?30, ?31, ?32, ?33,
+    ?34, ?35, ?36, ?37, ?38,
+    ?39, ?40, ?41, ?42
 )"#,
             )?;
             for hit in &kept {
@@ -658,6 +684,7 @@ INSERT INTO event (
                     hit.referrer_path,
                     hit.referrer_query,
                     hit.hostname,
+                    hit.channel,
                     hit.browser,
                     hit.browser_version,
                     hit.os,
@@ -922,6 +949,26 @@ fn breakdown(
     Ok(out)
 }
 
+/// The query strings of the visited pages, with how often each was seen.
+fn query_strings(conn: &Connection, query: &ReportQuery) -> Result<Vec<(String, i64)>> {
+    let filters = Filters::new(query);
+
+    let sql = format!(
+        "SELECT url_query, COUNT(*) AS value FROM event
+         WHERE {where_clause} AND url_query IS NOT NULL AND url_query <> ''
+         GROUP BY url_query ORDER BY value DESC LIMIT 1000",
+        where_clause = filters.clause(),
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(filters.params().as_slice())?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push((row.get(0)?, row.get(1)?));
+    }
+    Ok(out)
+}
+
 /// The page views over time.
 fn timeseries(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow>> {
     let filters = Filters::new(query);
@@ -987,7 +1034,7 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
     let filters = Filters::new(query);
 
     let sql = format!(
-        "SELECT id, website_id, session_id, created_at, event_name, url, hostname, data,
+        "SELECT id, website_id, session_id, created_at, event_name, url, hostname, channel, data,
                 referrer, referrer_path, referrer_query, country, city, browser, os,
                 utm_source, utm_medium, utm_campaign, lcp, inp, cls, device
          FROM event WHERE {where_clause}
@@ -1010,21 +1057,22 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
             name: row.get(4)?,
             url: row.get(5)?,
             hostname: row.get(6)?,
-            data: row.get(7)?,
-            referrer: row.get(8)?,
-            referrer_path: row.get(9)?,
-            referrer_query: row.get(10)?,
-            country: row.get(11)?,
-            city: row.get(12)?,
-            browser: row.get(13)?,
-            os: row.get(14)?,
-            device: row.get(21)?,
-            utm_source: row.get(15)?,
-            utm_medium: row.get(16)?,
-            utm_campaign: row.get(17)?,
-            lcp: row.get(18)?,
-            inp: row.get(19)?,
-            cls: row.get(20)?,
+            channel: row.get(7)?,
+            data: row.get(8)?,
+            referrer: row.get(9)?,
+            referrer_path: row.get(10)?,
+            referrer_query: row.get(11)?,
+            country: row.get(12)?,
+            city: row.get(13)?,
+            browser: row.get(14)?,
+            os: row.get(15)?,
+            device: row.get(22)?,
+            utm_source: row.get(16)?,
+            utm_medium: row.get(17)?,
+            utm_campaign: row.get(18)?,
+            lcp: row.get(19)?,
+            inp: row.get(20)?,
+            cls: row.get(21)?,
         });
     }
     Ok(out)
@@ -1039,7 +1087,7 @@ fn recent_events(conn: &Connection, query: &ReportQuery, limit: i64) -> Result<V
     let filters = Filters::new(query);
     let sql = format!(
         "SELECT id, session_id, visitor_id, created_at, url, title, referrer, referrer_path,
-                hostname, browser, os, device, country, region, city, language, screen
+                hostname, channel, browser, os, device, country, region, city, language, screen
          FROM event WHERE {where_clause}
          ORDER BY created_at DESC, id DESC
          LIMIT {limit}",
@@ -1061,14 +1109,15 @@ fn recent_events(conn: &Connection, query: &ReportQuery, limit: i64) -> Result<V
             referrer: row.get(6)?,
             referrer_path: row.get(7)?,
             hostname: row.get(8)?,
-            browser: row.get(9)?,
-            os: row.get(10)?,
-            device: row.get(11)?,
-            country: row.get(12)?,
-            region: row.get(13)?,
-            city: row.get(14)?,
-            language: row.get(15)?,
-            screen: row.get(16)?,
+            channel: row.get(9)?,
+            browser: row.get(10)?,
+            os: row.get(11)?,
+            device: row.get(12)?,
+            country: row.get(13)?,
+            region: row.get(14)?,
+            city: row.get(15)?,
+            language: row.get(16)?,
+            screen: row.get(17)?,
         });
     }
     Ok(out)
