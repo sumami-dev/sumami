@@ -409,6 +409,7 @@ event(
     url, url_query, title,                       -- the page
     referrer, referrer_path, referrer_query,     -- where it came from
     hostname,
+    channel,                                     -- direct, search, social, email, ads
 
     browser, browser_version, os, os_version, device, screen, language,
     country, region, city,
@@ -527,6 +528,38 @@ and PostgreSQL's `uuid` — the same 16 bytes everywhere, and the API is unchang
 strings are only formatted at the edge). The measured cost of a live site drops from
 **115.5 B/浏览** to about **105 B/浏览**, and the `COUNT(DISTINCT …)` hash tables in the
 summary hold a third of the bytes.
+
+### 4.3d The dimensions, and where the visitor is
+
+Every way the traffic can be broken down is a **dimension** (`storage::Dimension`):
+
+| dimension | column | counts |
+| --- | --- | --- |
+| pages, referrers, hosts, tags | `url`, `referrer`, `hostname`, `tag` | views |
+| browsers, os, devices, countries, regions, cities, languages, screens, channels | the column of the same name | unique visitors |
+
+**The channel** is worked out **once**, when the event is collected (`channels::channel`),
+and stored with it: a visit from a search engine is a search visit, and the report does
+not have to guess it from the referrer every time. The longest matching referrer wins —
+`mail.google.com` is a mail client, not a search engine.
+
+**The query parameters** are not a dimension: they are split out of the query string in
+Rust (`storage::parse_query_parameters`), because the three engines do not agree on how
+to split a query string and the answer has to be the same in all of them.
+
+**Where the visitor is** comes from one of three places, tried in this order:
+
+1. **The header.** A proxy in front of the server knows the country exactly — it is the
+   one that terminated the connection — and puts it in a header (`CF-IPCountry` and
+   friends). `SUMIMI_COUNTRY_HEADER` says which header. This is what the open-source
+   build uses: no data files, no database, nothing to keep up to date.
+2. **The resolver** (`geo::Resolver`). The private edition has one: a MaxMind GeoLite2
+   file, read into memory and asked on the collection path. It adds the region and the
+   city.
+3. **Nothing.** The country stays empty and the report says "unknown".
+
+**The IP address itself is never stored** — only the country code, the region and the
+city come out of the lookup.
 
 ### 4.3a The control plane: the instance store
 
