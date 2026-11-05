@@ -561,6 +561,33 @@ to split a query string and the answer has to be the same in all of them.
 **The IP address itself is never stored** — only the country code, the region and the
 city come out of the lookup.
 
+### 4.3e The field set: whatever the reference implementation has, we have
+
+**The rule** ✓: every field the reference implementation's event row carries,
+we carry too ✓ ✓ — the coordinates ✓, the referrer's display name ✓, the
+referrer's type ✓, everything ✓ ✓. **No field is dropped because it seems
+unimportant** ✗ ✗ ✓.
+
+Two things follow from it ✓:
+
+- **A field is a capability, not a byte** ✓ — `browser` ✓, `country` ✓,
+  `channel` ✓, `referrer_name` ✓: each one is a report the owner can run ✓ ✓.
+  Merging two of them to save a dictionary index ✗ destroys a report ✓ ✗ —
+  **the disk is managed by the retention policy, not by squeezing the row** ✓ ✓.
+- **Filling the fields in makes our rows wider** ✓ — so the size advantage
+  shrinks ✓ ✓. **That is the right trade** ✓ ✓: the fields are what the product
+  is ✓ ✓; the disk is bounded by the retention window ✓ and the backups ✓ ✓.
+
+**How "have them all" is proved** ✓ — not by reading the schema, but by
+**writing the same data into both and comparing row by row** ✓ ✓ (the parity
+suite in the private edition ✓ ✓): every field, every value ✓ ✓.
+
+Our names differ from the reference implementation's ✓ — `visitor_id` for
+`user_id` ✓, `url` for `url_path` ✓, `title` for `page_title` ✓, `referrer` for
+`referrer_domain` ✓, and `channel` for `referrer_type` ✓ ✓ — but **the value
+sets have to match** ✓ ✓ (the channel buckets: direct ✓, search ✓, social ✓,
+email ✓, ads ✓, and whatever else the reference implementation has ✓ ✓).
+
 ### 4.3a The control plane: the instance store
 
 **The events and everything else are different shapes, so they live apart.**
