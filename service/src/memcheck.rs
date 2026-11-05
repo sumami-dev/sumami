@@ -18,7 +18,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::models::{Hit, HitKind};
+use crate::models::Hit;
 use crate::pool::Db;
 use crate::rss;
 use crate::storage::Storage;
@@ -200,53 +200,43 @@ fn hit(website: &str, number: usize, now: chrono::NaiveDateTime) -> Hit {
     let page = number % PAGES;
     let visitor = number % VISITORS;
     let (referrer, channel) = REFERRERS[number % REFERRERS.len()];
-    Hit {
-        website_id: website.to_string(),
-        session_id: crate::ua::uuid_from_text(&format!("session-{}", number / 4)),
-        visitor_id: crate::ua::uuid_from_text(&format!("visitor-{visitor}")),
-        visit_id: Some(crate::ua::uuid_from_text(&format!("visit-{}", number / 4))),
-        retention_days: 0,
-        kind: HitKind::Pageview,
-        created_at: now,
-        url: Some(format!("/blog/post-{page}")),
-        url_query: Some("utm_source=twitter&utm_medium=cpc".to_string()),
-        title: Some(format!("Post {page} — the title of the page")),
-        referrer: Some(referrer.to_string()),
-        channel: Some(channel.to_string()),
-        referrer_path: Some("/item".to_string()),
-        referrer_query: Some("?id=1".to_string()),
-        referrer_name: crate::channels::referrer_name(Some(referrer)),
-        hostname: Some("example.com".to_string()),
-        browser: Some("Chrome".to_string()),
-        browser_version: Some("120".to_string()),
-        os: Some("macOS".to_string()),
-        os_version: Some("10.15".to_string()),
-        device: Some("desktop".to_string()),
-        screen: Some("1920x1080".to_string()),
-        language: Some("en-US".to_string()),
-        country: Some("DE".to_string()),
-        region: Some("Berlin".to_string()),
-        city: Some("Berlin".to_string()),
-        latitude: Some(52.52),
-        longitude: Some(13.405),
-        utm_source: Some("twitter".to_string()),
-        utm_medium: Some("cpc".to_string()),
-        utm_campaign: Some("spring".to_string()),
-        utm_content: Some("cta".to_string()),
-        utm_term: Some("term".to_string()),
-        gclid: None,
-        fbclid: None,
-        msclkid: None,
-        ttclid: None,
-        lifatid: None,
-        twclid: None,
-        lcp: Some(1200.0),
-        inp: Some(80.0),
-        cls: Some(0.02),
-        fcp: Some(700.0),
-        ttfb: Some(90.0),
-        name: None,
-        tag: None,
-        data: None,
-    }
+    crate::testing::HitBuilder::new(
+        website,
+        &format!("session-{}", number / 4),
+        &format!("visitor-{visitor}"),
+    )
+    .at(now)
+    .visit(&format!("visit-{}", number / 4))
+    .url(format!("/blog/post-{page}"))
+    .url_query("utm_source=twitter&utm_medium=cpc")
+    .title(format!("Post {page} — the title of the page"))
+    .referrer(referrer)
+    .channel(channel)
+    .referrer_path("/item")
+    .referrer_query("?id=1")
+    .referrer_name(crate::channels::referrer_name(Some(referrer)).unwrap_or_default())
+    .hostname("example.com")
+    .browser("Chrome")
+    .browser_version("120")
+    .os("macOS")
+    .os_version("10.15")
+    .device("desktop")
+    .screen("1920x1080")
+    .language("en-US")
+    .country("DE")
+    .region("Berlin")
+    .city("Berlin")
+    .latitude(52.52)
+    .longitude(13.405)
+    .utm_source("twitter")
+    .utm_medium("cpc")
+    .utm_campaign("spring")
+    .utm_content("cta")
+    .utm_term("term")
+    .lcp(1200.0)
+    .inp(80.0)
+    .cls(0.02)
+    .fcp(700.0)
+    .ttfb(90.0)
+    .build()
 }

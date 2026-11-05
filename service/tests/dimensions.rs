@@ -3,9 +3,10 @@
 //! The tests put events in by hand and ask for each breakdown — the numbers
 //! have to come out of the database, not out of the code that wrote them.
 
-use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::models::Hit;
 use sumimi_service::pool::Db;
 use sumimi_service::storage::{parse_query_parameters, Dimension, ReportQuery, Storage, TimeRange};
+use sumimi_service::testing::HitBuilder;
 
 /// A temporary database with one website and a known amount of traffic.
 fn database(name: &str) -> (Db, String) {
@@ -43,33 +44,25 @@ fn hit(
     query: &str,
     now: chrono::NaiveDateTime,
 ) -> Hit {
-    Hit {
-        website_id: website.to_string(),
-        session_id: sumimi_service::ua::uuid_from_text("s1"),
-        visitor_id: sumimi_service::ua::uuid_from_text(&format!("{tag}-{url}")),
-        retention_days: 0,
-        kind: HitKind::Pageview,
-        created_at: now,
-        url: Some(url.to_string()),
-        url_query: Some(query.to_string()),
-        referrer: Some(referrer.to_string()),
-        hostname: Some(hostname.to_string()),
-        channel: Some(
-            sumimi_service::channels::channel(&sumimi_service::channels::ChannelInput::new(
-                Some(referrer),
-                Some(query),
-                None,
-                None,
-                Some(hostname),
-            ))
-            .to_string(),
-        ),
-        country: Some(country.to_string()),
-        region: Some(country.to_string()),
-        city: Some(city.to_string()),
-        tag: Some(tag.to_string()),
-        ..Hit::default()
-    }
+    let channel = sumimi_service::channels::channel(&sumimi_service::channels::ChannelInput::new(
+        Some(referrer),
+        Some(query),
+        None,
+        None,
+        Some(hostname),
+    ));
+    HitBuilder::new(website, "s1", &format!("{tag}-{url}"))
+        .at(now)
+        .url(url)
+        .url_query(query)
+        .referrer(referrer)
+        .hostname(hostname)
+        .channel(channel)
+        .country(country)
+        .region(country)
+        .city(city)
+        .tag(tag)
+        .build()
 }
 
 /// The window the tests ask about.

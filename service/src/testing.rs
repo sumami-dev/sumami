@@ -184,3 +184,89 @@ fn text(value: String) -> Option<String> {
         Some(value)
     }
 }
+
+/// The traffic the probes and the benchmarks write.
+///
+/// A site with five pages, five referrers (one of them empty — that is direct
+/// traffic), four browsers, four systems and five countries. Three views per
+/// session, and the sessions spread over thirty days.
+///
+/// Every field a page view carries is filled, so the rows on disk are the size
+/// a real site's rows are.
+pub fn traffic(views: i64) -> Vec<Hit> {
+    const PAGES: [&str; 5] = [
+        "/",
+        "/posts/duckdb-vs-postgres",
+        "/posts/self-hosting-on-a-budget",
+        "/docs/install",
+        "/tags/rust",
+    ];
+    const REFERRERS: [&str; 5] = [
+        "news.ycombinator.com",
+        "www.google.com",
+        "duckduckgo.com",
+        "github.com",
+        "",
+    ];
+    const BROWSERS: [&str; 4] = ["Chrome", "Safari", "Firefox", "Edge"];
+    const SYSTEMS: [&str; 4] = ["Windows", "macOS", "iOS", "Android"];
+    const COUNTRIES: [&str; 5] = ["US", "CN", "DE", "GB", "JP"];
+
+    let base = chrono::NaiveDate::from_ymd_opt(2026, 3, 1)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+
+    (0..views)
+        .map(|number| {
+            let index = number as usize;
+            let session = number / 3;
+            let referrer = REFERRERS[index % REFERRERS.len()];
+            let channel = crate::channels::channel(&crate::channels::ChannelInput::new(
+                Some(referrer),
+                Some("utm_source=twitter&utm_medium=cpc"),
+                Some("cpc"),
+                Some("twitter"),
+                Some("example.com"),
+            ));
+
+            HitBuilder::new(
+                "w1",
+                &format!("session-{session:08x}"),
+                &format!("visitor-{:08x}", session % 40_000),
+            )
+            .at(base + chrono::Duration::seconds(number * 37 % (30 * 86_400)))
+            .visit(&format!("visit-{session:08x}"))
+            .url(PAGES[index % PAGES.len()])
+            .url_query("utm_source=twitter&utm_medium=cpc")
+            .title(format!("A post about topic {}", number % 500))
+            .referrer(referrer)
+            .channel(channel)
+            .referrer_path("/item?id=1")
+            .referrer_query("?id=1")
+            .referrer_name(crate::channels::referrer_name(Some(referrer)).unwrap_or_default())
+            .hostname("example.com")
+            .browser(BROWSERS[index % BROWSERS.len()])
+            .browser_version("120")
+            .os(SYSTEMS[index % SYSTEMS.len()])
+            .os_version("11")
+            .device(if number % 3 == 0 { "mobile" } else { "desktop" })
+            .screen("1920x1080")
+            .language("en-US")
+            .country(COUNTRIES[index % COUNTRIES.len()])
+            .region("California")
+            .city("San Francisco")
+            .utm_source("twitter")
+            .utm_medium("cpc")
+            .utm_campaign("spring")
+            .utm_content("cta")
+            .utm_term("analytics")
+            .lcp(600.0 + (number % 2000) as f64)
+            .inp(20.0 + (number % 300) as f64)
+            .cls((number % 100) as f64 / 1000.0)
+            .fcp(400.0 + (number % 900) as f64)
+            .ttfb(60.0 + (number % 220) as f64)
+            .build()
+        })
+        .collect()
+}

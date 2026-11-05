@@ -8,8 +8,9 @@ use std::path::PathBuf;
 use serde_json::{json, Value};
 
 use sumimi_cli::mcp::Server;
-use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::models::Hit;
 use sumimi_service::pool::Db;
+use sumimi_service::testing::HitBuilder;
 use sumimi_service::storage::Storage;
 
 /// A temporary database with one website and a few events.
@@ -43,17 +44,12 @@ fn instance(name: &str) -> (PathBuf, String) {
 
 /// One page view.
 fn hit(website: &str, url: &str, session: &str, visitor: &str, now: chrono::NaiveDateTime) -> Hit {
-    Hit {
-        website_id: website.to_string(),
-        session_id: sumimi_service::ua::uuid_from_text(session),
-        visitor_id: sumimi_service::ua::uuid_from_text(visitor),
-        kind: HitKind::Pageview,
-        created_at: now,
-        url: Some(url.to_string()),
-        hostname: Some("example.com".to_string()),
-        browser: Some("Chrome".to_string()),
-        ..Hit::default()
-    }
+    HitBuilder::new(website, session, visitor)
+        .at(now)
+        .url(url)
+        .hostname("example.com")
+        .browser("Chrome")
+        .build()
 }
 
 /// Send a request and get the answer.

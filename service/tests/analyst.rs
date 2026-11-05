@@ -4,9 +4,10 @@
 //! hand — not against the numbers the assistant computed for itself.
 
 use sumimi_service::analyst::{self, Metric};
-use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::models::Hit;
 use sumimi_service::pool::Db;
 use sumimi_service::storage::{Dimension, Storage};
+use sumimi_service::testing::HitBuilder;
 
 /// A unique temporary database path.
 fn temp_db(name: &str) -> std::path::PathBuf {
@@ -25,23 +26,17 @@ fn now() -> chrono::NaiveDateTime {
 
 /// A hit, with the fields the tests care about.
 fn hit(website: &str, session: &str, visitor: &str, url: &str, days_ago: i64) -> Hit {
-    Hit {
-        website_id: website.to_string(),
-        session_id: sumimi_service::ua::uuid_from_text(session),
-        visitor_id: sumimi_service::ua::uuid_from_text(visitor),
-        retention_days: 0,
-        kind: HitKind::Pageview,
-        created_at: now() - chrono::Duration::days(days_ago),
-        url: Some(url.to_string()),
-        referrer: Some("news.ycombinator.com".to_string()),
-        browser: Some("Chrome".to_string()),
-        os: Some("macOS".to_string()),
-        device: Some("desktop".to_string()),
-        country: Some("DE".to_string()),
-        language: Some("en-US".to_string()),
-        screen: Some("1920x1080".to_string()),
-        ..Hit::default()
-    }
+    HitBuilder::new(website, session, visitor)
+        .at(now() - chrono::Duration::days(days_ago))
+        .url(url)
+        .referrer("news.ycombinator.com")
+        .browser("Chrome")
+        .os("macOS")
+        .device("desktop")
+        .country("DE")
+        .language("en-US")
+        .screen("1920x1080")
+        .build()
 }
 
 /// A database with a website and a known amount of traffic.

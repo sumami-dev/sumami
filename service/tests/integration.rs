@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use sumimi_service::models::{Hit, HitKind};
 use sumimi_service::pool::Db;
+use sumimi_service::testing::HitBuilder;
 use sumimi_service::writer::Writer;
 
 /// A unique temporary database path.
@@ -30,55 +31,35 @@ impl Drop for WriterGuard {
 
 /// A synthetic hit — every field set, so the test can prove nothing is lost.
 fn hit(website_id: &str, url: &str) -> Hit {
-    Hit {
-        website_id: website_id.to_string(),
-        session_id: sumimi_service::ua::uuid_from_text("session-1"),
-        visitor_id: sumimi_service::ua::uuid_from_text("visitor-1"),
-        visit_id: Some(sumimi_service::ua::uuid_from_text("visit-1")),
-        retention_days: 0,
-        kind: HitKind::Pageview,
-        created_at: chrono::Utc::now().naive_utc(),
-        url: Some(url.to_string()),
-        url_query: Some("utm_source=twitter".to_string()),
-        title: Some("Example".to_string()),
-        referrer: Some("news.ycombinator.com".to_string()),
-        referrer_name: Some("Hacker News".to_string()),
-        channel: Some("Social".to_string()),
-        referrer_path: Some("/item".to_string()),
-        referrer_query: Some("?id=1".to_string()),
-        hostname: Some("example.com".to_string()),
-        browser: Some("Chrome".to_string()),
-        browser_version: Some("120".to_string()),
-        os: Some("macOS".to_string()),
-        os_version: Some("10.15".to_string()),
-        device: Some("desktop".to_string()),
-        screen: Some("1920x1080".to_string()),
-        language: Some("en-US".to_string()),
-        country: Some("DE".to_string()),
-        region: None,
-        city: None,
-        latitude: None,
-        longitude: None,
-        utm_source: Some("twitter".to_string()),
-        utm_medium: Some("social".to_string()),
-        utm_campaign: Some("spring".to_string()),
-        utm_content: None,
-        utm_term: None,
-        gclid: Some("gclid-1".to_string()),
-        fbclid: None,
-        msclkid: None,
-        ttclid: None,
-        lifatid: None,
-        twclid: None,
-        lcp: Some(1200.0),
-        inp: Some(80.0),
-        cls: Some(0.02),
-        fcp: Some(700.0),
-        ttfb: Some(90.0),
-        name: None,
-        tag: None,
-        data: None,
-    }
+    HitBuilder::new(website_id, "session-1", "visitor-1")
+        .visit("visit-1")
+        .url(url)
+        .url_query("utm_source=twitter")
+        .title("Example")
+        .referrer("news.ycombinator.com")
+        .referrer_name("Hacker News")
+        .channel("Social")
+        .referrer_path("/item")
+        .referrer_query("?id=1")
+        .hostname("example.com")
+        .browser("Chrome")
+        .browser_version("120")
+        .os("macOS")
+        .os_version("10.15")
+        .device("desktop")
+        .screen("1920x1080")
+        .language("en-US")
+        .country("DE")
+        .utm_source("twitter")
+        .utm_medium("social")
+        .utm_campaign("spring")
+        .gclid("gclid-1")
+        .lcp(1200.0)
+        .inp(80.0)
+        .cls(0.02)
+        .fcp(700.0)
+        .ttfb(90.0)
+        .build()
 }
 
 /// The writer must persist queued hits.

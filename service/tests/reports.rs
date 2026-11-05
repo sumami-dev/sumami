@@ -11,6 +11,7 @@
 use sumimi_service::models::{Hit, HitKind};
 use sumimi_service::pool::Db;
 use sumimi_service::storage::{parse_query_parameters, Dimension, ReportQuery, Storage, TimeRange};
+use sumimi_service::testing::HitBuilder;
 
 /// The moment the synthetic traffic happened.
 ///
@@ -86,9 +87,8 @@ fn hit(
     tag: &str,
 ) -> Hit {
     let at = base() + chrono::Duration::seconds(seconds);
-    let referrer = referrer.map(str::to_string);
     let channel = sumimi_service::channels::channel(&sumimi_service::channels::ChannelInput::new(
-        referrer.as_deref(),
+        referrer,
         if query.is_empty() {
             None
         } else {
@@ -98,68 +98,44 @@ fn hit(
         None,
         Some(hostname),
     ));
-    Hit {
-        website_id: website.to_string(),
-        session_id: sumimi_service::ua::uuid_from_text(session),
-        visitor_id: sumimi_service::ua::uuid_from_text(visitor),
-        visit_id: Some(sumimi_service::ua::uuid_from_text(&format!("visit-{session}"))),
-        retention_days: 0,
-        kind: if url == "/three" {
+    HitBuilder::new(website, session, visitor)
+        .at(at)
+        .kind(if url == "/three" {
             HitKind::Event
         } else {
             HitKind::Pageview
-        },
-        created_at: at,
-        url: Some(url.to_string()),
-        url_query: if query.is_empty() {
-            None
-        } else {
-            Some(query.to_string())
-        },
-        title: Some(format!("The title of {url}")),
-        referrer: referrer.clone(),
-        referrer_name: sumimi_service::channels::referrer_name(referrer.as_deref()),
-        referrer_path: referrer.as_ref().map(|_| "/item".to_string()),
-        referrer_query: referrer.as_ref().map(|_| "id=1".to_string()),
-        hostname: Some(hostname.to_string()),
-        channel: Some(channel.to_string()),
-        browser: Some(browser.to_string()),
-        browser_version: Some("120".to_string()),
-        os: Some(os.to_string()),
-        os_version: Some("10".to_string()),
-        device: Some(device.to_string()),
-        screen: Some("1920x1080".to_string()),
-        language: Some(language.to_string()),
-        country: Some(country.to_string()),
-        region: Some(region.to_string()),
-        city: Some(city.to_string()),
-        latitude: Some(52.52),
-        longitude: Some(13.405),
-        utm_source: None,
-        utm_medium: None,
-        utm_campaign: None,
-        utm_content: None,
-        utm_term: None,
-        gclid: None,
-        fbclid: None,
-        msclkid: None,
-        ttclid: None,
-        lifatid: None,
-        twclid: None,
-        lcp: Some(1200.0),
-        inp: Some(80.0),
-        cls: Some(0.02),
-        fcp: Some(700.0),
-        ttfb: Some(90.0),
-        name: if url == "/three" {
-            Some("signup".to_string())
-        } else {
-            None
-        },
+        })
+        .visit(&format!("visit-{session}"))
+        .url(url)
+        .url_query(query)
+        .title(format!("The title of {url}"))
+        .referrer(referrer.unwrap_or_default())
+        .referrer_name(sumimi_service::channels::referrer_name(referrer).unwrap_or_default())
+        .referrer_path(referrer.map(|_| "/item").unwrap_or_default())
+        .referrer_query(referrer.map(|_| "id=1").unwrap_or_default())
+        .hostname(hostname)
+        .channel(channel)
+        .browser(browser)
+        .browser_version("120")
+        .os(os)
+        .os_version("10")
+        .device(device)
+        .screen("1920x1080")
+        .language(language)
+        .country(country)
+        .region(region)
+        .city(city)
+        .latitude(52.52)
+        .longitude(13.405)
+        .lcp(1200.0)
+        .inp(80.0)
+        .cls(0.02)
+        .fcp(700.0)
+        .ttfb(90.0)
+        .name(if url == "/three" { "signup" } else { "" })
         // The tag travels with every event, the way the tracker sends it.
-        tag: Some(tag.to_string()),
-        data: None,
-    }
+        .tag(tag)
+        .build()
 }
 
 /// The query for a website.

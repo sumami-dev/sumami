@@ -10,8 +10,9 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::models::Hit;
 use sumimi_service::pool::Db;
+use sumimi_service::testing::HitBuilder;
 use sumimi_service::storage::Storage;
 
 /// A unique temporary directory.
@@ -24,16 +25,7 @@ fn temp_dir(name: &str) -> PathBuf {
 
 /// A hit.
 fn hit(website: &str, url: &str) -> Hit {
-    Hit {
-        website_id: website.to_string(),
-        session_id: sumimi_service::ua::uuid_from_text("s1"),
-        visitor_id: sumimi_service::ua::uuid_from_text("v1"),
-        retention_days: 0,
-        kind: HitKind::Pageview,
-        created_at: chrono::Utc::now().naive_utc(),
-        url: Some(url.to_string()),
-        ..Default::default()
-    }
+    HitBuilder::new(website, "s1", "v1").url(url).build()
 }
 
 /// An instance with a website and ten page views.

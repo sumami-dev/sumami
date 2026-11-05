@@ -16,13 +16,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use sumimi_service::models::{
-    BreakdownRow, EventRow, Hit, HitKind, MetricsSummary, Revenue, SessionRow, Website,
-};
+use sumimi_service::models::{BreakdownRow, EventRow, Hit, MetricsSummary, Revenue, SessionRow, Website};
 use sumimi_service::pool::Db;
 use sumimi_service::storage::{
     Dimension, ReportQuery, SessionEvent, Storage, StorageStats, SummaryMetrics, WebsitePatch,
 };
+use sumimi_service::testing::HitBuilder;
 use sumimi_service::writer::Writer;
 
 /// A unique temporary database path.
@@ -35,16 +34,7 @@ fn temp_db(name: &str) -> std::path::PathBuf {
 
 /// A hit.
 fn hit(url: &str) -> Hit {
-    Hit {
-        website_id: "w1".to_string(),
-        session_id: sumimi_service::ua::uuid_from_text("s1"),
-        visitor_id: sumimi_service::ua::uuid_from_text("v1"),
-        retention_days: 0,
-        kind: HitKind::Pageview,
-        created_at: chrono::Utc::now().naive_utc(),
-        url: Some(url.to_string()),
-        ..Default::default()
-    }
+    HitBuilder::new("w1", "s1", "v1").url(url).build()
 }
 
 /// How many rows the database holds.

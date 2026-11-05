@@ -11,8 +11,8 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use sumimi_service::api::{self, AppState};
 use sumimi_service::config::Config;
-use sumimi_service::models::Hit;
 use sumimi_service::pool::Db;
+use sumimi_service::testing::HitBuilder;
 use sumimi_service::writer::Writer;
 use tower::ServiceExt;
 
@@ -188,16 +188,7 @@ async fn the_cache_serves_the_same_question_twice() {
     // A new page view arrives. Inside the stale window the cache keeps serving
     // the answer it has — that is the point of the window: the query runs once,
     // not once per write.
-    let hit = Hit {
-        website_id: "w1".to_string(),
-        session_id: sumimi_service::ua::uuid_from_text("s2"),
-        visitor_id: sumimi_service::ua::uuid_from_text("v2"),
-        retention_days: 0,
-        kind: sumimi_service::models::HitKind::Pageview,
-        created_at: chrono::Utc::now().naive_utc(),
-        url: Some("/two".to_string()),
-        ..Default::default()
-    };
+    let hit = HitBuilder::new("w1", "s2", "v2").url("/two").build();
     writer.push(hit);
 
     // Give the writer time to flush, so the version of the data really changes.
@@ -222,16 +213,7 @@ async fn without_a_stale_window_a_write_throws_the_cache_away() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(first["pageviews"]["value"], 1);
 
-    let hit = Hit {
-        website_id: "w1".to_string(),
-        session_id: sumimi_service::ua::uuid_from_text("s2"),
-        visitor_id: sumimi_service::ua::uuid_from_text("v2"),
-        retention_days: 0,
-        kind: sumimi_service::models::HitKind::Pageview,
-        created_at: chrono::Utc::now().naive_utc(),
-        url: Some("/two".to_string()),
-        ..Default::default()
-    };
+    let hit = HitBuilder::new("w1", "s2", "v2").url("/two").build();
     writer.push(hit);
 
     let mut pageviews = 1;

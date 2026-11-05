@@ -24,8 +24,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use chrono::NaiveDate;
-use sumimi_service::models::{Hit, HitKind};
+use sumimi_service::models::Hit;
 use sumimi_service::pool::Db;
 use sumimi_service::sqlite::SqliteBackend;
 use sumimi_service::storage::Storage;
@@ -371,90 +370,5 @@ fn temp(name: &str) -> PathBuf {
 
 /// Traffic that looks like a site's.
 fn generate(views: i64) -> Vec<Hit> {
-    let pages = [
-        "/",
-        "/posts/duckdb-vs-postgres",
-        "/posts/self-hosting-on-a-budget",
-        "/docs/install",
-        "/tags/rust",
-    ];
-    let referrers = ["news.ycombinator.com", "www.google.com", "duckduckgo.com", "github.com", ""];
-    let browsers = ["Chrome", "Safari", "Firefox", "Edge"];
-    let systems = ["Windows", "macOS", "iOS", "Android"];
-    let countries = ["US", "CN", "DE", "GB", "JP"];
-    let base = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-
-    let mut out = Vec::with_capacity(views as usize);
-    for i in 0..views {
-        let session = i / 3;
-        let at = base + chrono::Duration::seconds(i * 37 % (30 * 86_400));
-        out.push(Hit {
-            website_id: "w1".to_string(),
-            session_id: sumimi_service::ua::uuid_from_text(&format!("session-{session:08x}")),
-            visitor_id: sumimi_service::ua::uuid_from_text(&format!("visitor-{:08x}", session % 40_000)),
-            visit_id: Some(sumimi_service::ua::uuid_from_text(&format!("visit-{session:08x}"))),
-            retention_days: 0,
-            kind: HitKind::Pageview,
-            created_at: at,
-            url: Some(pages[(i as usize) % pages.len()].to_string()),
-            url_query: Some("utm_source=twitter&utm_medium=cpc".to_string()),
-            title: Some(format!("A post about topic {}", i % 500)),
-            referrer: {
-                let referrer = referrers[(i as usize) % referrers.len()];
-                if referrer.is_empty() {
-                    None
-                } else {
-                    Some(referrer.to_string())
-                }
-            },
-            channel: Some(
-                sumimi_service::channels::channel(&sumimi_service::channels::ChannelInput::new(
-                    Some(referrers[(i as usize) % referrers.len()]),
-                    Some("utm_source=twitter&utm_medium=cpc"),
-                    Some("cpc"),
-                    Some("twitter"),
-                    Some("example.com"),
-                ))
-                .to_string(),
-            ),
-            referrer_path: Some("/item?id=1".to_string()),
-            referrer_query: Some("?id=1".to_string()),
-            referrer_name: sumimi_service::channels::referrer_name(Some(
-                referrers[(i as usize) % referrers.len()],
-            )),
-            hostname: Some("example.com".to_string()),
-            browser: Some(browsers[(i as usize) % browsers.len()].to_string()),
-            browser_version: Some("120".to_string()),
-            os: Some(systems[(i as usize) % systems.len()].to_string()),
-            os_version: Some("11".to_string()),
-            device: Some(if i % 3 == 0 { "mobile" } else { "desktop" }.to_string()),
-            screen: Some("1920x1080".to_string()),
-            language: Some("en-US".to_string()),
-            country: Some(countries[(i as usize) % countries.len()].to_string()),
-            region: Some("California".to_string()),
-            city: Some("San Francisco".to_string()),
-            latitude: None,
-            longitude: None,
-            utm_source: Some("twitter".to_string()),
-            utm_medium: Some("cpc".to_string()),
-            utm_campaign: Some("spring".to_string()),
-            utm_content: Some("cta".to_string()),
-            utm_term: Some("analytics".to_string()),
-            gclid: None,
-            fbclid: None,
-            msclkid: None,
-            ttclid: None,
-            lifatid: None,
-            twclid: None,
-            lcp: Some(600.0 + (i % 2000) as f64),
-            inp: Some(20.0 + (i % 300) as f64),
-            cls: Some((i % 100) as f64 / 1000.0),
-            fcp: Some(400.0 + (i % 900) as f64),
-            ttfb: Some(60.0 + (i % 220) as f64),
-            name: None,
-            tag: None,
-            data: None,
-        });
-    }
-    out
+    sumimi_service::testing::traffic(views)
 }

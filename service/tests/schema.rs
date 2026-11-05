@@ -2,9 +2,9 @@
 //! append-only fact tables carry no index.
 
 use sumimi_service::db::SCHEMA_VERSION;
-use sumimi_service::models::HitKind;
 use sumimi_service::pool::Db;
 use sumimi_service::storage::Storage;
+use sumimi_service::testing::HitBuilder;
 
 /// The `event` table of a v3 SQLite database.
 ///
@@ -530,16 +530,7 @@ fn the_row_ids_stay_unique_across_a_restart() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("sumimi.duckdb");
 
-    let hit = |url: &str| sumimi_service::models::Hit {
-        website_id: "w1".to_string(),
-        session_id: sumimi_service::ua::uuid_from_text("s1"),
-        visitor_id: sumimi_service::ua::uuid_from_text("v1"),
-        retention_days: 0,
-        kind: HitKind::Pageview,
-        created_at: chrono::Utc::now().naive_utc(),
-        url: Some(url.to_string()),
-        ..Default::default()
-    };
+    let hit = |url: &str| HitBuilder::new("w1", "s1", "v1").url(url).build();
 
     // The first run writes three rows.
     {
@@ -583,16 +574,7 @@ fn the_row_ids_stay_unique_when_the_cli_opens_the_database() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("sumimi.duckdb");
 
-    let hit = |url: &str| sumimi_service::models::Hit {
-        website_id: "w1".to_string(),
-        session_id: sumimi_service::ua::uuid_from_text("s1"),
-        visitor_id: sumimi_service::ua::uuid_from_text("v1"),
-        retention_days: 0,
-        kind: HitKind::Pageview,
-        created_at: chrono::Utc::now().naive_utc(),
-        url: Some(url.to_string()),
-        ..Default::default()
-    };
+    let hit = |url: &str| HitBuilder::new("w1", "s1", "v1").url(url).build();
 
     // The CLI opens the file with its own connection — the schema is already
     // there, because the server created it.
