@@ -78,6 +78,12 @@ impl Text for String {
     }
 }
 
+impl Text for &String {
+    fn text(self) -> Option<String> {
+        Some((*self).clone())
+    }
+}
+
 impl Text for Option<&str> {
     fn text(self) -> Option<String> {
         self.map(str::to_string)
