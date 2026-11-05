@@ -23,6 +23,7 @@ pub mod server;
 pub mod sqlite;
 pub mod storage;
 pub mod static_files;
+pub mod testing;
 #[cfg(feature = "tls")]
 pub mod tls;
 pub mod uptime;
