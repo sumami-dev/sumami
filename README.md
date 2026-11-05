@@ -10,6 +10,9 @@ binary, one directory, no external database, no cloud account, no telemetry.
 > is Sumimi now.
 
 - **Rust + Axum + Tokio** — one self-contained binary, ~50 MB of RAM at rest.
+- **Two memory budgets** — it runs on a 512 MB box (the whole process stays under
+  256 MB) and it is comfortable on a 1 GB one (under 512 MB). Both budgets are
+  asserted on every CI run.
 - **DuckDB 2.0.0** embedded — columnar analytics in a single file you can copy around.
   SQLite is there too, for the teams that want an ordinary database file.
 - **Umami v2 compatible API** — the existing trackers and dashboards work unchanged.

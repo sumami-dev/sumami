@@ -111,7 +111,8 @@ pub struct Config {
     /// Admin password created on first run (`None` = generate + print once).
     pub admin_password: Option<String>,
     /// DuckDB `memory_limit`. The ceiling for the buffer manager — *not* an
-    /// allocation. Defaults to a quarter of the machine's RAM, capped at 128 MB.
+    /// allocation. Defaults to a quarter of the machine's RAM, capped at
+    /// [`MEMORY_LIMIT_MAX`] (256 MB).
     pub duckdb_memory_limit: String,
     /// DuckDB `allocator_flush_threshold`: how much freed memory the allocator
     /// keeps before returning it to the OS. Kept low so a small box stays small.
@@ -211,8 +212,11 @@ impl Config {
 
         // DuckDB's own default is 80% of RAM — on a 512 MB VPS that is 410 MB,
         // which would leave nothing for the OS. We take a quarter of RAM, capped
-        // at 128 MB: the analytics queries stream and spill to disk long before
+        // at 256 MB: the analytics queries stream and spill to disk long before
         // that, so the limit costs nothing and buys a lot of headroom.
+        //
+        // The two budgets (see [`MEMORY_BUDGET_MIN`] and
+        // [`MEMORY_BUDGET_RECOMMENDED`]) are the two the tests run against.
         let duckdb_memory_limit = env_any("SUMIMI_DUCKDB_MEMORY_LIMIT")
             .unwrap_or_else(default_memory_limit);
 
@@ -325,12 +329,41 @@ impl Config {
     }
 }
 
-/// The default DuckDB memory ceiling: a quarter of RAM, capped at 128 MB.
+/// The two memory budgets the product is specified against.
+///
+/// Every test runs against **both** of them. They are not "the engine's
+/// allowance" — the number that matters is the **whole process's RSS**, because
+/// that is what a small VPS runs out of. The engine's number is a part of it.
+pub mod budget {
+    /// The **minimum** requirement: a 512 MB machine (a 0.5G VPS), half of it.
+    ///
+    /// A quarter of 512 MB is 128 MB, so the minimum machine gets a 128 MB
+    /// engine budget — and the process must stay under 256 MB.
+    pub const MIN_ENGINE: &str = "128MB";
+    /// The **minimum** requirement's whole-process ceiling: 256 MB.
+    pub const MIN_RSS: u64 = 256 * 1024 * 1024;
+    /// The **recommended** setup: a 1 GB machine (a normal VPS), half of it.
+    ///
+    /// A quarter of 1 GB is 256 MB, so the recommended machine gets a 256 MB
+    /// engine budget — and the process must stay under 512 MB.
+    pub const RECOMMENDED_ENGINE: &str = "256MB";
+    /// The **recommended** setup's whole-process ceiling: 512 MB.
+    pub const RECOMMENDED_RSS: u64 = 512 * 1024 * 1024;
+}
+
+/// The default DuckDB memory ceiling: a quarter of RAM, capped at 256 MB.
+///
+/// 512 MB of RAM → 128 MB. 1 GB → 256 MB. More → still 256 MB: the engine
+/// streams and spills long before that, and the cap is what keeps a big
+/// machine's engine from eating a small box's page cache.
 pub fn default_memory_limit() -> String {
     let ram = total_ram_bytes().unwrap_or(512 * 1024 * 1024);
-    let limit = (ram / 4).min(128 * 1024 * 1024);
+    let limit = (ram / 4).min(MEMORY_LIMIT_MAX);
     format!("{}MB", limit / (1024 * 1024))
 }
+
+/// The hard ceiling on the engine's memory limit: 256 MB.
+pub const MEMORY_LIMIT_MAX: u64 = 256 * 1024 * 1024;
 
 /// How many threads DuckDB should use for a given memory limit.
 ///
@@ -341,6 +374,15 @@ pub fn threads_for(memory_limit: &str, cores: usize) -> usize {
     let budget = parse_size(memory_limit).unwrap_or(128 * 1024 * 1024);
     let by_budget = (budget / (64 * 1024 * 1024)).max(1) as usize;
     by_budget.min(cores.max(1))
+}
+
+/// The thread count the two budgets imply.
+///
+/// 128 MB → 2 threads, 256 MB → 4 threads. The numbers are the design: a
+/// parallel `COUNT(DISTINCT …)` builds one hash table per thread, so the
+/// memory a query needs scales with the thread count.
+pub fn threads_for_budget(memory_limit: &str) -> usize {
+    threads_for(memory_limit, std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1))
 }
 
 /// Parse a size like `128MB` into bytes.

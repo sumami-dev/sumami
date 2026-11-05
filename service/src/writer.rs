@@ -80,6 +80,15 @@ pub struct Writer {
     /// dashboard from showing numbers from before the last write, while two
     /// people looking at the same dashboard only run the query once.
     version: Arc<AtomicU64>,
+    /// How many batches have been written.
+    flushes: Arc<AtomicU64>,
+    /// How long the last write took, in milliseconds.
+    last_flush_ms: Arc<AtomicU64>,
+    /// The last few write durations, in milliseconds.
+    ///
+    /// A ring of the most recent ones — enough to compute a median and a tail
+    /// without keeping every measurement forever.
+    flush_history: Arc<Mutex<Vec<u64>>>,
 }
 
 impl Writer {
@@ -89,24 +98,52 @@ impl Writer {
         flush_interval: Duration,
         capacity: usize,
     ) -> (Writer, tokio::task::JoinHandle<()>) {
-        let buffer = Arc::new(Buffer::new());
-        let writer = Writer {
-            buffer: buffer.clone(),
+        let writer = Writer::new(capacity);
+        let buffer = writer.buffer.clone();
+        let writer_for_thread = writer.clone();
+
+        let handle = tokio::task::spawn_blocking(move || {
+            writer_loop(storage, buffer, flush_interval, capacity, writer_for_thread);
+        });
+
+        (writer, handle)
+    }
+
+    /// Spawn the writer on its own OS thread.
+    ///
+    /// The same pipeline as [`Writer::spawn`], but not tied to a Tokio runtime —
+    /// for the tools that drive the write path outside a server (the memory
+    /// budget, the soak test). The handle can be **joined**, so the caller
+    /// knows the last flush has landed.
+    pub fn spawn_thread(
+        storage: Arc<dyn Storage>,
+        flush_interval: Duration,
+        capacity: usize,
+    ) -> (Writer, std::thread::JoinHandle<()>) {
+        let writer = Writer::new(capacity);
+        let buffer = writer.buffer.clone();
+        let writer_for_thread = writer.clone();
+
+        let handle = std::thread::spawn(move || {
+            writer_loop(storage, buffer, flush_interval, capacity, writer_for_thread);
+        });
+
+        (writer, handle)
+    }
+
+    /// Build the handle, without starting anything.
+    fn new(capacity: usize) -> Writer {
+        Writer {
+            buffer: Arc::new(Buffer::new()),
             capacity,
             // The clock, so a restart invalidates the cache that is still on disk.
             version: Arc::new(AtomicU64::new(
                 chrono::Utc::now().timestamp_millis().max(0) as u64,
             )),
-        };
-
-        let handle = tokio::task::spawn_blocking({
-            let writer = writer.clone();
-            move || {
-                writer_loop(storage, buffer, flush_interval, capacity, writer);
-            }
-        });
-
-        (writer, handle)
+            flushes: Arc::new(AtomicU64::new(0)),
+            last_flush_ms: Arc::new(AtomicU64::new(0)),
+            flush_history: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     /// Queue a hit for the next flush.
@@ -129,6 +166,38 @@ impl Writer {
     /// It changes whenever a batch is written.
     pub fn version(&self) -> &AtomicU64 {
         &self.version
+    }
+
+    /// How many batches have been written since the writer started.
+    pub fn flushes(&self) -> u64 {
+        self.flushes.load(Ordering::Relaxed)
+    }
+
+    /// How long the last write took, in milliseconds.
+    pub fn last_flush_ms(&self) -> u64 {
+        self.last_flush_ms.load(Ordering::Relaxed)
+    }
+
+    /// The last few write durations, in milliseconds (oldest first).
+    pub fn flush_history(&self) -> Vec<u64> {
+        self.flush_history
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Record a write duration.
+    fn record_flush(&self, millis: u64) {
+        self.flushes.fetch_add(1, Ordering::Relaxed);
+        self.last_flush_ms.store(millis, Ordering::Relaxed);
+        let mut history = self.flush_history.lock().unwrap_or_else(|e| e.into_inner());
+        // A ring of the most recent measurements: enough for a median and a
+        // tail, without growing without bound on a long-running server.
+        const KEEP: usize = 1024;
+        if history.len() == KEEP {
+            history.remove(0);
+        }
+        history.push(millis);
     }
 
     /// Stop the writer thread.
@@ -168,6 +237,7 @@ fn writer_loop(
             let mut batch = std::mem::take(&mut pending);
             batch.extend(buffer.drain());
             if !batch.is_empty() {
+                let started = std::time::Instant::now();
                 if let Err(err) = storage.write_batch(&batch) {
                     tracing::error!(
                         error = %err,
@@ -175,6 +245,7 @@ fn writer_loop(
                         "the last batch could not be written — it is lost"
                     );
                 }
+                writer.record_flush(started.elapsed().as_millis() as u64);
             }
             tracing::debug!("sumimi writer stopped");
             break;
@@ -198,11 +269,13 @@ fn writer_loop(
         }
 
         let count = batch.len();
+        let started = std::time::Instant::now();
         match storage.write_batch(&batch) {
             Ok(()) => {
                 failures = 0;
                 // The data changed: every cached report is stale now.
                 writer.version().fetch_add(1, Ordering::Relaxed);
+                writer.record_flush(started.elapsed().as_millis() as u64);
                 tracing::debug!(count, "flushed batch");
             }
             Err(err) => {

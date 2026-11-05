@@ -272,8 +272,12 @@ password: 8f3c1b9d0e7a4f26b5c8d1e3a9f7b2c4
       A few more environment variables tune the process rather than the data:
     </p>
     <ul>
-      <li><code>SUMIMI_DUCKDB_MEMORY_LIMIT</code> (default <code>256MB</code>) — DuckDB's
-        memory limit, in bytes.</li>
+      <li><code>SUMIMI_DUCKDB_MEMORY_LIMIT</code> (default <code>min(256MB, RAM / 4)</code>) —
+        DuckDB's memory limit, in bytes. A 512&nbsp;MB box gets 128&nbsp;MB, a 1&nbsp;GB box
+        gets 256&nbsp;MB, and nothing gets more than 256&nbsp;MB. It is a ceiling, not an
+        allocation: the whole process stays under 256&nbsp;MB on the smallest supported
+        machine, and under 512&nbsp;MB on a 1&nbsp;GB one — both are asserted on every
+        CI run.</li>
       <li><code>SUMIMI_MAX_QUEUE</code> (default <code>100000</code>) — how many events may be
         buffered in memory before the oldest are dropped.</li>
       <li><code>SUMIMI_FLUSH_INTERVAL_SECS</code> (default <code>2</code>) — how often the

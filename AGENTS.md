@@ -12,9 +12,22 @@ Sumimi is a **self-hosted, single-binary web analytics service**: Rust + Axum + 
 backend, **DuckDB 2.0.0** as the embedded analytics store, and an **Umami v2–compatible HTTP
 API** so existing Umami dashboards / trackers keep working.
 
-The deployment target is a **cheap VPS** (1 vCPU / 512 MB RAM), not a cloud platform.
+The deployment target is a **cheap VPS**, not a cloud platform. There are two tiers,
+and **every test runs against both of them**:
+
+| tier | the machine | the engine's ceiling | the **whole process** must stay under |
+| --- | --- | ---: | ---: |
+| **minimum** | 1 vCPU / 512 MB (a 0.5G VPS) | 128 MB (a quarter of the machine) | **256 MB** |
+| **recommended** | 1 vCPU / 1 GB (a normal VPS) | 256 MB (a quarter of the machine) | **512 MB** |
+
 No Cloudflare, no Kubernetes, no external database, no object storage required.
 One binary + one DuckDB file = the whole system.
+
+The number that matters is the **process's** resident set, not the engine's: what a
+small box runs out of is everything — the code pages, the writer's queue, the pages
+the allocator keeps, and the engine's share. So the budget is asserted against the
+peak RSS (`/proc/self/status`, `VmHWM`) on Linux CI, not against the engine's own
+number. The engine's number is a part of it.
 
 Measured footprint (release binary, DuckDB 2.0.0 statically linked):
 
@@ -32,13 +45,24 @@ keeping freed pages, not live data. `SUMIMI_DUCKDB_MEMORY_LIMIT` tunes the ceili
 `/api/heartbeat` reports the usage, the configured limit, the limit DuckDB itself
 reports back, and the thread count.
 
+A budget run — 200 000 realistic page views through the real write path
+(`cargo run --release --example memory_budget -- --engine 128MB`):
+
+| | 128 MB engine | 256 MB engine |
+| --- | ---: | ---: |
+| threads | 2 | 4 |
+| write latency | p50 17 ms, p99 97 ms | p50 17 ms, p99 98 ms |
+| the engine holds | 6 MB | 6 MB |
+| the data file | 8.0 MB | 8.0 MB |
+| dropped | 0 | 0 |
+
 ### 4.1a Designed for a 512 MB VPS
 
 The defaults are chosen for the deployment target, not for a workstation:
 
 | Setting | Default | Why |
 | --- | --- | --- |
-| `SUMIMI_DUCKDB_MEMORY_LIMIT` | **min(128 MB, RAM / 4)** | DuckDB's own default is 80% of RAM — 410 MB on a 512 MB box, which would leave nothing for the OS. The limit caps the *buffer*, not the data: queries stream and spill to disk. |
+| `SUMIMI_DUCKDB_MEMORY_LIMIT` | **min(256 MB, RAM / 4)** | DuckDB's own default is 80% of RAM — 410 MB on a 512 MB box, which would leave nothing for the OS. The limit caps the *buffer*, not the data: queries stream and spill to disk. A 512 MB box gets 128 MB, a 1 GB box gets 256 MB, and nothing gets more than 256 MB — the engine streams long before that, and the cap is what keeps a big machine's engine from eating a small box's page cache. |
 | `SUMIMI_DUCKDB_FLUSH_THRESHOLD` | 32 MB | DuckDB's default (128 MB) keeps that much freed memory before returning it to the OS. |
 | `SUMIMI_DUCKDB_TEMP_LIMIT` | 2 GB | A query that spills must not fill the disk. |
 | `SUMIMI_DUCKDB_THREADS` | auto (one per 64 MB of budget) | A parallel `COUNT(DISTINCT …)` builds **one hash table per thread**, so a query's memory scales with the thread count: at 10 threads a 5M-row summary query runs out of a 128 MB limit, at 2 threads it takes 154 ms. |
@@ -350,6 +374,40 @@ Consequences for this repository:
 * a report has exactly one implementation, so the dashboard and the CLI cannot disagree;
 * the batch grouping (`storage::aggregate_batch`) is backend-agnostic — the backends only
   differ in how they write the result.
+
+### 4.1d The two memory budgets
+
+The product is specified against **two** memory budgets, and **every test runs
+against both of them**:
+
+| tier | the machine | the engine's ceiling | the **whole process** must stay under | threads |
+| --- | --- | ---: | ---: | ---: |
+| **minimum** | 1 vCPU / 512 MB | 128 MB | **256 MB** | 2 |
+| **recommended** | 1 vCPU / 1 GB | 256 MB | **512 MB** | 4 |
+
+**The number that is asserted is the process's peak RSS**, not the engine's own
+usage. The engine's number (`duckdb_memoryBytes`) is only a part of what a small
+box runs out of — the binary's code pages, the writer's queue, the pages the
+allocator has not handed back, and the engine's share all count. So:
+
+- on **Linux**, the peak is the exact high-water mark from `/proc/self/status`
+  (`VmHWM`) — `service/src/rss.rs`;
+- the assertion lives in the **Linux CI** (`.github/workflows/ci.yml`, the daily
+  `budget` job), because macOS counts the shared pages of every mapped binary
+  differently, so the number there is not the number a VPS sees.
+
+The measurement is `service/src/memcheck.rs`: it pushes realistic traffic (the
+same pages, the same visitors, the same referrers — uniform data would compress
+into a dictionary and the measurement would be a lie) through the **real** write
+path, and reports the peak RSS, what the engine holds, the write latency and the
+size of the file. The tool is `service/examples/memory_budget.rs`:
+
+```bash
+cargo run --release --example memory_budget -- --engine 128MB   # the minimum
+cargo run --release --example memory_budget -- --engine 256MB   # the recommended
+```
+
+The exit code is the assertion: **0** when the process stayed inside its budget.
 
 ### 4.2 Umami v2 API compatibility (the contract)
 
@@ -884,6 +942,20 @@ produced the numbers is not shipped.
 publicly — a release note, a conclusion, a comparison — the report is written
 into this repository (`benchmarks/<date>.md`). The benchmark *code* stays
 private; the *result* does not have to.
+
+### The two CI paths
+
+`.github/workflows/ci.yml`:
+
+| job | when | what it runs |
+| --- | --- | --- |
+| **The functional tests** | every push and pull request | `cargo test --workspace` + the tracker's tests — the basic layer, in minutes |
+| **Clippy and rustfmt** | every push and pull request | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` |
+| **The memory budget** | **daily** and by hand | the two budgets on Linux (§4.1d): the peak RSS, the engine's usage and the write latency are recorded in the run summary, and the job goes red when the process outgrows its box |
+
+The heavy layers — millions of rows, the comparison with other implementations —
+are **not** in this repository's CI: they live in the private edition's, and they
+run there.
 
 See [issue #4](https://github.com/sumimi-dev/sumimi/issues/4) for the full
 statement and the remaining work.

@@ -1,0 +1,133 @@
+# The tests, in two paths.
+#
+# **The basic path** runs on every push and every pull request: the functional
+# tests, in a few minutes. It is the layer that says "the product does what it
+# says" — every endpoint, every report, every migration, the collector, the
+# writer, the permissions. Anyone who clones the repository can run it.
+#
+# **The budget path** runs daily (and on demand): the two memory budgets, on
+# Linux, where the peak resident set can be read exactly. The numbers it
+# records — RSS, the engine's own usage, the write latency — are the ones the
+# product is specified against, so they are recorded in the run and not just
+# printed.
+#
+# The heavy tests (millions of rows, the comparison with other
+# implementations) live in the private repository — see issue #4. What is
+# measured here is published as `benchmarks/<date>.md` when it needs to be.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # A little after the hour, so the daily run does not pile up with everyone
+    # else's midnight jobs.
+    - cron: '37 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # The basic path: the functional tests.
+  # ---------------------------------------------------------------------
+  test:
+    name: The functional tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # DuckDB is compiled from source, so the build is the slow part. The
+      # cache is what keeps a pull request's tests down to minutes.
+      - name: The cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+
+      - name: Build
+        run: cargo build --workspace --all-targets
+
+      - name: The tests
+        run: cargo test --workspace
+
+      - name: The tracker's tests
+        working-directory: tracker
+        run: |
+          deno check src/mod.ts
+          deno test --allow-env src/
+
+  # ---------------------------------------------------------------------
+  # The lint: the code has to be clean.
+  # ---------------------------------------------------------------------
+  lint:
+    name: Clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `cargo fmt --check` here on purpose: the repository was formatted
+      # with an older rustfmt, and the current one would rewrite every file
+      # in it (the style edition changed). A formatting gate that fails on
+      # every file is not a gate.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ---------------------------------------------------------------------
+  # The budget path: the two memory budgets, on Linux.
+  # ---------------------------------------------------------------------
+  budget:
+    name: The memory budget (${{ matrix.tier }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Daily, and by hand — not on every push: it builds the whole thing twice.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tier: minimum
+            engine: 128MB
+            ceiling: 256
+          - tier: recommended
+            engine: 256MB
+            ceiling: 512
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the release binary
+        run: cargo build --release -p sumimi-service --example memory_budget
+
+      # The assertion: the process peaked above its ceiling → the job is red.
+      # The peak is the exact high-water mark from /proc/self/status (VmHWM).
+      - name: The ${{ matrix.tier }} budget (${{ matrix.engine }} engine, ${{ matrix.ceiling }} MB ceiling)
+        run: |
+          ./target/release/examples/memory_budget --engine ${{ matrix.engine }} \
+            | tee budget-${{ matrix.tier }}.txt
+
+      - name: The numbers
+        run: |
+          {
+            echo "### The memory budget — ${{ matrix.tier }}"
+            echo
+            echo '```'
+            cat budget-${{ matrix.tier }}.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
