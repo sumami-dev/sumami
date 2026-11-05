@@ -336,10 +336,11 @@ pub async fn serve_with_geo(
         }
     }
 
-    let (writer, _writer_handle) = Writer::spawn(
+    let (writer, _writer_handle) = Writer::spawn_with(
         storage.clone(),
         std::time::Duration::from_secs(config.flush_interval_secs),
         config.max_queue,
+        config.max_batch,
     );
 
     let state = AppState::new(

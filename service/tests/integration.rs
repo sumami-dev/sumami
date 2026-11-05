@@ -471,3 +471,112 @@ async fn the_sqlite_dashboard_sees_what_the_writer_wrote() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The collector tells the client when the server is shedding.
+///
+/// The queue is full, so an **older** event is dropped to make room for the
+/// new one. A `200` would say "everything is fine" while data is being lost —
+/// the answer has to be a `503` with a `Retry-After`, so the client can slow
+/// down.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_collector_says_when_it_is_shedding() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use sumimi_service::api::{self, AppState};
+    use sumimi_service::config::Config;
+    use sumimi_service::pool::Db;
+    use tower::ServiceExt;
+
+    let path = temp_db("shed");
+    let db = std::sync::Arc::new(Db::open(&path, "256MB").unwrap());
+    db.with_write(|conn| {
+        conn.execute(
+            "INSERT INTO website (id, name, domain, created_at, updated_at, retention_days, country_header)
+             VALUES ('website-1', 'Example', 'example.com', now(), now(), 0, NULL)",
+            [],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+
+    let mut config = Config::from_env_and_flags(
+        sumimi_service::config::Paths::new(
+            Some(path.clone().parent().unwrap().to_path_buf()),
+            Some(path.clone()),
+            "duckdb",
+        ),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    config.jwt_secret = "test-secret".to_string();
+
+    // A queue of one: the second event pushes the first one out.
+    let (writer, _handle) = Writer::spawn_with(
+        db.clone(),
+        std::time::Duration::from_secs(60),
+        1,
+        10,
+    );
+    let _guard = WriterGuard(writer.clone());
+
+    // Fill the queue: the pushes are microseconds, the write is milliseconds,
+    // so the queue stays full while the pushes go on.
+    let fill = || {
+        for _ in 0..200_000 {
+            writer.push(hit("website-1", "/filler"));
+        }
+    };
+    fill();
+    assert!(writer.dropped() > 0, "the queue overflowed");
+    assert!(
+        writer.queued() >= 1,
+        "the queue is full — the next event has to be refused"
+    );
+
+    let state = AppState::new(
+        db.clone(),
+        std::sync::Arc::new(sumimi_service::instance::SqliteInstance::open_in_memory().unwrap()),
+        writer.clone(),
+        std::sync::Arc::new(config),
+        std::sync::Arc::new("test-secret".to_string()),
+    );
+    let app = api::router(state);
+
+    let body = r#"{"website":"website-1","payload":{"url":"/one"}}"#;
+    // The writer drains the queue between the pushes and the request, so the
+    // queue is filled again for every attempt — the server is shedding either
+    // way, and the answer has to be the same every time.
+    let mut answer = None;
+    for _ in 0..5 {
+        fill();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/send")
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        answer = Some(app.clone().oneshot(request).await.unwrap());
+    }
+    let answer = answer.unwrap();
+
+    assert_eq!(
+        answer.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "the server is shedding — the client has to be told"
+    );
+    assert_eq!(
+        answer
+            .headers()
+            .get(axum::http::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok()),
+        Some("1"),
+        "the client is told how long to wait"
+    );
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}

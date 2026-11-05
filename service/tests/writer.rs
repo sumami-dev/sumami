@@ -245,3 +245,57 @@ impl Storage for FlakyStorage {
         self.inner.stats()
     }
 }
+
+/// The batch is capped — the write path's memory must not depend on the rate.
+///
+/// The queue is filled far faster than the writer can drain it (a batch write
+/// takes milliseconds, a push takes microseconds), so the queue always holds
+/// more than the cap. Every batch must be exactly the cap: never more.
+#[test]
+fn a_batch_never_exceeds_the_cap() {
+    let path = temp_db("batch-cap");
+    let db = std::sync::Arc::new(sumimi_service::pool::Db::open(&path, "256MB").unwrap());
+
+    let cap = 1_000;
+    let (writer, handle) = sumimi_service::writer::Writer::spawn_thread_with(
+        db.clone(),
+        Duration::from_millis(50),
+        1_000_000,
+        cap,
+    );
+
+    // A hundred thousand hits: the writer cannot keep up, so the queue is
+    // always deeper than the cap.
+    let now = chrono::Utc::now().naive_utc();
+    for index in 0..100_000 {
+        writer.push(sumimi_service::models::Hit {
+            website_id: "w1".to_string(),
+            session_id: sumimi_service::ua::uuid_from_text("s"),
+            visitor_id: sumimi_service::ua::uuid_from_text("v"),
+            created_at: now,
+            url: Some(format!("/p-{index}")),
+            ..Default::default()
+        });
+    }
+
+    // Wait until the writer has caught up with the queue.
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    while writer.queued() > cap as u64 && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    assert!(
+        writer.max_batch_rows() <= cap,
+        "a batch of {} rows was written, the cap is {cap}",
+        writer.max_batch_rows()
+    );
+    assert!(
+        writer.flushes() >= 10,
+        "a hundred thousand rows in batches of {cap} is at least ten batches, not {}",
+        writer.flushes()
+    );
+
+    writer.shutdown();
+    let _ = handle.join();
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}

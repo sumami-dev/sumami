@@ -3,6 +3,7 @@
 use axum::extract::{ConnectInfo, Extension, Query, State};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 use std::net::SocketAddr;
@@ -21,7 +22,7 @@ pub async fn send(
     headers: HeaderMap,
     peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     body: Result<Json<SendRequest>, axum::extract::rejection::JsonRejection>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Response, ApiError> {
     let Json(request) = body.map_err(|_| ApiError::BadRequest("invalid json body".into()))?;
     let raw = request.into_hit();
 
@@ -34,9 +35,21 @@ pub async fn send(
     let kind = resolve_kind(raw.kind.as_deref(), raw.str("name").is_some());
 
     let hit = build_hit(&state, &headers, peer.as_ref().map(|p| &p.0), &website_key, kind, &raw)?;
-    state.writer.push(hit);
+    let taken = state.writer.push(hit);
 
-    Ok(StatusCode::OK)
+    // The server is over capacity: the event was **not** stored. The client is
+    // told — a `200` here would say "everything is fine" while the data is
+    // being lost. `503` with a `Retry-After` is the honest answer: send it
+    // again in a moment.
+    if !taken {
+        return Ok((
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(axum::http::header::RETRY_AFTER, "1")],
+        )
+            .into_response());
+    }
+
+    Ok(StatusCode::OK.into_response())
 }
 
 /// Legacy Umami v1 collection endpoint (query parameters).
@@ -45,7 +58,7 @@ pub async fn collect(
     headers: HeaderMap,
     peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     Query(params): Query<CollectParams>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Response, ApiError> {
     let website_key = params
         .id
         .clone()
@@ -89,9 +102,21 @@ pub async fn collect(
     };
 
     let hit = build_hit(&state, &headers, peer.as_ref().map(|p| &p.0), &website_key, kind, &raw)?;
-    state.writer.push(hit);
+    let taken = state.writer.push(hit);
 
-    Ok(StatusCode::OK)
+    // The server is over capacity: the event was **not** stored. The client is
+    // told — a `200` here would say "everything is fine" while the data is
+    // being lost. `503` with a `Retry-After` is the honest answer: send it
+    // again in a moment.
+    if !taken {
+        return Ok((
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(axum::http::header::RETRY_AFTER, "1")],
+        )
+            .into_response());
+    }
+
+    Ok(StatusCode::OK.into_response())
 }
 
 /// Query parameters accepted by the legacy endpoint.

@@ -66,6 +66,7 @@ The defaults are chosen for the deployment target, not for a workstation:
 | `SUMIMI_DUCKDB_FLUSH_THRESHOLD` | 32 MB | DuckDB's default (128 MB) keeps that much freed memory before returning it to the OS. |
 | `SUMIMI_DUCKDB_TEMP_LIMIT` | 2 GB | A query that spills must not fill the disk. |
 | `SUMIMI_DUCKDB_THREADS` | auto (one per 64 MB of budget) | A parallel `COUNT(DISTINCT …)` builds **one hash table per thread**, so a query's memory scales with the thread count: at 10 threads a 5M-row summary query runs out of a 128 MB limit, at 2 threads it takes 154 ms. |
+| `SUMIMI_MAX_BATCH` | **10 000** | The most events written in one batch. **The batch is what the write path costs in memory** — a batch is one transaction, and its rows sit in memory while it is written. The flush interval says how *often* we write; this says how *much*. Without it, two seconds of traffic at 170 000 views a second is 340 000 rows — 170 MB in one transaction, and the measured peak RSS was 1.5 GB. With it, the write path's memory does not depend on the rate. |
 | `SUMIMI_STORE_TITLES` | **on** | On by default: Umami stores the title, and that is the baseline. Set it to `0` to save the space — the title is roughly half of the stored bytes and almost nobody looks at it. |
 | `SUMIMI_STORE_FULL_REFERRER` | **on** | On by default. Set it to `0` to keep the referrer host alone — which is what the breakdown groups by anyway. |
 | `SUMIMI_KEEP_QUERY` | **on** | On by default: Umami stores the query string, and the marketing parameters live in it (they are parsed out of it either way). Set it to `0` to drop the raw query string. |
@@ -338,6 +339,24 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
   (`SUMIMI_APP_URL`, default `https://cdn.jsdelivr.net/gh/sumimi-dev/sumimi@main/js`),
   which serves this public repository directly. Set `SUMIMI_APP_URL=/app` to serve it
   from the backend instead (air-gapped installs).
+
+### 4.1e The write path: the queue, the batch, and what the client is told
+
+Three rules, and they are one idea: **what we acknowledged, we have.**
+
+1. **The queue is bounded** (`SUMIMI_MAX_QUEUE`, 100 000 events). When it is
+   full, the server **refuses** the new event — it does *not* drop an older
+   one. The events in the queue were acknowledged to their clients; dropping
+   one of those would lose data somebody believes they sent.
+2. **The batch is capped** (`SUMIMI_MAX_BATCH`, 10 000 events). The batch is
+   written in one transaction, and its rows sit in memory while it is
+   written — so the cap is what keeps the write path's memory independent of
+   the traffic rate. It also keeps the writer from holding DuckDB's single
+   write connection for long: the dashboard's queries wait behind it.
+3. **The client is told.** A refused event gets a **503** with a
+   `Retry-After` — never a `200`. A `200` that hides a lost event is a lie,
+   and the tracker retries on a `503` (the event was never counted, so
+   sending it again cannot count it twice).
 
 ### 4.1b The shared query layer (`service/src/reports.rs`)
 

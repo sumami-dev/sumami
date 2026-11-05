@@ -354,7 +354,34 @@
           keepalive: true,
           mode: 'cors',
           credentials: 'omit'
-        }).catch(function () {});
+        })
+          .then(function (response) {
+            // The server is over capacity: it did **not** store the event
+            // (it answers 503 and asks us to slow down). Sending it again is
+            // the only way the event is not lost — and it was never counted,
+            // so sending it twice cannot count it twice.
+            if (response && response.status === 503) {
+              var wait = 1000;
+              var header = response.headers && response.headers.get('Retry-After');
+              var seconds = header ? parseInt(header, 10) : 0;
+              if (!isNaN(seconds) && seconds > 0) wait = seconds * 1000;
+              setTimeout(function () {
+                try {
+                  window.fetch(url, {
+                    method: 'POST',
+                    body: body,
+                    headers: { 'Content-Type': 'application/json' },
+                    keepalive: true,
+                    mode: 'cors',
+                    credentials: 'omit'
+                  }).catch(function () {});
+                } catch (e) {
+                  /* never break the host page */
+                }
+              }, wait);
+            }
+          })
+          .catch(function () {});
       }
     } catch (e) {
       /* never break the host page */

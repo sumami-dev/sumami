@@ -128,6 +128,13 @@ pub struct Config {
     pub duckdb_threads: usize,
     /// Maximum number of events buffered in memory before the oldest are dropped.
     pub max_queue: usize,
+    /// Maximum number of events written in one batch.
+    ///
+    /// **The batch is what the write path costs in memory** — a batch is one
+    /// transaction, and its rows sit in memory while it is written. The flush
+    /// interval says how *often* we write; this says how *much*. With a cap,
+    /// the write path's memory does not depend on how fast the traffic is.
+    pub max_batch: usize,
     /// Seconds between writer flushes.
     pub flush_interval_secs: u64,
     /// How often the uptime of the websites is checked, in seconds.
@@ -238,6 +245,15 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(100_000);
 
+        // The batch cap: ten thousand rows is about 5 MB of hit structs and
+        // 50 ms of writing — small enough that the dashboard's queries do not
+        // wait behind it (the writer holds DuckDB's single write connection),
+        // and big enough that the write throughput is not hurt.
+        let max_batch = env_any("SUMIMI_MAX_BATCH")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(crate::writer::DEFAULT_MAX_BATCH)
+            .max(1);
+
         let flush_interval_secs = env_any("SUMIMI_FLUSH_INTERVAL_SECS")
             .and_then(|v| v.parse().ok())
             .unwrap_or(2);
@@ -309,6 +325,7 @@ impl Config {
             duckdb_temp_limit,
             duckdb_threads,
             max_queue,
+            max_batch,
             flush_interval_secs,
             cache_stale_secs,
             uptime_interval_secs,
