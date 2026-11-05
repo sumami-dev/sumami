@@ -36,6 +36,34 @@ use crate::error::ApiError;
 use crate::models::{MetricsSummary, ReportKind};
 use crate::storage::{Dimension, ReportQuery, Storage, TimeRange};
 
+/// The language a question is asked in.
+///
+/// The assistant reads the question in one language or the other, and answers
+/// in the same one. Every word list it knows comes in a pair — one per
+/// language — and the language picks the pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Lang {
+    /// English.
+    En,
+    /// Chinese.
+    Zh,
+}
+
+impl Lang {
+    /// The language a question is asked in.
+    pub fn of(question: &str) -> Self {
+        if question
+            .chars()
+            .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c))
+        {
+            Lang::Zh
+        } else {
+            Lang::En
+        }
+    }
+}
+
 /// The metric a question is about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,39 +103,39 @@ impl Metric {
         }
     }
 
-    /// The name of the metric, in English.
-    pub fn english(self) -> &'static str {
-        match self {
-            Metric::Pageviews => "page views",
-            Metric::Visitors => "visitors",
-            Metric::Sessions => "sessions",
-            Metric::Bounces => "bounces",
-            Metric::Duration => "average visit",
+    /// The name of the metric, in the given language.
+    pub fn name(self, lang: Lang) -> &'static str {
+        match (self, lang) {
+            (Metric::Pageviews, Lang::En) => "page views",
+            (Metric::Visitors, Lang::En) => "visitors",
+            (Metric::Sessions, Lang::En) => "sessions",
+            (Metric::Bounces, Lang::En) => "bounces",
+            (Metric::Duration, Lang::En) => "average visit",
+            (Metric::Pageviews, Lang::Zh) => "浏览量",
+            (Metric::Visitors, Lang::Zh) => "访客数",
+            (Metric::Sessions, Lang::Zh) => "会话数",
+            (Metric::Bounces, Lang::Zh) => "跳出数",
+            (Metric::Duration, Lang::Zh) => "平均停留时长",
         }
     }
 
-    /// The name of the metric, in English, for **one** of them.
+    /// The name of the metric, in the given language, for **one** of them.
     ///
     /// "1 page views" is the kind of thing that makes a person stop trusting
-    /// the rest of the sentence.
-    pub fn english_one(self) -> &'static str {
-        match self {
-            Metric::Pageviews => "page view",
-            Metric::Visitors => "visitor",
-            Metric::Sessions => "session",
-            Metric::Bounces => "bounce",
-            Metric::Duration => "average visit",
-        }
-    }
-
-    /// The name of the metric, in Chinese.
-    pub fn chinese(self) -> &'static str {
-        match self {
-            Metric::Pageviews => "浏览量",
-            Metric::Visitors => "访客数",
-            Metric::Sessions => "会话数",
-            Metric::Bounces => "跳出数",
-            Metric::Duration => "平均停留时长",
+    /// the rest of the sentence. Chinese has no plural, so the two are the
+    /// same there.
+    pub fn name_one(self, lang: Lang) -> &'static str {
+        match (self, lang) {
+            (Metric::Pageviews, Lang::En) => "page view",
+            (Metric::Visitors, Lang::En) => "visitor",
+            (Metric::Sessions, Lang::En) => "session",
+            (Metric::Bounces, Lang::En) => "bounce",
+            (Metric::Duration, Lang::En) => "average visit",
+            (Metric::Pageviews, Lang::Zh) => "浏览量",
+            (Metric::Visitors, Lang::Zh) => "访客数",
+            (Metric::Sessions, Lang::Zh) => "会话数",
+            (Metric::Bounces, Lang::Zh) => "跳出数",
+            (Metric::Duration, Lang::Zh) => "平均停留时长",
         }
     }
 }
@@ -126,8 +154,8 @@ pub struct Intent {
     /// Whether the question asks *why* — which needs the movers, not just the
     /// numbers.
     pub why: bool,
-    /// Whether the question is in Chinese.
-    pub chinese: bool,
+    /// The language the question is in — and the answer is in.
+    pub lang: Lang,
 }
 
 impl Default for Intent {
@@ -138,7 +166,7 @@ impl Default for Intent {
             dimension: None,
             compare: false,
             why: false,
-            chinese: false,
+            lang: Lang::En,
         }
     }
 }
@@ -327,6 +355,231 @@ fn dimension_name(dimension: Dimension) -> &'static str {
 }
 
 // --------------------------------------------------------------------------------------
+// The words the assistant knows
+// --------------------------------------------------------------------------------------
+
+/// The dimension each phrase asks for, in English.
+///
+/// The first table with a phrase in the question wins.
+const EN_DIMENSIONS: &[(&[&str], Dimension)] = &[
+    (
+        &[
+            "referrer",
+            "referer",
+            "traffic source",
+            "where do",
+            "where from",
+            "source",
+        ],
+        Dimension::Referrer,
+    ),
+    (&["browser"], Dimension::Browser),
+    (&["operating system", " os ", "os?"], Dimension::Os),
+    (&["device"], Dimension::Device),
+    (&["country", "countries"], Dimension::Country),
+    (&["region", "state", "province"], Dimension::Region),
+    (&["city", "cities"], Dimension::City),
+    (&["channel"], Dimension::Channel),
+    (&["hostname", "host name", "hosts"], Dimension::Host),
+    (&["language"], Dimension::Language),
+    (&["screen", "resolution"], Dimension::Screen),
+    (&["event"], Dimension::Url),
+    (&["page", "url", "path", "blog"], Dimension::Url),
+];
+
+/// The dimension each phrase asks for, in Chinese.
+const ZH_DIMENSIONS: &[(&[&str], Dimension)] = &[
+    (&["来源", "引荐", "referer", "referrer"], Dimension::Referrer),
+    (&["浏览器"], Dimension::Browser),
+    (&["系统", "操作系统"], Dimension::Os),
+    (&["设备"], Dimension::Device),
+    (&["国家"], Dimension::Country),
+    (&["地区", "省份", "州"], Dimension::Region),
+    (&["城市"], Dimension::City),
+    (&["渠道", "来源渠道"], Dimension::Channel),
+    (&["域名", "主机"], Dimension::Host),
+    (&["语言"], Dimension::Language),
+    (&["屏幕", "分辨率"], Dimension::Screen),
+    (&["事件"], Dimension::Url),
+    (&["页面", "网页", "路径"], Dimension::Url),
+];
+
+/// The metric each phrase asks for, in English.
+const EN_METRICS: &[(&[&str], Metric)] = &[
+    (&["bounce"], Metric::Bounces),
+    (&["duration", "time on site", "how long"], Metric::Duration),
+    (&["visitor"], Metric::Visitors),
+    (&["session", "visit ", "visits"], Metric::Sessions),
+];
+
+/// The metric each phrase asks for, in Chinese.
+const ZH_METRICS: &[(&[&str], Metric)] = &[
+    (&["跳出"], Metric::Bounces),
+    (&["停留", "时长"], Metric::Duration),
+    (&["访客"], Metric::Visitors),
+    (&["会话"], Metric::Sessions),
+    (&["浏览", "访问量", "流量"], Metric::Pageviews),
+];
+
+/// The window each phrase asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Window {
+    /// Today.
+    Today,
+    /// Yesterday.
+    Yesterday,
+    /// From Monday until now.
+    ThisWeek,
+    /// The seven days before this week.
+    LastWeek,
+    /// From the first of the month until now.
+    ThisMonth,
+    /// The calendar month before this one.
+    LastMonth,
+    /// The thirty days before the month starts.
+    BeforeMonth,
+}
+
+/// The window each phrase asks for, in English.
+const EN_WINDOWS: &[(&[&str], Window)] = &[
+    (&["today"], Window::Today),
+    (&["yesterday"], Window::Yesterday),
+    (&["this week"], Window::ThisWeek),
+    (&["last week"], Window::LastWeek),
+    (&["this month"], Window::ThisMonth),
+    (&["last month"], Window::LastMonth),
+];
+
+/// The window each phrase asks for, in Chinese.
+const ZH_WINDOWS: &[(&[&str], Window)] = &[
+    (&["今天"], Window::Today),
+    (&["昨天"], Window::Yesterday),
+    (&["上周"], Window::LastWeek),
+    (&["本月", "这个月"], Window::BeforeMonth),
+    (&["上个月", "上月"], Window::BeforeMonth),
+];
+
+/// The words that ask for a number of days, in English.
+const EN_DAY_WORDS: &[&str] = &["last", "past", "previous"];
+
+/// The words that ask for a number of days, in Chinese.
+const ZH_DAY_WORDS: &[&str] = &["最近", "过去", "近"];
+
+/// The words that say the question compares with the period before, in English.
+const EN_COMPARE_WORDS: &[&str] = &[
+    " vs ",
+    "versus",
+    "compare",
+    "compared",
+    "than before",
+    "change",
+    "trend",
+    "drop",
+    "dropped",
+    "rise",
+    "grew",
+];
+
+/// The words that say the question compares with the period before, in Chinese.
+const ZH_COMPARE_WORDS: &[&str] = &[
+    "变化", "对比", "相比", "比上", "环比", "同比", "下降", "上涨", "增长", "跌", "趋势",
+];
+
+/// The words that ask *why*, in English.
+const EN_WHY_WORDS: &[&str] = &["why", "reason", "cause"];
+
+/// The words that ask *why*, in Chinese.
+const ZH_WHY_WORDS: &[&str] = &["为什么", "原因", "怎么回事", "咋回事"];
+
+/// The words the comparison is cut at, in English.
+const EN_COMPARISON_MARKERS: &[&str] = &[
+    " vs ",
+    " versus ",
+    " compared to ",
+    " compare to ",
+    " against ",
+];
+
+/// The words the comparison is cut at, in Chinese.
+const ZH_COMPARISON_MARKERS: &[&str] = &["相比", "对比", "比上", "较上", "环比", "同比"];
+
+/// The words that start the other period's clause, in Chinese.
+///
+/// "和上周相比" — the clause starts at the 和, not at the 相比.
+const ZH_CONJUNCTIONS: &[&str] = &["和", "与", "跟", "同"];
+
+impl Lang {
+    /// The dimension each phrase asks for.
+    fn dimensions(self) -> &'static [(&'static [&'static str], Dimension)] {
+        match self {
+            Lang::En => EN_DIMENSIONS,
+            Lang::Zh => ZH_DIMENSIONS,
+        }
+    }
+
+    /// The metric each phrase asks for.
+    fn metrics(self) -> &'static [(&'static [&'static str], Metric)] {
+        match self {
+            Lang::En => EN_METRICS,
+            Lang::Zh => ZH_METRICS,
+        }
+    }
+
+    /// The window each phrase asks for.
+    fn windows(self) -> &'static [(&'static [&'static str], Window)] {
+        match self {
+            Lang::En => EN_WINDOWS,
+            Lang::Zh => ZH_WINDOWS,
+        }
+    }
+
+    /// The words that ask for a number of days.
+    fn day_words(self) -> &'static [&'static str] {
+        match self {
+            Lang::En => EN_DAY_WORDS,
+            Lang::Zh => ZH_DAY_WORDS,
+        }
+    }
+
+    /// The words that say the question compares with the period before.
+    fn compare_words(self) -> &'static [&'static str] {
+        match self {
+            Lang::En => EN_COMPARE_WORDS,
+            Lang::Zh => ZH_COMPARE_WORDS,
+        }
+    }
+
+    /// The words that ask *why*.
+    fn why_words(self) -> &'static [&'static str] {
+        match self {
+            Lang::En => EN_WHY_WORDS,
+            Lang::Zh => ZH_WHY_WORDS,
+        }
+    }
+
+    /// The words the comparison is cut at.
+    fn comparison_markers(self) -> &'static [&'static str] {
+        match self {
+            Lang::En => EN_COMPARISON_MARKERS,
+            Lang::Zh => ZH_COMPARISON_MARKERS,
+        }
+    }
+
+    /// The words that start the other period's clause.
+    fn conjunctions(self) -> &'static [&'static str] {
+        match self {
+            Lang::En => &[],
+            Lang::Zh => ZH_CONJUNCTIONS,
+        }
+    }
+}
+
+/// Does the question hold one of the words?
+fn holds(text: &str, words: &[&str]) -> bool {
+    words.iter().any(|word| text.contains(word))
+}
+
+// --------------------------------------------------------------------------------------
 // Reading the question
 // --------------------------------------------------------------------------------------
 
@@ -338,24 +591,24 @@ fn dimension_name(dimension: Dimension) -> &'static str {
 /// about the last seven days.
 pub fn parse(question: &str, now: NaiveDateTime) -> Intent {
     let text = question.to_lowercase();
-    let chinese = is_chinese(question);
+    let lang = Lang::of(question);
 
     let mut intent = Intent {
-        chinese,
+        lang,
         ..Intent::default()
     };
 
-    intent.compare = compare(&text, chinese);
-    intent.why = why(&text, chinese);
+    intent.compare = compare(&text, lang);
+    intent.why = why(&text, lang);
 
     // "how many visitors vs last week" asks about **this** week and compares it
     // with last week — so the words after the comparison belong to the other
     // period, and the window is read from what comes before.
-    let head = strip_comparison(&text, chinese);
+    let head = strip_comparison(&text, lang);
 
-    intent.range = window(&head, chinese, now);
-    intent.metric = metric(&head, chinese);
-    intent.dimension = dimension(&head, chinese);
+    intent.range = window(&head, lang, now);
+    intent.metric = metric(&head, lang);
+    intent.dimension = dimension(&head, lang);
 
     intent
 }
@@ -365,25 +618,17 @@ pub fn parse(question: &str, now: NaiveDateTime) -> Intent {
 ///
 /// "how many visitors vs last week" → "how many visitors"
 /// "最近 30 天的访客数和上周相比" → "最近 30 天的访客数"
-fn strip_comparison(text: &str, chinese: bool) -> String {
-    let markers: &[&str] = if chinese {
-        &["相比", "对比", "比上", "较上", "环比", "同比"]
-    } else {
-        &[" vs ", " versus ", " compared to ", " compare to ", " against "]
-    };
-
-    for marker in markers {
+fn strip_comparison(text: &str, lang: Lang) -> String {
+    for marker in lang.comparison_markers() {
         let Some(position) = text.find(marker) else {
             continue;
         };
         let mut head = &text[..position];
-        if chinese {
-            // "和上周相比" — the clause starts at the 和, not at the 相比.
-            for conjunction in ["和", "与", "跟", "同"] {
-                if let Some(at) = head.rfind(conjunction) {
-                    if head.len() - at <= 12 {
-                        head = &head[..at];
-                    }
+        // "和上周相比" — the clause starts at the 和, not at the 相比.
+        for conjunction in lang.conjunctions() {
+            if let Some(at) = head.rfind(conjunction) {
+                if head.len() - at <= 12 {
+                    head = &head[..at];
                 }
             }
         }
@@ -393,118 +638,75 @@ fn strip_comparison(text: &str, chinese: bool) -> String {
     text.to_string()
 }
 
-/// Is the question in Chinese?
-fn is_chinese(question: &str) -> bool {
-    question
-        .chars()
-        .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c))
-}
-
 /// The window the question is about.
-fn window(text: &str, chinese: bool, now: NaiveDateTime) -> TimeRange {
+fn window(text: &str, lang: Lang, now: NaiveDateTime) -> TimeRange {
     let day = chrono::Duration::days(1);
 
-    if chinese {
-        if text.contains("今天") {
-            return TimeRange {
-                start: now - day,
-                end: now,
-            };
-        }
-        if text.contains("昨天") {
-            return TimeRange {
-                start: now - day * 2,
-                end: now - day,
-            };
-        }
-        if text.contains("上周") {
-            let end = start_of_week(now);
-            return TimeRange {
-                start: end - day * 7,
-                end,
-            };
-        }
-        if text.contains("本月") || text.contains("这个月") {
-            let end = start_of_month(now);
-            return TimeRange {
-                start: end - day * 30,
-                end,
-            };
-        }
-        if text.contains("上个月") || text.contains("上月") {
-            let end = start_of_month(now);
-            return TimeRange {
-                start: end - day * 30,
-                end,
-            };
-        }
-        if let Some(days) = days_after(text, &["最近", "过去", "近"]) {
-            return TimeRange {
-                start: now - chrono::Duration::days(days),
-                end: now,
-            };
-        }
-        return TimeRange {
-            start: now - day * 7,
-            end: now,
-        };
-    }
+    let asked = lang
+        .windows()
+        .iter()
+        .find(|(words, _)| holds(text, words))
+        .map(|(_, window)| *window);
 
-    if text.contains("today") {
-        return TimeRange {
+    match asked {
+        Some(Window::Today) => TimeRange {
             start: now - day,
             end: now,
-        };
-    }
-    if text.contains("yesterday") {
-        return TimeRange {
+        },
+        Some(Window::Yesterday) => TimeRange {
             start: now - day * 2,
             end: now - day,
-        };
-    }
-    if text.contains("this week") {
-        // This week: from Monday until now.
-        return TimeRange {
+        },
+        Some(Window::ThisWeek) => TimeRange {
+            // This week: from Monday until now.
             start: start_of_week(now),
             end: now,
-        };
-    }
-    if text.contains("last week") {
-        // Last week: the seven days before this one.
-        let end = start_of_week(now);
-        return TimeRange {
-            start: end - day * 7,
-            end,
-        };
-    }
-    if text.contains("this month") {
-        // This month: from the first until now.
-        return TimeRange {
+        },
+        Some(Window::LastWeek) => {
+            // Last week: the seven days before this one.
+            let end = start_of_week(now);
+            TimeRange {
+                start: end - day * 7,
+                end,
+            }
+        }
+        Some(Window::ThisMonth) => TimeRange {
+            // This month: from the first until now.
             start: start_of_month(now),
             end: now,
-        };
-    }
-    if text.contains("last month") {
-        // Last month: the calendar month before this one.
-        let end = start_of_month(now);
-        let previous = end.date().pred_opt().unwrap_or(end.date());
-        let start = previous
-            .with_day(1)
-            .unwrap_or(previous)
-            .and_hms_opt(0, 0, 0)
-            .unwrap_or(end);
-        return TimeRange { start, end };
-    }
-    if let Some(days) = days_after(text, &["last", "past", "previous"]) {
-        return TimeRange {
-            start: now - chrono::Duration::days(days),
-            end: now,
-        };
-    }
-
-    TimeRange {
-        start: now - day * 7,
-        end: now,
+        },
+        Some(Window::LastMonth) => {
+            // Last month: the calendar month before this one.
+            let end = start_of_month(now);
+            let previous = end.date().pred_opt().unwrap_or(end.date());
+            let start = previous
+                .with_day(1)
+                .unwrap_or(previous)
+                .and_hms_opt(0, 0, 0)
+                .unwrap_or(end);
+            TimeRange { start, end }
+        }
+        Some(Window::BeforeMonth) => {
+            // The thirty days before the month starts.
+            let end = start_of_month(now);
+            TimeRange {
+                start: end - day * 30,
+                end,
+            }
+        }
+        None => {
+            // "last 30 days" — the number has to follow the word.
+            if let Some(days) = days_after(text, lang.day_words()) {
+                return TimeRange {
+                    start: now - chrono::Duration::days(days),
+                    end: now,
+                };
+            }
+            TimeRange {
+                start: now - day * 7,
+                end: now,
+            }
+        }
     }
 }
 
@@ -545,43 +747,17 @@ fn start_of_month(now: NaiveDateTime) -> NaiveDateTime {
 }
 
 /// The metric the question is about.
-fn metric(text: &str, chinese: bool) -> Metric {
-    if chinese {
-        if text.contains("跳出") {
-            return Metric::Bounces;
-        }
-        if text.contains("停留") || text.contains("时长") {
-            return Metric::Duration;
-        }
-        if text.contains("访客") {
-            return Metric::Visitors;
-        }
-        if text.contains("会话") {
-            return Metric::Sessions;
-        }
-        if text.contains("浏览") || text.contains("访问量") || text.contains("流量") {
-            return Metric::Pageviews;
-        }
-        return Metric::Pageviews;
-    }
-
-    if text.contains("bounce") {
-        return Metric::Bounces;
-    }
-    if text.contains("duration") || text.contains("time on site") || text.contains("how long") {
-        return Metric::Duration;
-    }
-    if text.contains("visitor") {
-        return Metric::Visitors;
-    }
-    if text.contains("session") || text.contains("visit ") || text.contains("visits") {
-        return Metric::Sessions;
-    }
-    Metric::Pageviews
+fn metric(text: &str, lang: Lang) -> Metric {
+    lang.metrics()
+        .iter()
+        .find(|(words, _)| holds(text, words))
+        .map(|(_, metric)| *metric)
+        // No word about a metric: the question is about the page views.
+        .unwrap_or(Metric::Pageviews)
 }
 
 /// The dimension the question breaks the traffic down by.
-fn dimension(text: &str, chinese: bool) -> Option<Dimension> {
+fn dimension(text: &str, lang: Lang) -> Option<Dimension> {
     // "page views" is a **metric**, not a dimension: "how many page views" is
     // not a question about the pages. The metric phrases are taken out before
     // the dimensions are looked for.
@@ -590,116 +766,20 @@ fn dimension(text: &str, chinese: bool) -> Option<Dimension> {
         .replace("pageviews", " ")
         .replace("page view", " ");
 
-    if chinese {
-        if text.contains("来源") || text.contains("引荐") || text.contains("referer") || text.contains("referrer") {
-            return Some(Dimension::Referrer);
-        }
-        if text.contains("浏览器") {
-            return Some(Dimension::Browser);
-        }
-        if text.contains("系统") || text.contains("操作系统") {
-            return Some(Dimension::Os);
-        }
-        if text.contains("设备") {
-            return Some(Dimension::Device);
-        }
-        if text.contains("国家") {
-            return Some(Dimension::Country);
-        }
-        if text.contains("地区") || text.contains("省份") || text.contains("州") {
-            return Some(Dimension::Region);
-        }
-        if text.contains("城市") {
-            return Some(Dimension::City);
-        }
-        if text.contains("渠道") || text.contains("来源渠道") {
-            return Some(Dimension::Channel);
-        }
-        if text.contains("域名") || text.contains("主机") {
-            return Some(Dimension::Host);
-        }
-        if text.contains("语言") {
-            return Some(Dimension::Language);
-        }
-        if text.contains("屏幕") || text.contains("分辨率") {
-            return Some(Dimension::Screen);
-        }
-        if text.contains("事件") {
-            return Some(Dimension::Url);
-        }
-        if text.contains("页面") || text.contains("网页") || text.contains("路径") {
-            return Some(Dimension::Url);
-        }
-        return None;
-    }
-
-    if text.contains("referrer") || text.contains("referer") || text.contains("traffic source")
-        || text.contains("where do") || text.contains("where from") || text.contains("source")
-    {
-        return Some(Dimension::Referrer);
-    }
-    if text.contains("browser") {
-        return Some(Dimension::Browser);
-    }
-    if text.contains("operating system") || text.contains(" os ") || text.contains("os?") {
-        return Some(Dimension::Os);
-    }
-    if text.contains("device") {
-        return Some(Dimension::Device);
-    }
-    if text.contains("country") || text.contains("countries") {
-        return Some(Dimension::Country);
-    }
-    if text.contains("region") || text.contains("state") || text.contains("province") {
-        return Some(Dimension::Region);
-    }
-    if text.contains("city") || text.contains("cities") {
-        return Some(Dimension::City);
-    }
-    if text.contains("channel") {
-        return Some(Dimension::Channel);
-    }
-    if text.contains("hostname") || text.contains("host name") || text.contains("hosts") {
-        return Some(Dimension::Host);
-    }
-    if text.contains("language") {
-        return Some(Dimension::Language);
-    }
-    if text.contains("screen") || text.contains("resolution") {
-        return Some(Dimension::Screen);
-    }
-    if text.contains("event") {
-        return Some(Dimension::Url);
-    }
-    if text.contains("page") || text.contains("url") || text.contains("path") || text.contains("blog")
-    {
-        return Some(Dimension::Url);
-    }
-    None
+    lang.dimensions()
+        .iter()
+        .find(|(words, _)| holds(text, words))
+        .map(|(_, dimension)| *dimension)
 }
 
 /// Does the question compare with the period before?
-fn compare(text: &str, chinese: bool) -> bool {
-    if chinese {
-        return ["变化", "对比", "相比", "比上", "环比", "同比", "下降", "上涨", "增长", "跌", "趋势"]
-            .iter()
-            .any(|word| text.contains(word));
-    }
-    [" vs ", "versus", "compare", "compared", "than before", "change", "trend", "drop", "dropped", "rise", "grew"]
-        .iter()
-        .any(|word| text.contains(word))
+fn compare(text: &str, lang: Lang) -> bool {
+    holds(text, lang.compare_words())
 }
 
 /// Does the question ask *why*?
-fn why(text: &str, chinese: bool) -> bool {
-    if chinese {
-        return ["为什么", "原因", "怎么回事", "咋回事"]
-            .iter()
-            .any(|word| text.contains(word));
-    }
-    ["why", "reason", "cause"]
-        .iter()
-        .any(|word| text.contains(word))
+fn why(text: &str, lang: Lang) -> bool {
+    holds(text, lang.why_words())
 }
 
 // --------------------------------------------------------------------------------------
@@ -711,126 +791,149 @@ fn why(text: &str, chinese: bool) -> bool {
 /// The wording is the only place where the assistant sounds like a person; every
 /// number in it comes from [`Facts`].
 pub fn compose(facts: &Facts, intent: &Intent) -> String {
-    let chinese = intent.chinese;
-    let summary = facts.summary.as_ref();
-
     let mut sentences: Vec<String> = Vec::new();
-
-    // The headline: the metric that was asked about.
-    if let Some(summary) = summary {
-        let metric = facts.metric;
-        let value = metric.value(summary);
-        sentences.push(if chinese {
-            format!(
-                "最近这段时间（{}）：{} {}。",
-                period(facts, chinese),
-                number(value),
-                metric.chinese()
-            )
-        } else {
-            format!(
-                "Over the last {}: {} {}.",
-                period(facts, chinese),
-                number(value),
-                // One is one.
-                if value == 1 {
-                    metric.english_one()
-                } else {
-                    metric.english()
-                }
-            )
-        });
-
-        // The rest of the summary, when the question was not about one metric.
-        if metric == Metric::Pageviews && intent.dimension.is_none() {
-            sentences.push(if chinese {
-                format!(
-                    "{} 访客，{} 次会话，{} 次跳出，平均停留 {}。",
-                    number(summary.visitors.value),
-                    number(summary.views.value),
-                    number(summary.bounces.value),
-                    duration(summary.visit_duration.value)
-                )
-            } else {
-                format!(
-                    "{} visitors, {} sessions, {} bounces, {} average visit.",
-                    number(summary.visitors.value),
-                    number(summary.views.value),
-                    number(summary.bounces.value),
-                    duration(summary.visit_duration.value)
-                )
-            });
-        }
-    }
-
-    // The change against the period before.
-    if intent.compare {
-        if let Some(summary) = summary {
-            let change = facts.metric.change(summary);
-            sentences.push(if chinese {
-                format!("和上一个{}相比，{} {} {:+.1}%。", period(facts, chinese), facts.metric.chinese(), if change >= 0.0 { "上涨了" } else { "下降了" }, change.abs())
-            } else {
-                format!(
-                    "That is {:+.1}% against the previous {}.",
-                    change,
-                    period(facts, chinese)
-                )
-            });
-        }
-    }
-
-    // The breakdown.
-    if let Some(rows) = facts.breakdown.as_ref() {
-        let dimension = facts.dimension.as_deref().unwrap_or("pages");
-        if !rows.is_empty() {
-            let list: Vec<String> = rows
-                .iter()
-                .take(5)
-                .map(|row| format!("{} ({})", row.name, number(row.value)))
-                .collect();
-            sentences.push(if chinese {
-                format!("最多的{}：{}。", dimension, list.join("、"))
-            } else {
-                format!("The top {}: {}.", dimension, list.join(", "))
-            });
-        }
-    }
-
-    // The movers: the answer to "why".
-    if let Some(movers) = facts.movers.as_ref() {
-        let changed: Vec<&Mover> = movers.iter().filter(|m| m.change != 0).collect();
-        if !changed.is_empty() {
-            let list: Vec<String> = changed
-                .iter()
-                .take(3)
-                .map(|mover| format!("{} ({:+})", mover.name, number(mover.change)))
-                .collect();
-            sentences.push(if chinese {
-                format!("变化最大的：{}。", list.join("、"))
-            } else {
-                format!("The biggest movers: {}.", list.join(", "))
-            });
-        }
-    }
+    sentences.extend(compose_summary(facts, intent));
+    sentences.extend(compose_change(facts, intent));
+    sentences.extend(compose_breakdown(facts, intent));
+    sentences.extend(compose_movers(facts, intent));
 
     if sentences.is_empty() {
-        return if chinese {
-            "这段时间没有数据。".to_string()
-        } else {
-            "There is no data for that period.".to_string()
+        return match intent.lang {
+            Lang::Zh => "这段时间没有数据。".to_string(),
+            Lang::En => "There is no data for that period.".to_string(),
         };
     }
 
     sentences.join(" ")
 }
 
+/// The headline: the metric that was asked about — and the rest of the summary.
+fn compose_summary(facts: &Facts, intent: &Intent) -> Vec<String> {
+    let Some(summary) = facts.summary.as_ref() else {
+        return Vec::new();
+    };
+    let lang = intent.lang;
+    let metric = facts.metric;
+    let value = metric.value(summary);
+
+    let mut out = vec![match lang {
+        Lang::Zh => format!(
+            "最近这段时间（{}）：{} {}。",
+            period(facts, lang),
+            number(value),
+            metric.name(lang)
+        ),
+        Lang::En => format!(
+            "Over the last {}: {} {}.",
+            period(facts, lang),
+            number(value),
+            // One is one.
+            if value == 1 {
+                metric.name_one(lang)
+            } else {
+                metric.name(lang)
+            }
+        ),
+    }];
+
+    // The rest of the summary, when the question was not about one metric.
+    if metric == Metric::Pageviews && intent.dimension.is_none() {
+        out.push(match lang {
+            Lang::Zh => format!(
+                "{} 访客，{} 次会话，{} 次跳出，平均停留 {}。",
+                number(summary.visitors.value),
+                number(summary.views.value),
+                number(summary.bounces.value),
+                duration(summary.visit_duration.value)
+            ),
+            Lang::En => format!(
+                "{} visitors, {} sessions, {} bounces, {} average visit.",
+                number(summary.visitors.value),
+                number(summary.views.value),
+                number(summary.bounces.value),
+                duration(summary.visit_duration.value)
+            ),
+        });
+    }
+
+    out
+}
+
+/// The change against the period before.
+fn compose_change(facts: &Facts, intent: &Intent) -> Vec<String> {
+    if !intent.compare {
+        return Vec::new();
+    }
+    let Some(summary) = facts.summary.as_ref() else {
+        return Vec::new();
+    };
+    let lang = intent.lang;
+    let change = facts.metric.change(summary);
+
+    vec![match lang {
+        Lang::Zh => format!(
+            "和上一个{}相比，{} {} {:+.1}%。",
+            period(facts, lang),
+            facts.metric.name(lang),
+            if change >= 0.0 { "上涨了" } else { "下降了" },
+            change.abs()
+        ),
+        Lang::En => format!(
+            "That is {:+.1}% against the previous {}.",
+            change,
+            period(facts, lang)
+        ),
+    }]
+}
+
+/// The breakdown: the top rows of the dimension the question asked about.
+fn compose_breakdown(facts: &Facts, intent: &Intent) -> Vec<String> {
+    let Some(rows) = facts.breakdown.as_ref() else {
+        return Vec::new();
+    };
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    let dimension = facts.dimension.as_deref().unwrap_or("pages");
+    let list: Vec<String> = rows
+        .iter()
+        .take(5)
+        .map(|row| format!("{} ({})", row.name, number(row.value)))
+        .collect();
+
+    vec![match intent.lang {
+        Lang::Zh => format!("最多的{}：{}。", dimension, list.join("、")),
+        Lang::En => format!("The top {}: {}.", dimension, list.join(", ")),
+    }]
+}
+
+/// The movers: the answer to "why".
+fn compose_movers(facts: &Facts, intent: &Intent) -> Vec<String> {
+    let Some(movers) = facts.movers.as_ref() else {
+        return Vec::new();
+    };
+    let changed: Vec<&Mover> = movers.iter().filter(|m| m.change != 0).collect();
+    if changed.is_empty() {
+        return Vec::new();
+    }
+    let list: Vec<String> = changed
+        .iter()
+        .take(3)
+        .map(|mover| format!("{} ({:+})", mover.name, number(mover.change)))
+        .collect();
+
+    vec![match intent.lang {
+        Lang::Zh => format!("变化最大的：{}。", list.join("、")),
+        Lang::En => format!("The biggest movers: {}.", list.join(", ")),
+    }]
+}
+
 /// The period, in words.
-fn period(facts: &Facts, chinese: bool) -> String {
+fn period(facts: &Facts, lang: Lang) -> String {
     let days = (facts.end - facts.start).num_days().max(1);
-    if chinese {
-        format!("{days} 天")
-    } else {
-        format!("{days} days")
+    match lang {
+        Lang::Zh => format!("{days} 天"),
+        Lang::En => format!("{days} days"),
     }
 }
 

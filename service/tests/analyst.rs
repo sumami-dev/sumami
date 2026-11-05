@@ -3,7 +3,7 @@
 //! The answers are checked against numbers that were put into the database by
 //! hand — not against the numbers the assistant computed for itself.
 
-use sumimi_service::analyst::{self, Metric};
+use sumimi_service::analyst::{self, Lang, Metric};
 use sumimi_service::models::Hit;
 use sumimi_service::pool::Db;
 use sumimi_service::storage::{Dimension, Storage};
@@ -221,7 +221,7 @@ fn a_chinese_question_is_understood() {
     let now = now();
 
     let intent = analyst::parse("最近 30 天的访客数", now);
-    assert!(intent.chinese);
+    assert_eq!(intent.lang, Lang::Zh);
     assert_eq!(intent.metric, Metric::Visitors);
     assert_eq!((intent.range.end - intent.range.start).num_days(), 30);
 
