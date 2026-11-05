@@ -1,20 +1,7 @@
-# The default build statically links DuckDB (see the `duckdb-static` feature in
-# service/Cargo.toml and cli/Cargo.toml), so the release is a single file with no
-# shared library to ship and no rpath to set.
+# The build statically links DuckDB (see the `duckdb-static` feature in
+# service/Cargo.toml and cli/Cargo.toml), so the release is a single file with
+# no shared library to ship and no rpath to set.
 #
-# The dynamic build (`--no-default-features --features duckdb-dynamic`) links the
-# prebuilt DuckDB instead: the binary is about six times smaller, and the library
-# is looked up **next to the binary** — which is where `make build-small` puts it,
-# so the release is still a directory you can copy as a whole.
-
-[target.aarch64-apple-darwin]
-rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
-
-[target.x86_64-apple-darwin]
-rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
-
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]
-
-[target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]
+# There is one build: the static one. A smaller executable was tried — the
+# prebuilt DuckDB is 63 MB on its own, so the "small" release was bigger than
+# the single file, and two files are worse than one.

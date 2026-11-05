@@ -1,18 +1,14 @@
 # Sumimi — build helpers.
 #
-# The default build compiles DuckDB into the executables, so the release is a
-# single self-contained binary. `make build-small` links the prebuilt
-# libduckdb dynamically instead (smaller executable, one extra file to ship).
+# The build compiles DuckDB into the executable, so the release is a single
+# self-contained binary: one file to copy, nothing else to install.
 
 CARGO ?= cargo
 CARGO_HTTP_TIMEOUT ?= 600
 TARGET ?= target/release
 # The version of the release: the crate version, not DuckDB's.
 VERSION ?= 0.3.0
-# The DuckDB release the dynamic build downloads.
-DUCKDB_VERSION ?= v2.0.0
-
-.PHONY: all build release test lint fmt run clean package build-small
+.PHONY: all build release test lint fmt run clean package
 
 all: build
 
@@ -23,27 +19,6 @@ build:
 ## Build (release): static DuckDB, self-contained binaries.
 release:
 	CARGO_HTTP_TIMEOUT=$(CARGO_HTTP_TIMEOUT) $(CARGO) build --release
-
-## Build (release) with a dynamically linked DuckDB: smaller, needs libduckdb.
-##
-## The binary looks for the library next to itself (`@loader_path` / `$ORIGIN`),
-## so the release is still a directory you can copy as a whole.
-##
-## The downloaded library is a universal binary (x86_64 + arm64) — the slice for
-## this machine is kept, which halves it.
-build-small:
-	CARGO_HTTP_TIMEOUT=$(CARGO_HTTP_TIMEOUT) $(CARGO) build --release --no-default-features --features duckdb-dynamic
-	@set -e; \
-	dir=$$(ls -d target/duckdb-download/*/$(DUCKDB_VERSION) 2>/dev/null | head -1); \
-	if [ -n "$$dir" ]; then \
-		for lib in $$dir/libduckdb.*; do \
-			cp -f $$lib $(TARGET)/; \
-			if command -v lipo >/dev/null 2>&1; then \
-				lipo $$lib -thin $$(uname -m) -output $(TARGET)/$$(basename $$lib) 2>/dev/null || true; \
-			fi; \
-		done; \
-		echo "libduckdb copied from $$dir"; \
-	fi
 
 ## Run the tests.
 test:

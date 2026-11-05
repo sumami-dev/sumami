@@ -7,7 +7,10 @@
  * use it from TypeScript:
  *
  * ```ts
+ * // npm
  * import { init } from "@sumimi/tracker";
+ * // or JSR
+ * import { init } from "jsr:@ljh/sumimi";
  *
  * const sumimi = init({ website: "<website-uuid>" });
  * sumimi.track("signup", { plan: "pro" });

@@ -27,7 +27,7 @@ An open-source, high-performance alternative to Umami.
 | `service/` | The server: collection API, stats API, auth, the writer, TLS.     |
 | `cli/`     | `sumimi` — read and analyse a database, locally or over HTTP.     |
 | `sumimi/`  | The facade crate: the server and the client as one library.       |
-| `tracker/` | The tracker package — `@sumimi/tracker` on npm and on JSR.        |
+| `tracker/` | The tracker package — `@sumimi/tracker` on npm, `@ljh/sumimi` on JSR. |
 | `js/`      | The dashboard frontend. The tracker is in `service/js/`.            |
 | `docs/`    | The website and documentation — in `service/docs/`, so the binary carries them. |
 
@@ -37,7 +37,7 @@ rules, and the conventions every change has to follow.
 ## The tracker, typed
 
 ```bash
-deno add jsr:@sumimi/tracker     # or: npm install @sumimi/tracker
+deno add jsr:@ljh/sumimi         # or: npm install @sumimi/tracker
 ```
 
 ```ts
@@ -110,9 +110,6 @@ sumimi/
 ├── logs/            the server's log files
 └── jwt-secret       the signing secret
 ```
-
-(Prefer a smaller executable over a single file? `make build-small` links the prebuilt
-`libduckdb` dynamically instead — then `libduckdb.so` has to sit next to the binary.)
 
 The first run creates the admin account and prints its password **once**. Then:
 

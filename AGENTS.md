@@ -142,7 +142,7 @@ This repository (`sumimi-dev/sumimi`, **public**) is a workspace of five compone
 | `service/` | Rust           | The server library: collection API, stats API, auth, the writer, TLS, **the shared report layer**, **the instance store**. Also holds `service/docs/` — the website & documentation, embedded in the binary. |
 | `cli/`     | Rust           | The analysis client. |
 | `sumimi/`  | Rust           | The facade crate: the server and the client as one library, **and the one executable** (`sumimi`: server + client). |
-| `tracker/` | TypeScript     | The tracker package — `@sumimi/tracker` on npm and on JSR. One source (`src/mod.ts`), two registries. |
+| `tracker/` | TypeScript     | The tracker package — `@sumimi/tracker` on npm, `@ljh/sumimi` on JSR. One source (`src/mod.ts`), two registries. |
 | `js/`      | JavaScript     | The tracker (`sumimi.js`) + the dashboard frontend (`sumimi-app.js`). Published on a CDN. |
 
 The Rust crates are members of one Cargo workspace (root `Cargo.toml`). `service/` and
@@ -813,7 +813,6 @@ make test             # unit + integration tests
 make lint             # clippy -- -D warnings
 make run              # serve on :3000 with ./dev.duckdb
 make package          # release artefact: the `sumimi` binary + js/ + docs/
-make build-small      # optional: dynamically linked DuckDB (smaller, needs libduckdb)
 ```
 
 Plain cargo works too:

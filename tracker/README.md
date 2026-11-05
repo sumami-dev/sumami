@@ -1,4 +1,6 @@
-# @sumimi/tracker
+# The Sumimi tracker
+
+`@sumimi/tracker` on npm · `@ljh/sumimi` on JSR
 
 The [Sumimi](https://sumimi.dev) tracker, typed.
 
@@ -14,7 +16,7 @@ at `GET /sumimi.js`. This package is the typed way to use it from TypeScript.
 ```bash
 npm install @sumimi/tracker
 # or
-deno add jsr:@sumimi/tracker
+deno add jsr:@ljh/sumimi
 ```
 
 ## Use
@@ -64,7 +66,7 @@ One source, two registries:
 | file | what it is |
 | --- | --- |
 | `src/mod.ts` | the source — the only copy of the code |
-| `jsr.json` | the JSR package (`@sumimi/tracker` on jsr.io) |
+| `jsr.json` | the JSR package (`@ljh/sumimi` on jsr.io) |
 | `package.json` | the npm package (`@sumimi/tracker` on npmjs.com) |
 | `tsconfig.json` | the npm build (`src/mod.ts` → `dist/`) |
 

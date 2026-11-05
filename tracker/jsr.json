@@ -1,5 +1,5 @@
 {
-  "name": "@sumimi/tracker",
+  "name": "@ljh/sumimi",
   "version": "0.3.0",
   "license": "Apache-2.0",
   "exports": "./src/mod.ts",
