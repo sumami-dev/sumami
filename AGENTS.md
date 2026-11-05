@@ -839,6 +839,28 @@ frontend is never embedded in it.
 
 ## 7. Development workflow
 
+### 7.1 Where the tests live
+
+| layer | what it checks | where |
+| --- | --- | --- |
+| **basic** | the functions: every endpoint, every report, the collection path, the write path, the migrations | **this repository** |
+| **feature** | the private edition's behaviour: PostgreSQL, object storage, the jobs, MCP | `sumimi-dev/sumimi-pro` |
+| **scale** | the invariants that break a customer's small box: the memory budget, the missing primary key, the useless index | `sumimi-dev/sumimi-pro` |
+| **comparison** | against other implementations (Umami and the like) | `sumimi-dev/sumimi-pro` |
+
+**This repository carries the basic layer.** It has to run on every pull request,
+in minutes, on anybody's machine — and it has to be readable: the tests are the
+manual. The heavy layers live in the private edition, where the code that
+produced the numbers is not shipped.
+
+**What is measured can still be published.** When a number is worth stating
+publicly — a release note, a conclusion, a comparison — the report is written
+into this repository (`benchmarks/<date>.md`). The benchmark *code* stays
+private; the *result* does not have to.
+
+See [issue #4](https://github.com/sumimi-dev/sumimi/issues/4) for the full
+statement and the remaining work.
+
 ```bash
 make build            # debug build
 make release          # release build (static DuckDB: self-contained binaries)
