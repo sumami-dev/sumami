@@ -41,21 +41,21 @@ fn the_same_name_means_the_same_session() {
     );
 }
 
-/// An empty text means the field is not there.
+/// No value and an empty value are two different things.
 ///
-/// This is the rule the collector applies to the fields it reads off the wire,
-/// so a caller that has nothing to say says nothing.
+/// A row with no referrer and a row with an empty referrer are two different
+/// rows — the deep-read check says so, and the builder has to keep them apart.
 #[test]
-fn an_empty_text_means_the_field_is_not_there() {
+fn no_value_and_an_empty_value_are_different() {
     let hit = HitBuilder::new("w1", "s1", "v1")
         .url("/one")
         .title("")
-        .referrer(String::new())
+        .referrer(None)
         .build();
 
     assert_eq!(hit.url.as_deref(), Some("/one"));
-    assert_eq!(hit.title, None);
-    assert_eq!(hit.referrer, None);
+    assert_eq!(hit.title.as_deref(), Some(""), "an empty title is an empty title");
+    assert_eq!(hit.referrer, None, "no referrer at all");
 }
 
 /// The moment it happened.

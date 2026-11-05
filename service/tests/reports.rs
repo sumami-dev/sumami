@@ -107,7 +107,11 @@ fn hit(
         })
         .visit(&format!("visit-{session}"))
         .url(url)
-        .url_query(query)
+        .url_query(if query.is_empty() {
+            None
+        } else {
+            Some(query)
+        })
         .title(format!("The title of {url}"))
         .referrer(referrer.unwrap_or_default())
         .referrer_name(sumimi_service::channels::referrer_name(referrer).unwrap_or_default())

@@ -35,10 +35,8 @@ macro_rules! text_fields {
     ($($name:ident),* $(,)?) => {
         $(
             /// Set the field.
-            ///
-            /// An empty text means the field is not there.
-            pub fn $name(mut self, value: impl Into<String>) -> Self {
-                self.hit.$name = text(value.into());
+            pub fn $name(mut self, value: impl Text) -> Self {
+                self.hit.$name = value.text();
                 self
             }
         )*
@@ -56,6 +54,34 @@ macro_rules! number_fields {
             }
         )*
     };
+}
+
+/// A value for a text field.
+///
+/// A field may have **no** value, and that is not the same as having an empty
+/// one: a row with no referrer and a row with an empty referrer are two
+/// different rows, and the deep-read check says so.
+pub trait Text {
+    /// The value, or nothing.
+    fn text(self) -> Option<String>;
+}
+
+impl Text for &str {
+    fn text(self) -> Option<String> {
+        Some(self.to_string())
+    }
+}
+
+impl Text for String {
+    fn text(self) -> Option<String> {
+        Some(self)
+    }
+}
+
+impl Text for Option<&str> {
+    fn text(self) -> Option<String> {
+        self.map(str::to_string)
+    }
 }
 
 /// A hit under construction.
@@ -172,19 +198,6 @@ impl HitBuilder {
     }
 }
 
-/// A text value: an empty text means the field is not there.
-///
-/// This is the rule the collector applies to the fields it reads off the wire
-/// — an empty title is no title — so a caller that has nothing to say says
-/// nothing.
-fn text(value: String) -> Option<String> {
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
-}
-
 /// The traffic the probes and the benchmarks write.
 ///
 /// A site with five pages, five referrers (one of them empty — that is direct
@@ -240,7 +253,11 @@ pub fn traffic(views: i64) -> Vec<Hit> {
             .url(PAGES[index % PAGES.len()])
             .url_query("utm_source=twitter&utm_medium=cpc")
             .title(format!("A post about topic {}", number % 500))
-            .referrer(referrer)
+            .referrer(if referrer.is_empty() {
+                None
+            } else {
+                Some(referrer)
+            })
             .channel(channel)
             .referrer_path("/item?id=1")
             .referrer_query("?id=1")
