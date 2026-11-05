@@ -178,6 +178,18 @@ impl Writer {
         self.last_flush_ms.load(Ordering::Relaxed)
     }
 
+    /// A percentile of the write durations, in milliseconds.
+    pub fn flush_percentile(&self, percent: usize) -> u64 {
+        let history = self.flush_history();
+        if history.is_empty() {
+            return 0;
+        }
+        let mut sorted = history;
+        sorted.sort_unstable();
+        let index = (percent * sorted.len()) / 100;
+        sorted[index.min(sorted.len() - 1)]
+    }
+
     /// The last few write durations, in milliseconds (oldest first).
     pub fn flush_history(&self) -> Vec<u64> {
         self.flush_history

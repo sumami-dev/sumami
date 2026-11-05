@@ -1,8 +1,13 @@
 //! How much of the stored data is the UUID?
 //!
-//! The same rows, written four times: with everything, without the visitor id,
-//! without both ids, and without the ids and the page. The difference between
-//! the file sizes is what those columns cost on disk.
+//! The same rows, written five times: with everything, without the visitor id,
+//! without both ids, without the ids and the page, and with **only the ids**.
+//! The difference between the file sizes is what those columns cost on disk.
+//!
+//! The last variant answers the other question: **what do the ~35 narrow
+//! columns cost?** If they cost about as much as the two UUIDs, then squeezing
+//! the row is not worth it — and merging the columns (which would break the
+//! dimensions and the filters) is not on the table either.
 
 use duckdb::Connection;
 
@@ -16,6 +21,10 @@ fn main() {
         ("no visitor_id", "* EXCLUDE (visitor_id)"),
         ("no ids", "* EXCLUDE (visitor_id, session_id)"),
         ("no ids, no page", "* EXCLUDE (visitor_id, session_id, url, url_query, title)"),
+        (
+            "only the ids",
+            "id, website_id, session_id, visitor_id, created_at",
+        ),
     ];
 
     let mut sizes = Vec::new();
@@ -74,10 +83,32 @@ fn main() {
             *size as f64 / base * 100.0
         );
     }
+    // Every file holds the same full `event` table plus the variant's `kept`
+    // table, so the **differences** are what the columns cost.
     let visitor = (base - sizes[1].1 as f64) / rows;
     let session = (sizes[1].1 as f64 - sizes[2].1 as f64) / rows;
     let page = (sizes[2].1 as f64 - sizes[3].1 as f64) / rows;
+    // The two ids together: everything minus everything without them.
+    let ids = (base - sizes[2].1 as f64) / rows;
+    // The ~30 narrow columns: everything minus everything without them.
+    let narrow = (base - sizes[4].1 as f64) / rows;
     println!("\nvisitor_id: {visitor:.1} B per view");
     println!("session_id: {session:.1} B per view");
-    println!("the page (url+query+title): {page:.1} B per view");
+    println!("the two ids together: {ids:.1} B per view");
+    println!("the ~35 narrow columns: {narrow:.1} B per view");
+    println!("the page (url, query, title): {page:.1} B per view");
+    println!(
+        "\n**The narrow columns are cheap and the ids are not.** All the narrow columns \
+         together cost {narrow:.1} B a view; the two ids cost {ids:.1} B — {:.1}x more. \
+         So the hypothesis that the row is fat because of the many columns is **wrong**: \
+         they compress (the same values repeat), while the ids are pure entropy.",
+        ids / narrow.max(0.001)
+    );
+    println!(
+        "\n**What follows.** Merging the narrow columns would save nothing and would break \
+         the dimensions, the filters and the shape of the API — so it is off the table. \
+         The ids are the fat part, but truncating them makes the visitor count \
+         'probably right' instead of exact, and the product promises exact. So: \
+         **nothing changes.** The disk is managed by the retention window and the backups."
+    );
 }

@@ -460,6 +460,14 @@ pub struct Heartbeat {
     pub duckdb_memory_limit_effective: String,
     /// How many threads DuckDB may use.
     pub duckdb_threads: i64,
+    /// How many batches have been written.
+    pub flushes: u64,
+    /// The median write duration, in milliseconds.
+    pub flush_p50_ms: u64,
+    /// The 99th percentile of the write durations, in milliseconds.
+    pub flush_p99_ms: u64,
+    /// The slowest write, in milliseconds.
+    pub flush_max_ms: u64,
     /// The size of the database file on disk.
     pub database_size_bytes: i64,
 }
