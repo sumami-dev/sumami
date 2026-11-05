@@ -570,8 +570,8 @@ fn event_log(conn: &Connection, query: &ReportQuery) -> Result<Vec<EventRow>> {
     let filters = Filters::new(query);
     let sql = format!(
         "SELECT id, website_id, session_id, created_at, event_name, url, hostname, channel, data,
-                referrer, referrer_path, referrer_query, country, city, browser, os, device,
-                utm_source, utm_medium, utm_campaign, lcp, inp, cls
+                referrer, referrer_path, referrer_query, country, city, browser, os,
+                utm_source, utm_medium, utm_campaign, lcp, inp, cls, device
          FROM event WHERE {where_clause}
          ORDER BY created_at DESC, id DESC
          LIMIT {limit} OFFSET {offset}",

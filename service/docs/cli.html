@@ -339,6 +339,23 @@ sumimi prune --db /var/lib/sumimi/sumimi.duckdb 3f2a...</code></pre>
       <code>DELETE /api/websites/:id</code> against the API instead.
     </p>
 
+    <h3><code>channels</code>, <code>regions</code>, <code>cities</code>, <code>hosts</code>, <code>tags</code></h3>
+    <p>
+      The other breakdowns: the traffic channel (direct, search, social, email, ads), the
+      region and the city of the visitor, the hostname of the site and the tag of a custom
+      event. They take the same arguments as the other reports.
+    </p>
+    <pre class="shell"><code>sumimi channels --db ./sumimi.duckdb 3f2a...
+sumimi regions  --db ./sumimi.duckdb 3f2a...
+sumimi cities   --db ./sumimi.duckdb 3f2a...
+sumimi hosts    --db ./sumimi.duckdb 3f2a...
+sumimi tags     --db ./sumimi.duckdb 3f2a...</code></pre>
+    <p>
+      <code>sumimi query-parameters</code> shows the query parameters of the visited
+      pages, counted by name and by value.
+    </p>
+    <pre class="shell"><code>sumimi query-parameters --db ./sumimi.duckdb 3f2a...</code></pre>
+
     <h3><code>uptime</code></h3>
     <p>
       Check whether a website is up. When the site does not answer, two references

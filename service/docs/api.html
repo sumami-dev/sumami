@@ -398,8 +398,18 @@
         <p>
           The breakdown endpoints are
           <code>pages</code>, <code>referrers</code>, <code>browsers</code>, <code>os</code>,
-          <code>devices</code>, <code>countries</code>, <code>languages</code>,
-          <code>screens</code>, <code>events</code> and <code>urls</code>.
+          <code>devices</code>, <code>countries</code>, <code>regions</code>,
+          <code>cities</code>, <code>languages</code>, <code>screens</code>,
+          <code>channels</code>, <code>hosts</code>, <code>events</code>,
+          <code>tags</code>, <code>query-parameters</code> and <code>urls</code>.
+          <br><br>
+          The <strong>channel</strong> is where the visit came from: direct, search, social,
+          email or ads. It is worked out once, when the event is collected, and stored with
+          it — so the report does not have to guess it from the referrer every time.
+          <br><br>
+          The <strong>query parameters</strong> are the ones of the visited pages, counted
+          by name and by value:
+          <code>[ { "name": "utm_source", "value": "twitter", "count": 12 } ]</code>.
         </p>
         <pre class="shell"><code>curl -s 'https://analytics.example.com/api/websites/3f2a1b4c-.../stats/pages?limit=5' \
   -H "authorization: Bearer $TOKEN"</code></pre>
