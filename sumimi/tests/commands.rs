@@ -46,7 +46,7 @@ fn instance(dir: &std::path::Path) -> String {
         .unwrap()
         .id;
     let hits: Vec<Hit> = (0..10)
-        .map(|index| HitBuilder::new(&website, "s1", "v1").url(&format!("/{index}")).build())
+        .map(|index| HitBuilder::new(&website, "s1", "v1").url(format!("/{index}")).build())
         .collect();
     db.write_batch(&hits).unwrap();
     website

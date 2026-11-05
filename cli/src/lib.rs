@@ -341,241 +341,27 @@ pub fn run() -> Result<()> {
     carry_over_old_env_names();
     let cli = Cli::parse();
 
-    let command = cli.command.clone();
-    match command {
+    match &cli.command {
         Command::Login {
             url,
             username,
             password,
-        } => {
-            let password = match password {
-                Some(password) => password,
-                None => {
-                    print!("password for {username} at {url}: ");
-                    use std::io::Write;
-                    std::io::stdout().flush()?;
-                    let mut line = String::new();
-                    std::io::stdin().read_line(&mut line)?;
-                    line.trim().to_string()
-                }
-            };
-
-            // Verify the credentials before storing them.
-            let source = Source::remote(&url, None, Some(&username), Some(&password))?;
-            if let Source::Remote { base, .. } = &source {
-                let path = source::store_credentials(&username, &password)?;
-                println!("credentials saved to {}", path.display());
-                println!("logged in to {base}");
-            }
-            Ok(())
-        }
-        Command::Mcp { website } => {
-            // **stdout belongs to the protocol** — nothing else may be printed
-            // there, or the client cannot read the answers.
-            let (source, writable) = match &cli.url {
-                Some(url) => {
-                    let source = Source::remote(
-                        url,
-                        cli.token.as_deref(),
-                        cli.username.as_deref(),
-                        cli.password.as_deref(),
-                    )?;
-                    (source, true)
-                }
-                None => {
-                    // The data file of the instance — the same one the server
-                    // writes to.
-                    let paths = sumimi_service::config::Paths::new(
-                        Some(cli.dir.clone()),
-                        cli.db.clone(),
-                        &cli.backend,
-                    );
-                    mcp::open_local(&paths.data)?
-                }
-            };
-
-            let server = mcp::Server::new(source, writable, website);
-            server.run()
-        }
-        Command::Gsc(command) => match command {
-            GscCommand::Import { file, website } => {
-                let text = std::fs::read_to_string(&file)
-                    .map_err(|err| anyhow!("reading {}: {err}", file.display()))?;
-                let rows = gsc::parse(&text)?;
-
-                // Against a running server, the import goes through the API.
-                if let Some(url) = &cli.url {
-                    let source = Source::remote(
-                        url,
-                        cli.token.as_deref(),
-                        cli.username.as_deref(),
-                        cli.password.as_deref(),
-                    )?;
-                    if let Source::Remote { base, token } = &source {
-                        let body = serde_json::json!({
-                            "website": website,
-                            "rows": rows,
-                            "source": file.display().to_string(),
-                        });
-                        let agent = ureq::Agent::new_with_defaults();
-                        let report: serde_json::Value = agent
-                            .post(&format!("{base}/api/gsc/import"))
-                            .header("authorization", &format!("Bearer {token}"))
-                            .send_json(body)?
-                            .body_mut()
-                            .read_json()?;
-                        println!(
-                            "imported {} rows into {website}",
-                            report["rows"].as_u64().unwrap_or(0)
-                        );
-                    }
-                    return Ok(());
-                }
-
-                // Offline: straight into the instance store.
-                let paths = sumimi_service::config::Paths::new(
-                    Some(cli.dir.clone()),
-                    cli.db.clone(),
-                    &cli.backend,
-                );
-                let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
-                    .map_err(|err| anyhow!("opening the instance store: {err}"))?;
-                let report = instance
-                    .import_gsc(&website, &rows, Some(&file.display().to_string()))
-                    .map_err(|err| anyhow!("the import failed: {err}"))?;
-                println!("imported {} rows into {website}", report.rows);
-                println!(
-                    "the rows are in {}",
-                    paths.instance.display()
-                );
-                Ok(())
-            }
-            GscCommand::List { website, limit } => {
-                let paths = sumimi_service::config::Paths::new(
-                    Some(cli.dir.clone()),
-                    cli.db.clone(),
-                    &cli.backend,
-                );
-                let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
-                    .map_err(|err| anyhow!("opening the instance store: {err}"))?;
-                let rows = instance
-                    .gsc_rows(&website, limit)
-                    .map_err(|err| anyhow!("reading the import: {err}"))?;
-                let table: Vec<Vec<String>> = rows
-                    .iter()
-                    .map(|row| {
-                        vec![
-                            row.date.clone(),
-                            row.query.clone().unwrap_or_default(),
-                            row.page.clone().unwrap_or_default(),
-                            row.clicks.to_string(),
-                            row.impressions.to_string(),
-                            row.position
-                                .map(|position| format!("{position:.1}"))
-                                .unwrap_or_default(),
-                        ]
-                    })
-                    .collect();
-                output::table(
-                    &["DATE", "QUERY", "PAGE", "CLICKS", "IMPRESSIONS", "POSITION"],
-                    &table,
-                );
-                Ok(())
-            }
-        },
+        } => cmd_login(url, username, password.as_deref()),
+        Command::Mcp { website } => cmd_mcp(&cli, website.as_deref()),
+        Command::Gsc(command) => cmd_gsc(&cli, command),
         Command::Seed {
             website,
             domain,
             days,
             visitors,
-        } => {
-            let paths = sumimi_service::config::Paths::new(
-                Some(cli.dir.clone()),
-                cli.db.clone(),
-                &cli.backend,
-            );
-
-            let options = seed::SeedOptions {
-                website,
-                domain,
-                days,
-                visitors_per_day: visitors,
-            };
-
-            // The seed goes through the storage backend, so the same data lands in
-            // DuckDB, in SQLite and in PostgreSQL — and the numbers agree.
-            let storage: Box<dyn sumimi_service::storage::Storage> =
-                match cli.backend.to_ascii_lowercase().as_str() {
-                    "duckdb" => Box::new(
-                        sumimi_service::pool::Db::open(&paths.data, "256MB")
-                            .map_err(|err| anyhow!("opening {}: {err}", paths.data.display()))?,
-                    ),
-                    "sqlite" => Box::new(
-                        sumimi_service::sqlite::SqliteBackend::open(&paths.data)
-                            .map_err(|err| anyhow!("opening {}: {err}", paths.data.display()))?,
-                    ),
-                    other => {
-                        return Err(anyhow!("unknown backend '{other}' (duckdb, sqlite)"));
-                    }
-                };
-
-            let (website_id, views, events) = seed::seed(storage.as_ref(), &options)
-                .map_err(|err| anyhow!("{err}"))?;
-
-            println!("seeded {views} page views and {events} events");
-            println!("website: {website_id}");
-            println!("start the server and open the dashboard to see it");
-            Ok(())
-        }
+        } => cmd_seed(&cli, website, domain, *days, *visitors),
         Command::Backup {
             out,
             website,
             from,
             to,
             skip_existing,
-        } => {
-            // The data file lives **inside the instance directory**. (Using the
-            // default path here meant `sumimi backup --dir <dir>` archived an
-            // **empty** database — and said it had archived 0 rows, which looks
-            // like a successful backup of an empty site.)
-            let path = sumimi_service::config::Paths::new(
-                Some(cli.dir.clone()),
-                cli.db.clone(),
-                &cli.backend,
-            )
-            .data;
-
-            // The backup reads the database, so the server must be stopped (DuckDB
-            // allows a single writer per file). `--url` is not supported here for the
-            // same reason.
-            let db = sumimi_service::pool::Db::open(&path, "256MB")
-                .map_err(|err| anyhow!("opening {}: {err}", path.display()))?;
-
-            let from = from.as_deref().map(parse_date).transpose()?;
-            let to = to.as_deref().map(parse_date).transpose()?;
-
-            let stats = db
-                .with_write(|conn| {
-                    backup::export(
-                        conn,
-                        &out,
-                        website.as_deref(),
-                        from,
-                        to,
-                        skip_existing,
-                    )
-                })
-                .map_err(|err| anyhow!("{err}"))?;
-
-            println!(
-                "archived {} rows into {} file(s) under {}",
-                stats.rows,
-                stats.files,
-                stats.directory.display()
-            );
-            println!("read it back with:  sumimi --parquet '{}/' summary <website-id>", stats.directory.display());
-            Ok(())
-        }
+        } => cmd_backup(&cli, out, website.as_deref(), from.as_deref(), to.as_deref(), *skip_existing),
         Command::Uptime {
             url,
             timeout,
@@ -584,378 +370,619 @@ pub fn run() -> Result<()> {
             list,
             remove,
             check_all,
-        } => {
-            let checker = sumimi_service::uptime::Checker::with_timeout(
-                std::time::Duration::from_secs(timeout.clamp(1, 60)),
+        } => cmd_uptime(
+            &cli,
+            Uptime {
+                url,
+                timeout: *timeout,
+                website: website.as_deref(),
+                add: add.as_deref(),
+                list: *list,
+                remove: remove.as_deref(),
+                check_all: *check_all,
+            },
+        ),
+        Command::Prune { website } => cmd_prune(&cli, website.as_deref()),
+        Command::Erase { website, yes } => cmd_erase(&cli, website, *yes),
+        command => cmd_report(&cli, command),
+    }
+}
+
+/// Store the credentials for a server.
+fn cmd_login(url: &str, username: &str, password: Option<&str>) -> Result<()> {
+    let password = match password {
+        Some(password) => password.to_string(),
+        None => {
+            print!("password for {username} at {url}: ");
+            use std::io::Write;
+            std::io::stdout().flush()?;
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            line.trim().to_string()
+        }
+    };
+
+    // Verify the credentials before storing them.
+    let source = Source::remote(url, None, Some(username), Some(&password))?;
+    if let Source::Remote { base, .. } = &source {
+        let path = source::store_credentials(username, &password)?;
+        println!("credentials saved to {}", path.display());
+        println!("logged in to {base}");
+    }
+    Ok(())
+}
+
+/// Run the MCP server: the analytics as tools an agent can call.
+fn cmd_mcp(cli: &Cli, website: Option<&str>) -> Result<()> {
+    // **stdout belongs to the protocol** — nothing else may be printed
+    // there, or the client cannot read the answers.
+    let (source, writable) = match &cli.url {
+        Some(url) => {
+            let source = Source::remote(
+                url,
+                cli.token.as_deref(),
+                cli.username.as_deref(),
+                cli.password.as_deref(),
+            )?;
+            (source, true)
+        }
+        None => {
+            // The data file of the instance — the same one the server
+            // writes to.
+            let paths = sumimi_service::config::Paths::new(
+                Some(cli.dir.clone()),
+                cli.db.clone(),
+                &cli.backend,
             );
+            mcp::open_local(&paths.data)?
+        }
+    };
 
-            // --- managing the watched endpoints ---
-            if let Some(website) = &website {
-                let paths = sumimi_service::config::Paths::new(
-                    Some(cli.dir.clone()),
-                    cli.db.clone(),
-                    &cli.backend,
-                );
+    let server = mcp::Server::new(source, writable, website.map(str::to_string));
+    server.run()
+}
 
-                // Against a running server, the endpoints go through the API.
-                let remote = cli.url.as_ref().map(|base| {
-                    Source::remote(
-                        base,
-                        cli.token.as_deref(),
-                        cli.username.as_deref(),
-                        cli.password.as_deref(),
-                    )
-                });
+/// The Search Console import.
+fn cmd_gsc(cli: &Cli, command: &GscCommand) -> Result<()> {
+    match command {
+        GscCommand::Import { file, website } => {
+            let text = std::fs::read_to_string(file)
+                .map_err(|err| anyhow!("reading {}: {err}", file.display()))?;
+            let rows = gsc::parse(&text)?;
 
-                if let Some(Ok(Source::Remote { base, token })) = &remote {
+            // Against a running server, the import goes through the API.
+            if let Some(url) = &cli.url {
+                let source = Source::remote(
+                    url,
+                    cli.token.as_deref(),
+                    cli.username.as_deref(),
+                    cli.password.as_deref(),
+                )?;
+                if let Source::Remote { base, token } = &source {
+                    let body = serde_json::json!({
+                        "website": website,
+                        "rows": rows,
+                        "source": file.display().to_string(),
+                    });
                     let agent = ureq::Agent::new_with_defaults();
-                    if let Some(url) = &add {
-                        agent
-                            .post(&format!("{base}/api/websites/{website}/uptime/endpoints"))
-                            .header("authorization", &format!("Bearer {token}"))
-                            .send_json(serde_json::json!({ "url": url }))?;
-                        println!("watching {url}");
-                    }
-                    if list {
-                        let value: serde_json::Value = agent
-                            .get(&format!("{base}/api/websites/{website}/uptime/endpoints"))
-                            .header("authorization", &format!("Bearer {token}"))
-                            .call()?
-                            .body_mut()
-                            .read_json()?;
-                        for endpoint in value["endpoints"].as_array().unwrap_or(&vec![]) {
-                            println!("{}", endpoint.as_str().unwrap_or(""));
-                        }
-                    }
-                    if let Some(url) = &remove {
-                        agent
-                            .delete(&format!(
-                                "{base}/api/websites/{website}/uptime/endpoints?url={}",
-                                encode(url)
-                            ))
-                            .header("authorization", &format!("Bearer {token}"))
-                            .call()?;
-                        println!("stopped watching {url}");
-                    }
-                    if check_all {
-                        let value: serde_json::Value = agent
-                            .post(&format!("{base}/api/websites/{website}/uptime/check"))
-                            .header("authorization", &format!("Bearer {token}"))
-                            .send_json(serde_json::json!({ "timeout": timeout }))?
-                            .body_mut()
-                            .read_json()?;
-                        for check in value["checks"].as_array().unwrap_or(&vec![]) {
-                            println!(
-                                "{}: {}",
-                                check["websiteId"].as_str().unwrap_or(""),
-                                if check["ok"].as_bool().unwrap_or(false) {
-                                    "up"
-                                } else {
-                                    "down"
-                                }
-                            );
-                        }
-                    }
-                    return Ok(());
+                    let report: serde_json::Value = agent
+                        .post(&format!("{base}/api/gsc/import"))
+                        .header("authorization", &format!("Bearer {token}"))
+                        .send_json(body)?
+                        .body_mut()
+                        .read_json()?;
+                    println!(
+                        "imported {} rows into {website}",
+                        report["rows"].as_u64().unwrap_or(0)
+                    );
                 }
-
-                // Offline: straight into the instance store.
-                let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
-                    .map_err(|err| anyhow!("opening the instance store: {err}"))?;
-
-                if let Some(url) = &add {
-                    instance.add_uptime_endpoint(website, url)?;
-                    println!("watching {url}");
-                }
-                if list {
-                    for endpoint in instance.uptime_endpoints(website)? {
-                        println!("{endpoint}");
-                    }
-                }
-                if let Some(url) = &remove {
-                    if instance.remove_uptime_endpoint(website, url)? {
-                        println!("stopped watching {url}");
-                    } else {
-                        println!("{url} was not being watched");
-                    }
-                }
-                if check_all {
-                    let mut urls = Vec::new();
-                    let domain = instance
-                        .uptime_endpoints(website)?
-                        .into_iter()
-                        .collect::<Vec<_>>();
-                    urls.extend(domain);
-                    for endpoint in urls {
-                        let check = checker.record(website, &endpoint);
-                        instance.record_uptime(&check)?;
-                        println!(
-                            "{endpoint}: {}",
-                            if check.ok { "up" } else { "down" }
-                        );
-                    }
-                }
-                if add.is_some() || list || remove.is_some() || check_all {
-                    return Ok(());
-                }
+                return Ok(());
             }
 
-            // --- checking one URL now ---
-            if url.is_empty() {
-                anyhow::bail!("give a URL, or a --website with --check-all");
-            }
-            let verdict = checker.check(&url);
-
-            if cli.json {
-                let value = match &verdict {
-                    sumimi_service::uptime::Verdict::Up {
-                        status,
-                        latency_ms,
-                    } => serde_json::json!({
-                        "url": url,
-                        "up": true,
-                        "status": status,
-                        "latencyMs": latency_ms,
-                    }),
-                    sumimi_service::uptime::Verdict::Down { error } => serde_json::json!({
-                        "url": url,
-                        "up": false,
-                        "error": error,
-                        "networkOk": true,
-                    }),
-                    sumimi_service::uptime::Verdict::NetworkDown { error, references } => {
-                        serde_json::json!({
-                            "url": url,
-                            "up": false,
-                            "error": error,
-                            "networkOk": false,
-                            "references": references,
-                        })
-                    }
-                };
-                println!("{}", serde_json::to_string_pretty(&value)?);
-            } else {
-                println!("{url}: {}", verdict.summary());
-            }
-
-            // The check is recorded when it belongs to a website.
-            if let Some(website) = website {
-                let check = checker.record(&website, &url);
-
-                if let Some(base) = &cli.url {
-                    // Against a running server, the check goes through the API.
-                    let source = Source::remote(
-                        base,
-                        cli.token.as_deref(),
-                        cli.username.as_deref(),
-                        cli.password.as_deref(),
-                    )?;
-                    if let Source::Remote { base, token } = &source {
-                        let agent = ureq::Agent::new_with_defaults();
-                        let _: serde_json::Value = agent
-                            .post(&format!("{base}/api/websites/{website}/uptime"))
-                            .header("authorization", &format!("Bearer {token}"))
-                            .send_json(serde_json::json!({ "url": url }))?
-                            .body_mut()
-                            .read_json()?;
-                        println!("recorded for {website}");
-                        return Ok(());
-                    }
-                }
-
-                // Offline: straight into the instance store.
-                let paths = sumimi_service::config::Paths::new(
-                    Some(cli.dir.clone()),
-                    cli.db.clone(),
-                    &cli.backend,
-                );
-                let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
-                    .map_err(|err| anyhow!("opening the instance store: {err}"))?;
-                instance.record_uptime(&check)?;
-                println!("recorded for {website}");
-            }
+            // Offline: straight into the instance store.
+            let paths = sumimi_service::config::Paths::new(
+                Some(cli.dir.clone()),
+                cli.db.clone(),
+                &cli.backend,
+            );
+            let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
+                .map_err(|err| anyhow!("opening the instance store: {err}"))?;
+            let report = instance
+                .import_gsc(website, &rows, Some(&file.display().to_string()))
+                .map_err(|err| anyhow!("the import failed: {err}"))?;
+            println!("imported {} rows into {website}", report.rows);
+            println!("the rows are in {}", paths.instance.display());
             Ok(())
         }
-        Command::Prune { website } => {
-            let source = open_source(&cli, true)?;
-            let (events, revenue) = source.prune(website.as_deref())?;
-            println!("removed {events} events and {revenue} revenue records");
-            Ok(())
-        }
-        Command::Erase { website, yes } => {
-            if !yes {
-                println!("this deletes the website {website} and all of its data.");
-                print!("type the website id to confirm: ");
-                use std::io::Write;
-                std::io::stdout().flush()?;
-                let mut answer = String::new();
-                std::io::stdin().read_line(&mut answer)?;
-                if answer.trim() != website {
-                    return Err(anyhow!("aborted"));
-                }
-            }
-            let source = open_source(&cli, true)?;
-            let removed = source.erase(&website)?;
-            println!("removed {removed} rows");
-            Ok(())
-        }
-        _ => {
-            let source = open_source(&cli, false)?;
-            match &source {
-                Source::Local { path, .. } => {
-                    eprintln!("[sumimi] source: {}", path.display());
-                }
-                Source::Remote { base, .. } => {
-                    eprintln!("[sumimi] source: {base}");
-                }
-            }
-            let (report, website, range, limit) = match &cli.command {
-                Command::Websites => (Report::Websites, None, Range::default_window(), 50),
-                Command::Summary {
-                    website,
-                    from,
-                    to,
-                } => (
-                    Report::Summary,
-                    Some(website.clone()),
-                    window(from.as_deref(), to.as_deref())?,
-                    50,
-                ),
-                Command::Pages(args) => (
-                    Report::Pages,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Referrers(args) => (
-                    Report::Referrers,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Browsers(args) => (
-                    Report::Browsers,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Os(args) => (
-                    Report::Os,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Devices(args) => (
-                    Report::Devices,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Countries(args) => (
-                    Report::Countries,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Languages(args) => (
-                    Report::Languages,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Screens(args) => (
-                    Report::Screens,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Events(args) => (
-                    Report::Events,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Channels(args) => (
-                    Report::Channels,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Regions(args) => (
-                    Report::Regions,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Cities(args) => (
-                    Report::Cities,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Hosts(args) => (
-                    Report::Hosts,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Tags(args) => (
-                    Report::Tags,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::QueryParameters(args) => (
-                    Report::QueryParameters,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Sessions(args) => (
-                    Report::Sessions,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Timeseries(args) => (
-                    Report::Timeseries,
-                    Some(args.website.clone()),
-                    window(args.from.as_deref(), args.to.as_deref())?,
-                    args.limit,
-                ),
-                Command::Export {
-                    website,
-                    report,
-                    format,
-                    from,
-                    to,
-                } => {
-                    let report: Report = (*report).into();
-                    let value = source.report(
-                        report,
-                        Some(website),
-                        window(from.as_deref(), to.as_deref())?,
-                        10_000,
-                    )?;
-                    match format {
-                        ExportFormat::Json => println!("{}", serde_json::to_string_pretty(&value)?),
-                        ExportFormat::Csv => print_csv(&value),
-                    }
-                    return Ok(());
-                }
-                _ => unreachable!(),
-            };
-
-            let value = source.report(report, website.as_deref(), range, limit)?;
-
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&value)?);
-            } else {
-                print_report(report, &value);
-            }
+        GscCommand::List { website, limit } => {
+            let paths = sumimi_service::config::Paths::new(
+                Some(cli.dir.clone()),
+                cli.db.clone(),
+                &cli.backend,
+            );
+            let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
+                .map_err(|err| anyhow!("opening the instance store: {err}"))?;
+            let rows = instance
+                .gsc_rows(website, *limit)
+                .map_err(|err| anyhow!("reading the import: {err}"))?;
+            let table: Vec<Vec<String>> = rows
+                .iter()
+                .map(|row| {
+                    vec![
+                        row.date.clone(),
+                        row.query.clone().unwrap_or_default(),
+                        row.page.clone().unwrap_or_default(),
+                        row.clicks.to_string(),
+                        row.impressions.to_string(),
+                        row.position
+                            .map(|position| format!("{position:.1}"))
+                            .unwrap_or_default(),
+                    ]
+                })
+                .collect();
+            output::table(
+                &["DATE", "QUERY", "PAGE", "CLICKS", "IMPRESSIONS", "POSITION"],
+                &table,
+            );
             Ok(())
         }
     }
+}
+
+/// Fill the database with synthetic demo data.
+fn cmd_seed(cli: &Cli, website: &str, domain: &str, days: i64, visitors: i64) -> Result<()> {
+    let paths = sumimi_service::config::Paths::new(
+        Some(cli.dir.clone()),
+        cli.db.clone(),
+        &cli.backend,
+    );
+
+    let options = seed::SeedOptions {
+        website: website.to_string(),
+        domain: domain.to_string(),
+        days,
+        visitors_per_day: visitors,
+    };
+
+    // The seed goes through the storage backend, so the same data lands in
+    // DuckDB, in SQLite and in PostgreSQL — and the numbers agree.
+    let storage: Box<dyn sumimi_service::storage::Storage> =
+        match cli.backend.to_ascii_lowercase().as_str() {
+            "duckdb" => Box::new(
+                sumimi_service::pool::Db::open(&paths.data, "256MB")
+                    .map_err(|err| anyhow!("opening {}: {err}", paths.data.display()))?,
+            ),
+            "sqlite" => Box::new(
+                sumimi_service::sqlite::SqliteBackend::open(&paths.data)
+                    .map_err(|err| anyhow!("opening {}: {err}", paths.data.display()))?,
+            ),
+            other => {
+                return Err(anyhow!("unknown backend '{other}' (duckdb, sqlite)"));
+            }
+        };
+
+    let (website_id, views, events) = seed::seed(storage.as_ref(), &options).map_err(|err| anyhow!("{err}"))?;
+
+    println!("seeded {views} page views and {events} events");
+    println!("website: {website_id}");
+    println!("start the server and open the dashboard to see it");
+    Ok(())
+}
+
+/// Write the database to a Parquet archive (one file per day).
+fn cmd_backup(
+    cli: &Cli,
+    out: &std::path::Path,
+    website: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+    skip_existing: bool,
+) -> Result<()> {
+    // The data file lives **inside the instance directory**. (Using the
+    // default path here meant `sumimi backup --dir <dir>` archived an
+    // **empty** database — and said it had archived 0 rows, which looks
+    // like a successful backup of an empty site.)
+    let path = sumimi_service::config::Paths::new(
+        Some(cli.dir.clone()),
+        cli.db.clone(),
+        &cli.backend,
+    )
+    .data;
+
+    // The backup reads the database, so the server must be stopped (DuckDB
+    // allows a single writer per file). `--url` is not supported here for the
+    // same reason.
+    let db = sumimi_service::pool::Db::open(&path, "256MB")
+        .map_err(|err| anyhow!("opening {}: {err}", path.display()))?;
+
+    let from = from.map(parse_date).transpose()?;
+    let to = to.map(parse_date).transpose()?;
+
+    let stats = db
+        .with_write(|conn| {
+            backup::export(
+                conn,
+                out,
+                website,
+                from,
+                to,
+                skip_existing,
+            )
+        })
+        .map_err(|err| anyhow!("{err}"))?;
+
+    println!(
+        "archived {} rows into {} file(s) under {}",
+        stats.rows,
+        stats.files,
+        stats.directory.display()
+    );
+    println!(
+        "read it back with:  sumimi --parquet '{}/' summary <website-id>",
+        stats.directory.display()
+    );
+    Ok(())
+}
+
+/// What the `uptime` command was asked to do.
+struct Uptime<'a> {
+    /// The URL to check.
+    url: &'a str,
+    /// How long to wait for an answer, in seconds.
+    timeout: u64,
+    /// The website the check belongs to — it is recorded.
+    website: Option<&'a str>,
+    /// The endpoint to start watching.
+    add: Option<&'a str>,
+    /// Whether to list the watched endpoints.
+    list: bool,
+    /// The endpoint to stop watching.
+    remove: Option<&'a str>,
+    /// Whether to check every endpoint of the website now.
+    check_all: bool,
+}
+
+/// Check whether a site is up — and manage the endpoints that are watched.
+fn cmd_uptime(cli: &Cli, asked: Uptime<'_>) -> Result<()> {
+    let Uptime {
+        url,
+        timeout,
+        website,
+        add,
+        list,
+        remove,
+        check_all,
+    } = asked;
+
+    let checker = sumimi_service::uptime::Checker::with_timeout(
+        std::time::Duration::from_secs(timeout.clamp(1, 60)),
+    );
+
+    // --- managing the watched endpoints ---
+    if let Some(website) = website {
+        let paths = sumimi_service::config::Paths::new(
+            Some(cli.dir.clone()),
+            cli.db.clone(),
+            &cli.backend,
+        );
+
+        // Against a running server, the endpoints go through the API.
+        let remote = cli.url.as_ref().map(|base| {
+            Source::remote(
+                base,
+                cli.token.as_deref(),
+                cli.username.as_deref(),
+                cli.password.as_deref(),
+            )
+        });
+
+        if let Some(Ok(Source::Remote { base, token })) = &remote {
+            let agent = ureq::Agent::new_with_defaults();
+            if let Some(url) = add {
+                agent
+                    .post(&format!("{base}/api/websites/{website}/uptime/endpoints"))
+                    .header("authorization", &format!("Bearer {token}"))
+                    .send_json(serde_json::json!({ "url": url }))?;
+                println!("watching {url}");
+            }
+            if list {
+                let value: serde_json::Value = agent
+                    .get(&format!("{base}/api/websites/{website}/uptime/endpoints"))
+                    .header("authorization", &format!("Bearer {token}"))
+                    .call()?
+                    .body_mut()
+                    .read_json()?;
+                for endpoint in value["endpoints"].as_array().unwrap_or(&vec![]) {
+                    println!("{}", endpoint.as_str().unwrap_or(""));
+                }
+            }
+            if let Some(url) = remove {
+                agent
+                    .delete(&format!(
+                        "{base}/api/websites/{website}/uptime/endpoints?url={}",
+                        encode(url)
+                    ))
+                    .header("authorization", &format!("Bearer {token}"))
+                    .call()?;
+                println!("stopped watching {url}");
+            }
+            if check_all {
+                let value: serde_json::Value = agent
+                    .post(&format!("{base}/api/websites/{website}/uptime/check"))
+                    .header("authorization", &format!("Bearer {token}"))
+                    .send_json(serde_json::json!({ "timeout": timeout }))?
+                    .body_mut()
+                    .read_json()?;
+                for check in value["checks"].as_array().unwrap_or(&vec![]) {
+                    println!(
+                        "{}: {}",
+                        check["websiteId"].as_str().unwrap_or(""),
+                        if check["ok"].as_bool().unwrap_or(false) {
+                            "up"
+                        } else {
+                            "down"
+                        }
+                    );
+                }
+            }
+            return Ok(());
+        }
+
+        // Offline: straight into the instance store.
+        let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
+            .map_err(|err| anyhow!("opening the instance store: {err}"))?;
+
+        if let Some(url) = add {
+            instance.add_uptime_endpoint(website, url)?;
+            println!("watching {url}");
+        }
+        if list {
+            for endpoint in instance.uptime_endpoints(website)? {
+                println!("{endpoint}");
+            }
+        }
+        if let Some(url) = remove {
+            if instance.remove_uptime_endpoint(website, url)? {
+                println!("stopped watching {url}");
+            } else {
+                println!("{url} was not being watched");
+            }
+        }
+        if check_all {
+            let mut urls = Vec::new();
+            let domain = instance
+                .uptime_endpoints(website)?
+                .into_iter()
+                .collect::<Vec<_>>();
+            urls.extend(domain);
+            for endpoint in urls {
+                let check = checker.record(website, &endpoint);
+                instance.record_uptime(&check)?;
+                println!(
+                    "{endpoint}: {}",
+                    if check.ok { "up" } else { "down" }
+                );
+            }
+        }
+        if add.is_some() || list || remove.is_some() || check_all {
+            return Ok(());
+        }
+    }
+
+    // --- checking one URL now ---
+    if url.is_empty() {
+        anyhow::bail!("give a URL, or a --website with --check-all");
+    }
+    let verdict = checker.check(url);
+
+    if cli.json {
+        let value = match &verdict {
+            sumimi_service::uptime::Verdict::Up {
+                status,
+                latency_ms,
+            } => serde_json::json!({
+                "url": url,
+                "up": true,
+                "status": status,
+                "latencyMs": latency_ms,
+            }),
+            sumimi_service::uptime::Verdict::Down { error } => serde_json::json!({
+                "url": url,
+                "up": false,
+                "error": error,
+                "networkOk": true,
+            }),
+            sumimi_service::uptime::Verdict::NetworkDown { error, references } => {
+                serde_json::json!({
+                    "url": url,
+                    "up": false,
+                    "error": error,
+                    "networkOk": false,
+                    "references": references,
+                })
+            }
+        };
+        println!("{}", serde_json::to_string_pretty(&value)?);
+    } else {
+        println!("{url}: {}", verdict.summary());
+    }
+
+    // The check is recorded when it belongs to a website.
+    if let Some(website) = website {
+        let check = checker.record(website, url);
+
+        if let Some(base) = &cli.url {
+            // Against a running server, the check goes through the API.
+            let source = Source::remote(
+                base,
+                cli.token.as_deref(),
+                cli.username.as_deref(),
+                cli.password.as_deref(),
+            )?;
+            if let Source::Remote { base, token } = &source {
+                let agent = ureq::Agent::new_with_defaults();
+                let _: serde_json::Value = agent
+                    .post(&format!("{base}/api/websites/{website}/uptime"))
+                    .header("authorization", &format!("Bearer {token}"))
+                    .send_json(serde_json::json!({ "url": url }))?
+                    .body_mut()
+                    .read_json()?;
+                println!("recorded for {website}");
+                return Ok(());
+            }
+        }
+
+        // Offline: straight into the instance store.
+        let paths = sumimi_service::config::Paths::new(
+            Some(cli.dir.clone()),
+            cli.db.clone(),
+            &cli.backend,
+        );
+        let instance = sumimi_service::instance::SqliteInstance::open(&paths.instance)
+            .map_err(|err| anyhow!("opening the instance store: {err}"))?;
+        instance.record_uptime(&check)?;
+        println!("recorded for {website}");
+    }
+    Ok(())
+}
+
+/// Delete the data that is older than the retention window.
+fn cmd_prune(cli: &Cli, website: Option<&str>) -> Result<()> {
+    let source = open_source(cli, true)?;
+    let (events, revenue) = source.prune(website)?;
+    println!("removed {events} events and {revenue} revenue records");
+    Ok(())
+}
+
+/// Delete a website and all of its data.
+fn cmd_erase(cli: &Cli, website: &str, yes: bool) -> Result<()> {
+    if !yes {
+        println!("this deletes the website {website} and all of its data.");
+        print!("type the website id to confirm: ");
+        use std::io::Write;
+        std::io::stdout().flush()?;
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer)?;
+        if answer.trim() != website {
+            return Err(anyhow!("aborted"));
+        }
+    }
+    let source = open_source(cli, true)?;
+    let removed = source.erase(website)?;
+    println!("removed {removed} rows");
+    Ok(())
+}
+
+/// What a report command asks for.
+struct ReportRequest {
+    /// The report.
+    report: Report,
+    /// The website it is about.
+    website: Option<String>,
+    /// The window.
+    range: Range,
+    /// How many rows to show.
+    limit: i64,
+}
+
+impl ReportRequest {
+    /// The request of a command that asks for a report over a window.
+    fn windowed(report: Report, args: &WindowArgs) -> Result<Self> {
+        Ok(Self {
+            report,
+            website: Some(args.website.clone()),
+            range: window(args.from.as_deref(), args.to.as_deref())?,
+            limit: args.limit,
+        })
+    }
+}
+
+/// What the command asks for: the report, the website, the window, the limit.
+fn report_request(command: &Command) -> Result<ReportRequest> {
+    let request = match command {
+        Command::Websites => ReportRequest {
+            report: Report::Websites,
+            website: None,
+            range: Range::default_window(),
+            limit: 50,
+        },
+        Command::Summary { website, from, to } => ReportRequest {
+            report: Report::Summary,
+            website: Some(website.clone()),
+            range: window(from.as_deref(), to.as_deref())?,
+            limit: 50,
+        },
+        Command::Pages(args) => ReportRequest::windowed(Report::Pages, args)?,
+        Command::Referrers(args) => ReportRequest::windowed(Report::Referrers, args)?,
+        Command::Browsers(args) => ReportRequest::windowed(Report::Browsers, args)?,
+        Command::Os(args) => ReportRequest::windowed(Report::Os, args)?,
+        Command::Devices(args) => ReportRequest::windowed(Report::Devices, args)?,
+        Command::Countries(args) => ReportRequest::windowed(Report::Countries, args)?,
+        Command::Languages(args) => ReportRequest::windowed(Report::Languages, args)?,
+        Command::Screens(args) => ReportRequest::windowed(Report::Screens, args)?,
+        Command::Events(args) => ReportRequest::windowed(Report::Events, args)?,
+        Command::Channels(args) => ReportRequest::windowed(Report::Channels, args)?,
+        Command::Regions(args) => ReportRequest::windowed(Report::Regions, args)?,
+        Command::Cities(args) => ReportRequest::windowed(Report::Cities, args)?,
+        Command::Hosts(args) => ReportRequest::windowed(Report::Hosts, args)?,
+        Command::Tags(args) => ReportRequest::windowed(Report::Tags, args)?,
+        Command::QueryParameters(args) => ReportRequest::windowed(Report::QueryParameters, args)?,
+        Command::Sessions(args) => ReportRequest::windowed(Report::Sessions, args)?,
+        Command::Timeseries(args) => ReportRequest::windowed(Report::Timeseries, args)?,
+        other => return Err(anyhow!("{other:?} does not ask for a report")),
+    };
+    Ok(request)
+}
+
+/// The report commands: the numbers, as a table or as JSON.
+fn cmd_report(cli: &Cli, command: &Command) -> Result<()> {
+    let source = open_source(cli, false)?;
+    match &source {
+        Source::Local { path, .. } => {
+            eprintln!("[sumimi] source: {}", path.display());
+        }
+        Source::Remote { base, .. } => {
+            eprintln!("[sumimi] source: {base}");
+        }
+    }
+
+    // The export writes the report and stops there.
+    if let Command::Export {
+        website,
+        report,
+        format,
+        from,
+        to,
+    } = command
+    {
+        let report: Report = (*report).into();
+        let value = source.report(
+            report,
+            Some(website),
+            window(from.as_deref(), to.as_deref())?,
+            10_000,
+        )?;
+        match format {
+            ExportFormat::Json => println!("{}", serde_json::to_string_pretty(&value)?),
+            ExportFormat::Csv => print_csv(&value),
+        }
+        return Ok(());
+    }
+
+    let request = report_request(command)?;
+    let value = source.report(
+        request.report,
+        request.website.as_deref(),
+        request.range,
+        request.limit,
+    )?;
+
+    if cli.json {
+        println!("{}", serde_json::to_string_pretty(&value)?);
+    } else {
+        print_report(request.report, &value);
+    }
+    Ok(())
 }
 
 /// Percent-encode a value for a query string.
