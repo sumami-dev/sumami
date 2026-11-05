@@ -298,6 +298,19 @@ pub async fn serve_with(
     storage: Arc<dyn Storage>,
     instance: Arc<dyn crate::instance::Instance>,
 ) -> Result<()> {
+    serve_with_geo(config, storage, instance, None).await
+}
+
+/// Serve, with a geolocation resolver.
+///
+/// The open-source build has none: it uses the country header a proxy sends.
+/// The private edition passes one — a MaxMind database, read in memory.
+pub async fn serve_with_geo(
+    config: Arc<Config>,
+    storage: Arc<dyn Storage>,
+    instance: Arc<dyn crate::instance::Instance>,
+    geo: Option<Arc<dyn crate::geo::Resolver>>,
+) -> Result<()> {
     let jwt_secret = config::resolve_jwt_secret(&config.jwt_secret, &config.paths.secret)?;
     let jwt_secret = Arc::new(jwt_secret);
 
@@ -336,6 +349,12 @@ pub async fn serve_with(
         config.clone(),
         jwt_secret,
     );
+
+    // The geolocation resolver, when the edition has one.
+    let state = match geo {
+        Some(resolver) => state.with_geo(resolver),
+        None => state,
+    };
     let app = api::router(state.clone());
 
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
