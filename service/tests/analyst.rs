@@ -408,3 +408,167 @@ fn one_is_not_plural() {
         answer.text
     );
 }
+
+// --------------------------------------------------------------------------------------
+// The Chinese questions
+// --------------------------------------------------------------------------------------
+
+/// The window is read from the Chinese question, too.
+///
+/// The Chinese words are not a translation of the English ones — they are a
+/// different set of words, and the windows they ask for have to be right.
+#[test]
+fn the_chinese_window_is_read_from_the_question() {
+    let now = now();
+
+    // Today and yesterday.
+    let intent = analyst::parse("今天的访客数", now);
+    assert_eq!(intent.range.end - intent.range.start, chrono::Duration::days(1));
+    assert_eq!(intent.range.end, now);
+
+    let intent = analyst::parse("昨天的访客数", now);
+    assert_eq!(intent.range.end - intent.range.start, chrono::Duration::days(1));
+    assert_eq!(intent.range.end, now - chrono::Duration::days(1));
+
+    // Last week: the seven days before this one.
+    let monday = chrono::NaiveDate::from_ymd_opt(2025, 12, 29)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+    let intent = analyst::parse("上周的访客数", now);
+    assert_eq!(intent.range.start, monday - chrono::Duration::days(7));
+    assert_eq!(intent.range.end, monday);
+
+    // The last N days.
+    let intent = analyst::parse("最近 30 天的访客数", now);
+    assert_eq!(intent.range.end - intent.range.start, chrono::Duration::days(30));
+    assert_eq!(intent.range.end, now);
+
+    // No window in the question: the last seven days.
+    let intent = analyst::parse("访客数", now);
+    assert_eq!(intent.range.end - intent.range.start, chrono::Duration::days(7));
+}
+
+/// The Chinese months answer the window they have always answered.
+///
+/// "本月" and "上个月" both ask for the thirty days **before** this month:
+/// the window ends when this month starts. The English "this month" asks for
+/// the other thing — the days from the first of the month until now.
+///
+/// So the two languages do not agree, and the Chinese one is the wrong one.
+/// The test pins what the assistant answers today, so the refactoring cannot
+/// change it by accident; the difference is a bug to fix on purpose.
+#[test]
+fn the_chinese_months_answer_the_window_they_have_always_answered() {
+    let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 15)
+        .unwrap()
+        .and_hms_opt(12, 0, 0)
+        .unwrap();
+    let january = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+
+    for question in ["本月的访客数", "这个月的访客数", "上个月的访客数", "上月的访客数"] {
+        let intent = analyst::parse(question, now);
+        assert_eq!(
+            intent.range.end, january,
+            "{question}: the window ends when this month starts"
+        );
+        assert_eq!(
+            intent.range.start,
+            january - chrono::Duration::days(30),
+            "{question}: the thirty days before it"
+        );
+    }
+}
+
+/// The Chinese metric words.
+#[test]
+fn the_chinese_metric_is_read_from_the_question() {
+    let now = now();
+
+    assert_eq!(analyst::parse("跳出数", now).metric, Metric::Bounces);
+    assert_eq!(analyst::parse("平均停留时长", now).metric, Metric::Duration);
+    assert_eq!(analyst::parse("访客数", now).metric, Metric::Visitors);
+    assert_eq!(analyst::parse("会话数", now).metric, Metric::Sessions);
+    assert_eq!(analyst::parse("浏览量", now).metric, Metric::Pageviews);
+    assert_eq!(analyst::parse("流量", now).metric, Metric::Pageviews);
+}
+
+/// The Chinese dimension words.
+#[test]
+fn the_chinese_dimension_is_read_from_the_question() {
+    let now = now();
+
+    assert_eq!(
+        analyst::parse("访问来源", now).dimension,
+        Some(Dimension::Referrer)
+    );
+    assert_eq!(
+        analyst::parse("哪些浏览器", now).dimension,
+        Some(Dimension::Browser)
+    );
+    assert_eq!(
+        analyst::parse("什么设备", now).dimension,
+        Some(Dimension::Device)
+    );
+    assert_eq!(
+        analyst::parse("哪些国家", now).dimension,
+        Some(Dimension::Country)
+    );
+    assert_eq!(
+        analyst::parse("哪些城市", now).dimension,
+        Some(Dimension::City)
+    );
+    assert_eq!(
+        analyst::parse("什么屏幕", now).dimension,
+        Some(Dimension::Screen)
+    );
+    assert_eq!(
+        analyst::parse("访问量最多的页面", now).dimension,
+        Some(Dimension::Url)
+    );
+}
+
+/// The comparison is cut off, and the window is read from what is left.
+///
+/// "最近 30 天的访客数和上周相比" is a question about **these** 30 days — the
+/// words after the comparison belong to the other period.
+#[test]
+fn the_chinese_comparison_is_cut_off() {
+    let now = now();
+
+    let intent = analyst::parse("最近 30 天的访客数和上周相比", now);
+    assert!(intent.compare, "it compares with the period before");
+    assert_eq!(
+        intent.range.end - intent.range.start,
+        chrono::Duration::days(30),
+        "the window comes from the part before the comparison"
+    );
+    assert_eq!(intent.metric, Metric::Visitors);
+}
+
+/// The Chinese comparison words are recognised.
+///
+/// "较上" is **not** one of them — the question is cut at it, but the answer
+/// carries no change. The list of comparison words and the list of markers
+/// disagree, and that is a bug to fix on purpose; the test pins what the
+/// assistant does today.
+#[test]
+fn the_chinese_comparison_is_recognised() {
+    let now = now();
+
+    for question in ["流量相比上周", "流量对比上周", "流量比上周", "流量环比", "流量同比"] {
+        assert!(
+            analyst::parse(question, now).compare,
+            "{question} compares with the period before"
+        );
+    }
+
+    assert!(
+        !analyst::parse("流量较上周", now).compare,
+        "较上 is cut off but not recognised as a comparison"
+    );
+    assert!(!analyst::parse("访客数", now).compare);
+}
