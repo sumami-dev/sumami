@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS event (
     website_id      TEXT NOT NULL,
     session_id      BLOB NOT NULL,
     visitor_id      BLOB NOT NULL,
+    visit_id        BLOB,
     created_at      INTEGER NOT NULL,
 
     url             TEXT,
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS event (
     referrer        TEXT,
     referrer_path   TEXT,
     referrer_query  TEXT,
+    referrer_name   TEXT,
     hostname        TEXT,
     channel         TEXT,
 
@@ -121,6 +123,8 @@ CREATE TABLE IF NOT EXISTS event (
     country         TEXT,
     region          TEXT,
     city            TEXT,
+    latitude        REAL,
+    longitude       REAL,
 
     utm_source      TEXT,
     utm_medium      TEXT,
@@ -243,7 +247,9 @@ fn ts(value: chrono::NaiveDateTime) -> i64 {
 ///
 /// * v3 — the event-row model, the ids as text.
 /// * v4 — the session and visitor ids are **UUIDs**: 16 bytes, not a string.
-const SCHEMA_VERSION: i64 = 5;
+/// * v5 — the traffic channel is stored with the event.
+/// * v6 — the visit id, the referrer's display name and the coordinates.
+const SCHEMA_VERSION: i64 = 6;
 
 /// Teach SQLite how to turn an old text id into a UUID.
 ///
@@ -288,6 +294,22 @@ fn migrate(conn: &Connection) -> Result<()> {
         .flatten()
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
+
+    if version > 0 && version < 6 {
+        // The visit id, the referrer's display name and the coordinates were
+        // added: the fields the reference implementation has and we did not.
+        // SQLite adds a column with an `ALTER TABLE` — no rebuild needed.
+        for (column, kind) in [
+            ("visit_id", "BLOB"),
+            ("referrer_name", "TEXT"),
+            ("latitude", "REAL"),
+            ("longitude", "REAL"),
+        ] {
+            if !has_column(conn, "event", column)? {
+                conn.execute(&format!("ALTER TABLE event ADD COLUMN {column} {kind}"), [])?;
+            }
+        }
+    }
 
     if version > 0 && version < 5 {
         // The traffic channel was added: it is worked out once, when the event
@@ -650,25 +672,25 @@ impl Storage for SqliteBackend {
             let mut insert = tx.prepare_cached(
                 r#"
 INSERT INTO event (
-    id, website_id, session_id, visitor_id, created_at,
+    id, website_id, session_id, visitor_id, visit_id, created_at,
     url, url_query, title,
-    referrer, referrer_path, referrer_query, hostname, channel,
+    referrer, referrer_path, referrer_query, referrer_name, hostname, channel,
     browser, browser_version, os, os_version, device, screen, language,
-    country, region, city,
+    country, region, city, latitude, longitude,
     utm_source, utm_medium, utm_campaign, utm_content, utm_term,
     gclid, fbclid, msclkid, ttclid, lifatid, twclid,
     lcp, inp, cls, fcp, ttfb,
     event_type, event_name, tag, data
 ) VALUES (
-    NULL, ?1, ?2, ?3, ?4,
-    ?5, ?6, ?7,
-    ?8, ?9, ?10, ?11, ?12,
-    ?13, ?14, ?15, ?16, ?17, ?18, ?19,
-    ?20, ?21, ?22,
-    ?23, ?24, ?25, ?26, ?27,
-    ?28, ?29, ?30, ?31, ?32, ?33,
-    ?34, ?35, ?36, ?37, ?38,
-    ?39, ?40, ?41, ?42
+    NULL, ?1, ?2, ?3, ?4, ?5,
+    ?6, ?7, ?8,
+    ?9, ?10, ?11, ?12, ?13, ?14,
+    ?15, ?16, ?17, ?18, ?19, ?20, ?21,
+    ?22, ?23, ?24, ?25, ?26,
+    ?27, ?28, ?29, ?30, ?31,
+    ?32, ?33, ?34, ?35, ?36, ?37,
+    ?38, ?39, ?40, ?41, ?42,
+    ?43, ?44, ?45, ?46
 )"#,
             )?;
             for hit in &kept {
@@ -676,6 +698,7 @@ INSERT INTO event (
                     hit.website_id,
                     hit.session_id.as_bytes().as_slice(),
                     hit.visitor_id.as_bytes().as_slice(),
+                    hit.visit_id.map(|id| id.as_bytes().to_vec()),
                     ts(hit.created_at),
                     hit.url,
                     hit.url_query,
@@ -683,6 +706,7 @@ INSERT INTO event (
                     hit.referrer,
                     hit.referrer_path,
                     hit.referrer_query,
+                    hit.referrer_name,
                     hit.hostname,
                     hit.channel,
                     hit.browser,
@@ -695,6 +719,8 @@ INSERT INTO event (
                     hit.country,
                     hit.region,
                     hit.city,
+                    hit.latitude,
+                    hit.longitude,
                     hit.utm_source,
                     hit.utm_medium,
                     hit.utm_campaign,

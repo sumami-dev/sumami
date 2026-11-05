@@ -21,7 +21,7 @@
 use std::net::IpAddr;
 
 /// What is known about where a visitor is.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Location {
     /// The two-letter country code (`DE`).
     pub country: Option<String>,
@@ -29,6 +29,12 @@ pub struct Location {
     pub region: Option<String>,
     /// The city.
     pub city: Option<String>,
+    /// The latitude, in degrees.
+    ///
+    /// The city-level database has it; the country-level one does not.
+    pub latitude: Option<f64>,
+    /// The longitude, in degrees.
+    pub longitude: Option<f64>,
 }
 
 /// Looks up where an IP address is.

@@ -233,17 +233,30 @@ pub fn seed(storage: &dyn Storage, options: &SeedOptions) -> Result<(String, u64
                     website_id: website_id.clone(),
                     session_id,
                     visitor_id,
+                    visit_id: Some(sumimi_service::ua::uuid_from_text(&format!(
+                        "visit-{session_id}"
+                    ))),
                     retention_days: 0,
                     kind: HitKind::Pageview,
                     created_at: at,
                     url: Some(url.clone()),
-                    url_query: Some(url_query),
+                    url_query: Some(url_query.clone()),
                     title: Some(title_for(&url)),
                     referrer: referrer_host.clone(),
                     referrer_path: referrer_path.clone(),
                     referrer_query: referrer_query.clone(),
+                    referrer_name: sumimi_service::channels::referrer_name(
+                        referrer_host.as_deref(),
+                    ),
                     channel: Some(
-                        sumimi_service::channels::channel(referrer_host.as_deref()).to_string(),
+                        sumimi_service::channels::channel(&sumimi_service::channels::ChannelInput::new(
+                            referrer_host.as_deref(),
+                            Some(url_query.as_str()),
+                            Some("cpc"),
+                            Some(source),
+                            Some("example.com"),
+                        ))
+                        .to_string(),
                     ),
                     hostname: Some("example.com".to_string()),
                     browser: Some(browser.to_string()),
@@ -256,6 +269,8 @@ pub fn seed(storage: &dyn Storage, options: &SeedOptions) -> Result<(String, u64
                     country: Some(country.to_string()),
                     region: None,
                     city: None,
+                    latitude: None,
+                    longitude: None,
                     utm_source: Some(source.to_string()),
                     utm_medium: Some("cpc".to_string()),
                     utm_campaign: Some("spring".to_string()),
@@ -286,6 +301,9 @@ pub fn seed(storage: &dyn Storage, options: &SeedOptions) -> Result<(String, u64
                     website_id: website_id.clone(),
                     session_id,
                     visitor_id,
+                    visit_id: Some(sumimi_service::ua::uuid_from_text(&format!(
+                        "visit-{session_id}"
+                    ))),
                     retention_days: 0,
                     kind: HitKind::Event,
                     created_at: started + chrono::Duration::seconds(rng.between(30, 600)),
@@ -295,6 +313,7 @@ pub fn seed(storage: &dyn Storage, options: &SeedOptions) -> Result<(String, u64
                     referrer: None,
                     referrer_path: None,
                     referrer_query: None,
+                    referrer_name: None,
                     channel: Some("direct".to_string()),
                     hostname: Some("example.com".to_string()),
                     browser: Some(browser.to_string()),
@@ -307,6 +326,8 @@ pub fn seed(storage: &dyn Storage, options: &SeedOptions) -> Result<(String, u64
                     country: Some(country.to_string()),
                     region: None,
                     city: None,
+                    latitude: None,
+                    longitude: None,
                     utm_source: None,
                     utm_medium: None,
                     utm_campaign: None,

@@ -206,9 +206,10 @@ and event rows carry.
 | Group | Fields |
 | --- | --- |
 | Page | `url`, `url_query`, `title` |
-| Referrer | `referrer` (host), `referrer_path`, `referrer_query` |
+| Referrer | `referrer` (host), `referrer_path`, `referrer_query`, `referrer_name` (the display name) |
 | Site | `hostname` |
-| Environment | `browser`, `browser_version`, `os`, `os_version`, `device`, `screen`, `language`, `country`, `region`, `city` |
+| Environment | `browser`, `browser_version`, `os`, `os_version`, `device`, `screen`, `language`, `country`, `region`, `city`, `latitude`, `longitude` |
+| Identity | `session_id`, `visitor_id`, `visit_id` (the hour inside the session) |
 | Marketing | `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` |
 | Ad click ids | `gclid`, `fbclid`, `msclkid`, `ttclid`, `lifatid`, `twclid` |
 | Performance | `lcp`, `inp`, `cls`, `fcp`, `ttfb` (Core Web Vitals) |
@@ -464,13 +465,17 @@ event(
     visitor_id UUID,         -- 16 bytes
     created_at,
 
+    visit_id UUID,              -- the hour inside the session (schema v6)
+
     url, url_query, title,                       -- the page
     referrer, referrer_path, referrer_query,     -- where it came from
+    referrer_name,                               -- "Hacker News" (schema v6)
     hostname,
-    channel,                                     -- direct, search, social, email, ads
+    channel,                                     -- direct, Search, Social, email, paidAds, …
 
     browser, browser_version, os, os_version, device, screen, language,
     country, region, city,
+    latitude, longitude,                         -- the coordinates (schema v6)
 
     utm_source, utm_medium, utm_campaign, utm_content, utm_term,
 
@@ -598,8 +603,16 @@ Every way the traffic can be broken down is a **dimension** (`storage::Dimension
 
 **The channel** is worked out **once**, when the event is collected (`channels::channel`),
 and stored with it: a visit from a search engine is a search visit, and the report does
-not have to guess it from the referrer every time. The longest matching referrer wins —
-`mail.google.com` is a mail client, not a search engine.
+not have to guess it from the referrer every time.
+
+**The buckets are the reference implementation's, rule for rule** ✓ — `direct` ✓,
+`paidAds` ✓, `referral` ✓, `affiliate` ✓, `sms` ✓, `llm` ✓, `Search` ✓, `Social` ✓,
+`email` ✓, `Shopping` ✓, `Video` ✓ — so the same visit lands in the same bucket in
+both, and the two sets of numbers can be compared ✓ ✓ (AGENTS.md §4.3e ✓).
+
+Two refinements ✓: the **longest** domain match wins ✓ — `mail.google.com` is a
+mail client ✓, not a search engine ✓ — and the mail clients the reference does not
+have are in the list ✓ (Gmail is too big a referrer to get wrong ✓ ✓).
 
 **The query parameters** are not a dimension: they are split out of the query string in
 Rust (`storage::parse_query_parameters`), because the three engines do not agree on how
@@ -643,8 +656,12 @@ suite in the private edition ✓ ✓): every field, every value ✓ ✓.
 Our names differ from the reference implementation's ✓ — `visitor_id` for
 `user_id` ✓, `url` for `url_path` ✓, `title` for `page_title` ✓, `referrer` for
 `referrer_domain` ✓, and `channel` for `referrer_type` ✓ ✓ — but **the value
-sets have to match** ✓ ✓ (the channel buckets: direct ✓, search ✓, social ✓,
-email ✓, ads ✓, and whatever else the reference implementation has ✓ ✓).
+sets have to match** ✓ ✓ (the channel buckets: direct ✓, paidAds ✓, referral ✓,
+affiliate ✓, sms ✓, llm ✓, Search ✓, Social ✓, email ✓, Shopping ✓, Video ✓ ✓).
+
+**The fields the reference does not have** ✓ — the coordinates ✓, the referrer's
+display name ✓ — we carry anyway ✓ ✓: a field is a capability ✓, and the rule is
+a floor ✓, not a ceiling ✓ ✓.
 
 ### 4.3a The control plane: the instance store
 

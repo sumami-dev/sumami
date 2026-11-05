@@ -54,7 +54,16 @@ fn hit(
         url_query: Some(query.to_string()),
         referrer: Some(referrer.to_string()),
         hostname: Some(hostname.to_string()),
-        channel: Some(sumimi_service::channels::channel(Some(referrer)).to_string()),
+        channel: Some(
+            sumimi_service::channels::channel(&sumimi_service::channels::ChannelInput::new(
+                Some(referrer),
+                Some(query),
+                None,
+                None,
+                Some(hostname),
+            ))
+            .to_string(),
+        ),
         country: Some(country.to_string()),
         region: Some(country.to_string()),
         city: Some(city.to_string()),
@@ -95,11 +104,11 @@ fn the_channels_come_out_of_the_referrer() {
     let rows = db.breakdown(&query(&website), Dimension::Channel).unwrap();
 
     let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
-    assert!(names.contains(&"search"), "{names:?}");
-    assert!(names.contains(&"social"), "{names:?}");
+    assert!(names.contains(&"Search"), "{names:?}");
+    assert!(names.contains(&"Social"), "{names:?}");
 
     // Two of the three visits came from a search engine.
-    let search = rows.iter().find(|row| row.name == "search").unwrap();
+    let search = rows.iter().find(|row| row.name == "Search").unwrap();
     assert_eq!(search.value, 2);
 }
 

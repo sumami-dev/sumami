@@ -34,6 +34,7 @@ fn hit(website_id: &str, url: &str) -> Hit {
         website_id: website_id.to_string(),
         session_id: sumimi_service::ua::uuid_from_text("session-1"),
         visitor_id: sumimi_service::ua::uuid_from_text("visitor-1"),
+        visit_id: Some(sumimi_service::ua::uuid_from_text("visit-1")),
         retention_days: 0,
         kind: HitKind::Pageview,
         created_at: chrono::Utc::now().naive_utc(),
@@ -41,7 +42,8 @@ fn hit(website_id: &str, url: &str) -> Hit {
         url_query: Some("utm_source=twitter".to_string()),
         title: Some("Example".to_string()),
         referrer: Some("news.ycombinator.com".to_string()),
-        channel: Some("social".to_string()),
+        referrer_name: Some("Hacker News".to_string()),
+        channel: Some("Social".to_string()),
         referrer_path: Some("/item".to_string()),
         referrer_query: Some("?id=1".to_string()),
         hostname: Some("example.com".to_string()),
@@ -55,6 +57,8 @@ fn hit(website_id: &str, url: &str) -> Hit {
         country: Some("DE".to_string()),
         region: None,
         city: None,
+        latitude: None,
+        longitude: None,
         utm_source: Some("twitter".to_string()),
         utm_medium: Some("social".to_string()),
         utm_campaign: Some("spring".to_string()),
@@ -88,6 +92,8 @@ async fn writer_flushes_queued_hits() {
     writer.push(hit("website-1", "/one"));
     writer.push(hit("website-1", "/two"));
 
+    // Wait for **both** hits: the writer may wake up between the two pushes and
+    // write them in two batches, so "something was written" is not enough.
     let mut events = 0;
     for _ in 0..100 {
         events = db
@@ -100,7 +106,7 @@ async fn writer_flushes_queued_hits() {
                 }
             })
             .unwrap();
-        if events > 0 {
+        if events >= 2 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;

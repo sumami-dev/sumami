@@ -204,6 +204,14 @@ fn build_hit(
         0,
     );
 
+    // The visit: the hour inside the session. The reference implementation has
+    // both — a session and a visit — and counts its channel report per visit.
+    let created_at = crate::db::now();
+    let visit_id = ua::uuid_from_text(&format!(
+        "{session_id}-{}",
+        created_at.and_utc().timestamp().div_euclid(3600)
+    ));
+
     // The page: path and query, kept apart like Umami keeps them.
     let (url, url_query, params) = match raw.str("url") {
         Some(url) => split_url(&url),
@@ -226,6 +234,13 @@ fn build_hit(
     let (referrer, referrer_path, referrer_query) = match raw.str("referrer") {
         Some(referrer) => {
             let (host, path, query) = split_referrer(&referrer);
+            // The `www.` is dropped, the way the reference implementation drops
+            // it: `www.example.com` and `example.com` are the same site, and
+            // the referrer breakdown has to show one name for them.
+            let host = host.map(|host| {
+                let host = crate::channels::strip_www(&host);
+                host.to_string()
+            });
             if state.config.store_full_referrer {
                 (host, path, query)
             } else {
@@ -234,6 +249,9 @@ fn build_hit(
         }
         None => (None, None, None),
     };
+
+    // The display name of the referrer ("Hacker News"), when it has one.
+    let referrer_name = crate::channels::referrer_name(referrer.as_deref());
 
     // The country: the header first — a proxy in front of the server knows it
     // exactly — and the resolver second.
@@ -248,6 +266,8 @@ fn build_hit(
         .and_then(crate::geo::country_from_header);
     let mut region = raw.str("region");
     let mut city = raw.str("city");
+    let mut latitude = None;
+    let mut longitude = None;
 
     if country.is_none() {
         let location = state.geo.as_ref().and_then(|resolver| {
@@ -259,14 +279,23 @@ fn build_hit(
             country = location.country;
             region = region.or(location.region);
             city = city.or(location.city);
+            latitude = location.latitude;
+            longitude = location.longitude;
         }
     }
 
-    // The channel: the bucket the referrer falls into. It is worked out once,
+    // The channel: the bucket the visit falls into. It is worked out once,
     // here, and stored with the event.
+    let hostname = raw.str("hostname");
     let channel = Some(
-        crate::channels::channel(referrer.as_deref())
-            .to_string(),
+        crate::channels::channel(&crate::channels::ChannelInput::new(
+            referrer.as_deref(),
+            url_query.as_deref(),
+            param("utm_medium").as_deref(),
+            param("utm_source").as_deref(),
+            hostname.as_deref(),
+        ))
+        .to_string(),
     );
 
     // The web vitals, if the tracker reported them.
@@ -276,9 +305,10 @@ fn build_hit(
         website_id: meta.id,
         session_id,
         visitor_id,
+        visit_id: Some(visit_id),
         retention_days: meta.retention_days,
         kind,
-        created_at: crate::db::now(),
+        created_at,
 
         url,
         url_query,
@@ -291,6 +321,7 @@ fn build_hit(
         referrer,
         referrer_path,
         referrer_query,
+        referrer_name,
         hostname: raw.str("hostname"),
         channel,
 
@@ -304,6 +335,8 @@ fn build_hit(
         country,
         region,
         city,
+        latitude,
+        longitude,
 
         utm_source: param("utm_source"),
         utm_medium: param("utm_medium"),

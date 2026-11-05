@@ -19,6 +19,12 @@ pub struct Hit {
     pub session_id: Uuid,
     /// The visitor, stable across days (Umami's `distinct_id`).
     pub visitor_id: Uuid,
+    /// The visit: a half-hour window inside the session.
+    ///
+    /// The reference implementation has both a session and a visit, and the
+    /// visit is the one its channel report counts. We keep both, so the two
+    /// numbers can be compared.
+    pub visit_id: Option<Uuid>,
     /// Retention window of the website in days (`0` = keep forever).
     pub retention_days: i32,
     /// What kind of hit this is.
@@ -41,9 +47,11 @@ pub struct Hit {
     pub referrer_path: Option<String>,
     /// The query string of the referrer.
     pub referrer_query: Option<String>,
+    /// The display name of the referrer ("Hacker News"), when it has one.
+    pub referrer_name: Option<String>,
     /// The hostname of the site.
     pub hostname: Option<String>,
-    /// The traffic channel: direct, search, social, email or ads.
+    /// The traffic channel: direct, Search, Social, email, paidAds, …
     pub channel: Option<String>,
 
     // --- the visitor's environment ---
@@ -67,6 +75,12 @@ pub struct Hit {
     pub region: Option<String>,
     /// The city.
     pub city: Option<String>,
+    /// The latitude of the visitor.
+    ///
+    /// The IP address itself is never stored — only where it points to.
+    pub latitude: Option<f64>,
+    /// The longitude of the visitor.
+    pub longitude: Option<f64>,
 
     // --- marketing ---
     /// `utm_source`.
@@ -342,7 +356,7 @@ pub struct SessionRow {
     pub updated_at: chrono::NaiveDateTime,
     /// The hostname of the site.
     pub hostname: Option<String>,
-    /// The traffic channel: direct, search, social, email or ads.
+    /// The traffic channel: direct, Search, Social, email, paidAds, …
     pub channel: Option<String>,
     /// The last page of the session.
     pub url: Option<String>,
@@ -394,7 +408,7 @@ pub struct EventRow {
     pub url: Option<String>,
     /// The hostname of the site.
     pub hostname: Option<String>,
-    /// The traffic channel: direct, search, social, email or ads.
+    /// The traffic channel: direct, Search, Social, email, paidAds, …
     pub channel: Option<String>,
     /// Free-form event data.
     pub data: Option<String>,

@@ -184,6 +184,7 @@ fn generate(views: i64) -> Vec<Hit> {
             website_id: "w1".to_string(),
             session_id: sumimi_service::ua::uuid_from_text(&format!("session-{session:08x}")),
             visitor_id: sumimi_service::ua::uuid_from_text(&format!("visitor-{:08x}", session % 40_000)),
+            visit_id: Some(sumimi_service::ua::uuid_from_text(&format!("visit-{session:08x}"))),
             retention_days: 0,
             kind: HitKind::Pageview,
             created_at: at,
@@ -199,11 +200,20 @@ fn generate(views: i64) -> Vec<Hit> {
                 }
             },
             channel: Some(
-                sumimi_service::channels::channel(Some(referrers[(i as usize) % referrers.len()]))
-                    .to_string(),
+                sumimi_service::channels::channel(&sumimi_service::channels::ChannelInput::new(
+                    Some(referrers[(i as usize) % referrers.len()]),
+                    Some("utm_source=twitter&utm_medium=cpc"),
+                    Some("cpc"),
+                    Some("twitter"),
+                    Some("example.com"),
+                ))
+                .to_string(),
             ),
             referrer_path: Some("/item?id=1".to_string()),
             referrer_query: Some("?id=1".to_string()),
+            referrer_name: sumimi_service::channels::referrer_name(Some(
+                referrers[(i as usize) % referrers.len()],
+            )),
             hostname: Some("example.com".to_string()),
             browser: Some(browsers[(i as usize) % browsers.len()].to_string()),
             browser_version: Some("120".to_string()),
@@ -215,6 +225,8 @@ fn generate(views: i64) -> Vec<Hit> {
             country: Some(countries[(i as usize) % countries.len()].to_string()),
             region: Some("California".to_string()),
             city: Some("San Francisco".to_string()),
+            latitude: None,
+            longitude: None,
             utm_source: Some("twitter".to_string()),
             utm_medium: Some("cpc".to_string()),
             utm_campaign: Some("spring".to_string()),

@@ -112,7 +112,7 @@ pub enum Dimension {
     Language,
     /// The viewport size.
     Screen,
-    /// The traffic channel: direct, search, social, email or ads.
+    /// The traffic channel: direct, Search, Social, email, paidAds, …
     Channel,
     /// The region of the visitor.
     Region,
@@ -405,7 +405,7 @@ pub struct SessionEvent {
     pub referrer_path: Option<String>,
     /// The hostname of the site.
     pub hostname: Option<String>,
-    /// The traffic channel: direct, search, social, email or ads.
+    /// The traffic channel: direct, Search, Social, email, paidAds, …
     pub channel: Option<String>,
     /// The browser family.
     pub browser: Option<String>,

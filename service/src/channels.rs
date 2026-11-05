@@ -1,257 +1,492 @@
-//! The traffic channel: where a visit came from, in one word.
+//! The traffic channel: where the visit came from.
+//!
+//! **The rules are the reference implementation's, rule for rule.** The same
+//! visit has to land in the same bucket in both, or the numbers cannot be
+//! compared — see AGENTS.md §4.3e ("the value sets have to match").
+//!
+//! The buckets are:
+//!
+//! | bucket | how a visit gets there |
+//! | --- | --- |
+//! | `direct` | no referrer and no query string — or nothing else matched |
+//! | `paidAds` | the query string carries a paid click id or a paid medium |
+//! | `referral` | the medium says so, or it is another site that is not a known one |
+//! | `affiliate` | the medium says affiliate |
+//! | `sms` | the medium or the source says sms |
+//! | `llm` | the referrer is a known assistant (ChatGPT, Claude, …) |
+//! | `Search` | the referrer is a search engine, or the medium says organic |
+//! | `Social` | the referrer is a social network |
+//! | `email` | the referrer is a mail client, or the medium says mail |
+//! | `Shopping` | the referrer is a shop, or the medium says shop |
+//! | `Video` | the referrer is a video site, or the medium says video |
+//!
+//! **The order matters.** The first rule that matches wins — a paid click from
+//! a social network is a paid click, not a social visit.
+//!
+//! The matching is a **case-insensitive substring** test, the way the reference
+//! implementation does it (`ILIKE '%…%'`). A domain list holds `google.`, and
+//! `www.google.co.uk` contains it.
 //!
 //! The channel is worked out **once**, when the event is collected, and stored
-//! with it: a visit that arrives from a search engine is a search visit, and
-//! the report does not have to guess it again from the referrer every time.
-//!
-//! The buckets are the ones the industry settled on:
-//!
-//! | channel | what it is |
-//! | --- | --- |
-//! | direct | no referrer — the visitor typed the address, followed a bookmark, or came from a link in an app |
-//! | search | a search engine |
-//! | social | a social network |
-//! | email | a mail client |
-//! | ads | an advertisement |
-//! | unknown | a referrer that is none of the above |
-//!
-//! The list of hosts is a list of **referrers**, not of visits: it says which
-//! sites mean "search" and which mean "social". A new one is added when a
-//! referrer shows up in the unknown bucket often enough to be worth a name.
+//! with it: a visit from a search engine is a search visit, and the report does
+//! not have to guess it from the referrer every time.
 
-/// The channels, and the referrers that mean them.
-const CHANNELS: &[(&str, &[&str])] = &[
-    (
-        "search",
-        &[
-            "google.com",
-            "google.co.uk",
-            "google.de",
-            "google.fr",
-            "google.jp",
-            "google.com.au",
-            "google.ca",
-            "google.co.in",
-            "google.com.sg",
-            "bing.com",
-            "duckduckgo.com",
-            "search.brave.com",
-            "search.yahoo.com",
-            "yahoo.com",
-            "yandex.ru",
-            "yandex.com",
-            "baidu.com",
-            "naver.com",
-            "seznam.cz",
-            "ecosia.org",
-            "startpage.com",
-            "qwant.com",
-            "sogou.com",
-            "so.com",
-            "ask.com",
-            "aol.com",
-            "daum.net",
-        ],
-    ),
-    (
-        "social",
-        &[
-            "facebook.com",
-            "m.facebook.com",
-            "lm.facebook.com",
-            "instagram.com",
-            "threads.net",
-            "twitter.com",
-            "x.com",
-            "t.co",
-            "linkedin.com",
-            "lnkd.in",
-            "reddit.com",
-            "out.reddit.com",
-            "pinterest.com",
-            "pin.it",
-            "tiktok.com",
-            "youtube.com",
-            "youtu.be",
-            "weibo.com",
-            "wechat.com",
-            "telegram.org",
-            "t.me",
-            "whatsapp.com",
-            "mastodon.social",
-            "mastodon.social",
-            "bsky.app",
-            "vk.com",
-            "discord.com",
-            "tumblr.com",
-            "quora.com",
-            "medium.com",
-            "news.ycombinator.com",
-            "lobste.rs",
-            "producthunt.com",
-            "slack.com",
-        ],
-    ),
-    (
-        "email",
-        &[
-            "mail.google.com",
-            "outlook.live.com",
-            "outlook.office.com",
-            "outlook.com",
-            "mail.yahoo.com",
-            "mail.proton.me",
-            "mail.ru",
-            "mail.qq.com",
-            "mail.163.com",
-            "fastmail.com",
-            "zoho.com",
-            "gmx.com",
-            "yandex.com",
-            "hey.com",
-        ],
-    ),
-    (
-        "ads",
-        &[
-            "googleadservices.com",
-            "adservice.google.com",
-            "doubleclick.net",
-            "googleads.g.doubleclick.net",
-            "ads.google.com",
-            "adwords.com",
-            "ads.linkedin.com",
-            "ad.doubleclick.de",
-            "ads-twitter.com",
-            "ads.facebook.com",
-            "adnxs.com",
-            "adsrvr.org",
-            "criteo.com",
-            "taboola.com",
-            "outbrain.com",
-            "bing.com/aclick",
-        ],
-    ),
+/// The chat assistants.
+const LLM_DOMAINS: &[&str] = &[
+    "chatgpt.com",
+    "claude.ai",
+    "copilot.microsoft.com",
+    "gemini.google.com",
+    "meta.ai",
+    "perplexity.ai",
 ];
 
-/// The channel of a visit.
-///
-/// The referrer is the **host** of the page that sent the visitor — the
-/// tracker sends it that way — but a full URL is accepted too.
-pub fn channel(referrer: Option<&str>) -> &'static str {
-    let Some(referrer) = referrer.filter(|r| !r.trim().is_empty()) else {
-        return "direct";
-    };
+/// The search engines.
+const SEARCH_DOMAINS: &[&str] = &[
+    "baidu.com",
+    "bing.com",
+    "duckduckgo.com",
+    "ecosia.org",
+    "google.",
+    "msn.com",
+    "search.brave.com",
+    "yandex.",
+];
 
-    let host = host_of(referrer);
-    if host.is_empty() {
+/// The social networks.
+const SOCIAL_DOMAINS: &[&str] = &[
+    "bsky.app",
+    "facebook.com",
+    "fb.com",
+    "ig.com",
+    "instagram.com",
+    "linkedin.",
+    "news.ycombinator.com",
+    "pinterest.",
+    "reddit.",
+    "snapchat.",
+    "t.co",
+    "threads.net",
+    "tiktok.",
+    "twitter.com",
+    "x.com",
+];
+
+/// The mail clients.
+///
+/// The reference implementation's list, plus the ones it does not have: a mail
+/// client that is not in the list is counted as something else, and Gmail is
+/// too big a referrer to get wrong.
+const EMAIL_DOMAINS: &[&str] = &[
+    "gmail.",
+    "hotmail.",
+    "mail.yahoo.",
+    "outlook.",
+    "proton.me",
+    "protonmail.",
+    "mail.google.com",
+    "mail.proton.me",
+    "mail.yahoo.com",
+    "outlook.live.com",
+    "outlook.office.com",
+    "fastmail.com",
+    "mail.ru",
+    "mail.qq.com",
+    "zoho.com",
+    "gmx.com",
+    "hey.com",
+    "yandex.com",
+];
+
+/// The shops.
+const SHOPPING_DOMAINS: &[&str] = &[
+    "alibaba.com",
+    "aliexpress.com",
+    "amazon.",
+    "bestbuy.com",
+    "ebay.com",
+    "etsy.com",
+    "newegg.com",
+    "target.com",
+    "walmart.com",
+];
+
+/// The video sites.
+const VIDEO_DOMAINS: &[&str] = &["twitch.", "youtube."];
+
+/// The query-string fragments that mean "this was a paid click".
+const PAID_AD_PARAMS: &[&str] = &[
+    "ad_id=",
+    "aid=",
+    "dclid=",
+    "epik=",
+    "gclid=",
+    "li_fat_id=",
+    "msclkid=",
+    "ob_click_id=",
+    "pc_id=",
+    "rdt_cid=",
+    "scid=",
+    "ttclid=",
+    "twclid=",
+    "utm_medium=cpc",
+    "utm_medium=paid",
+    "utm_medium=paid_social",
+    "utm_source=google",
+];
+
+/// The mediums that mean "somebody sent a link".
+const REFERRAL_MEDIUMS: &[&str] = &["referral", "app", "link"];
+
+/// The domain lists, in the order the reference implementation tries them.
+///
+/// The **longest** match wins, whatever list it is in: `mail.google.com` is a
+/// mail client, not a search engine, even though `google.` is a search engine
+/// and is part of the name.
+const DOMAIN_LISTS: &[(&str, &[&str])] = &[
+    ("llm", LLM_DOMAINS),
+    ("Search", SEARCH_DOMAINS),
+    ("Social", SOCIAL_DOMAINS),
+    ("email", EMAIL_DOMAINS),
+    ("Shopping", SHOPPING_DOMAINS),
+    ("Video", VIDEO_DOMAINS),
+];
+
+/// The referrer's display name, when it is a known one.
+///
+/// The reference implementation groups the referrers by name at query time
+/// ("Hacker News", not `news.ycombinator.com`). We work it out when the event
+/// is collected and store it, so the name is there without a lookup.
+const GROUPED_DOMAINS: &[(&str, &str)] = &[
+    ("baidu.com", "Baidu"),
+    ("bing.com", "Bing"),
+    ("brave.com", "Brave"),
+    ("chatgpt.com", "ChatGPT"),
+    ("duckduckgo.com", "DuckDuckGo"),
+    ("facebook.com", "Facebook"),
+    ("github.com", "GitHub"),
+    ("google.com", "Google"),
+    ("news.ycombinator.com", "Hacker News"),
+    ("instagram.com", "Instagram"),
+    ("linkedin.com", "LinkedIn"),
+    ("pinterest.com", "Pinterest"),
+    ("reddit.com", "Reddit"),
+    ("snapchat.com", "Snapchat"),
+    ("twitter.com", "Twitter"),
+    ("yahoo.com", "Yahoo"),
+    ("yandex.ru", "Yandex"),
+];
+
+/// What the channel is worked out from.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChannelInput<'a> {
+    /// The referrer's host (without the `www.`).
+    pub referrer: Option<&'a str>,
+    /// The query string of the visited page.
+    pub url_query: Option<&'a str>,
+    /// The `utm_medium` parameter.
+    pub utm_medium: Option<&'a str>,
+    /// The `utm_source` parameter.
+    pub utm_source: Option<&'a str>,
+    /// The host of the site that was visited.
+    pub hostname: Option<&'a str>,
+}
+
+impl<'a> ChannelInput<'a> {
+    /// The input, built from the parts of a hit.
+    pub fn new(
+        referrer: Option<&'a str>,
+        url_query: Option<&'a str>,
+        utm_medium: Option<&'a str>,
+        utm_source: Option<&'a str>,
+        hostname: Option<&'a str>,
+    ) -> Self {
+        Self {
+            referrer,
+            url_query,
+            utm_medium,
+            utm_source,
+            hostname,
+        }
+    }
+}
+
+/// The bucket a visit falls into.
+///
+/// The rules, in the order they are tried:
+///
+/// 1. no referrer and no query string → `direct`
+/// 2. the query string carries a paid click id → `paidAds`
+/// 3. the medium is `referral`, `app` or `link` → `referral`
+/// 4. the medium says affiliate → `affiliate`
+/// 5. the medium or the source says sms → `sms`
+/// 6. the referrer is a chat assistant → `llm`
+/// 7. the referrer is a search engine, or the medium says organic → `Search`
+/// 8. the referrer is a social network → `Social`
+/// 9. the referrer is a mail client, or the medium says mail → `email`
+/// 10. the referrer is a shop, or the medium says shop → `Shopping`
+/// 11. the referrer is a video site, or the medium says video → `Video`
+/// 12. another site, and not this one → `referral`
+/// 13. nothing else → `direct`
+pub fn channel(input: &ChannelInput) -> &'static str {
+    let referrer = strip_www(input.referrer.unwrap_or("").trim());
+    let query = input.url_query.unwrap_or("").trim();
+    let medium = input.utm_medium.unwrap_or("").trim();
+    let source = input.utm_source.unwrap_or("").trim();
+    let hostname = input.hostname.unwrap_or("").trim();
+
+    // 1. Nothing came with the visit at all.
+    if referrer.is_empty() && query.is_empty() {
         return "direct";
     }
 
-    // The **longest** match wins: `mail.google.com` is a mail client, not a
-    // search engine, even though it ends with `google.com`.
+    // 2. A paid click: the click id or the medium says so.
+    if contains_any(query, PAID_AD_PARAMS) {
+        return "paidAds";
+    }
+
+    // 3. Somebody sent a link.
+    if contains_any(medium, REFERRAL_MEDIUMS) {
+        return "referral";
+    }
+
+    // 4. An affiliate.
+    if contains(medium, "affiliate") {
+        return "affiliate";
+    }
+
+    // 5. A text message.
+    if contains(medium, "sms") || contains(source, "sms") {
+        return "sms";
+    }
+
+    // The bucket the referrer's domain belongs to — the longest match wins.
+    let domain = domain_bucket(referrer);
+
+    // 6. A chat assistant.
+    if domain == Some("llm") {
+        return "llm";
+    }
+
+    // 7. A search engine.
+    if domain == Some("Search") || contains(medium, "organic") {
+        return "Search";
+    }
+
+    // 8. A social network.
+    if domain == Some("Social") {
+        return "Social";
+    }
+
+    // 9. A mail client.
+    if domain == Some("email") || contains(medium, "mail") {
+        return "email";
+    }
+
+    // 10. A shop.
+    if domain == Some("Shopping") || contains(medium, "shop") {
+        return "Shopping";
+    }
+
+    // 11. A video site.
+    if domain == Some("Video") || contains(medium, "video") {
+        return "Video";
+    }
+
+    // 12. Some other site — but not this one.
+    if !referrer.is_empty() && referrer != strip_www(hostname) {
+        return "referral";
+    }
+
+    // 13. A self-referral, or a referrer we know nothing about.
+    "direct"
+}
+
+/// The bucket a referrer's domain belongs to, if it is a known one.
+///
+/// **The longest match wins**, whatever list it is in: `mail.google.com` is a
+/// mail client (14 characters) and not a search engine (`google.`, 7).
+fn domain_bucket(referrer: &str) -> Option<&'static str> {
+    if referrer.is_empty() {
+        return None;
+    }
     let mut best: Option<(usize, &'static str)> = None;
-    for (name, hosts) in CHANNELS {
-        for known in hosts.iter() {
-            if matches(&host, known) {
-                let length = known.len();
+    for (bucket, domains) in DOMAIN_LISTS {
+        for domain in domains.iter() {
+            if contains(referrer, domain) {
+                let length = domain.len();
                 if best.map(|(best, _)| length > best).unwrap_or(true) {
-                    best = Some((length, name));
+                    best = Some((length, bucket));
                 }
             }
         }
     }
-
-    best.map(|(_, name)| name).unwrap_or("unknown")
+    best.map(|(_, bucket)| bucket)
 }
 
-/// The host of a referrer.
+/// The display name of a referrer, when it has one.
 ///
-/// The referrer is normally a host (`news.ycombinator.com`), but a tracker may
-/// send the whole URL — the host is taken out of it.
-fn host_of(referrer: &str) -> String {
-    let referrer = referrer.trim();
-    if referrer.is_empty() {
-        return String::new();
+/// "Hacker News" for `news.ycombinator.com`, `None` for a site we do not know.
+pub fn referrer_name(referrer: Option<&str>) -> Option<String> {
+    let referrer = referrer.map(str::trim).filter(|r| !r.is_empty())?;
+    for (domain, name) in GROUPED_DOMAINS {
+        if referrer.contains(domain) {
+            return Some((*name).to_string());
+        }
     }
-
-    // A URL with a scheme.
-    let without_scheme = match referrer.find("://") {
-        Some(at) => &referrer[at + 3..],
-        None => referrer,
-    };
-
-    // Everything up to the first slash, question mark or hash.
-    let host = without_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("")
-        .trim();
-
-    // A userinfo part (`user@host`) is not part of the host.
-    match host.rsplit_once('@') {
-        Some((_, rest)) => rest.to_lowercase(),
-        None => host.to_lowercase(),
-    }
+    None
 }
 
-/// Whether a host is the given domain, or a subdomain of it.
-fn matches(host: &str, known: &str) -> bool {
-    if host == known {
-        return true;
+/// Strip a leading `www.` — the way the referrer's host is stored.
+pub fn strip_www(host: &str) -> &str {
+    host.strip_prefix("www.").unwrap_or(host)
+}
+
+/// A case-insensitive substring test.
+fn contains(haystack: &str, needle: &str) -> bool {
+    if haystack.is_empty() || needle.is_empty() {
+        return false;
     }
-    match host.strip_suffix(known) {
-        Some(prefix) => prefix.ends_with('.'),
-        None => false,
-    }
+    haystack.to_lowercase().contains(&needle.to_lowercase())
+}
+
+/// Does the text contain any of the needles?
+fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| contains(haystack, needle))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn no_referrer_is_a_direct_visit() {
-        assert_eq!(channel(None), "direct");
-        assert_eq!(channel(Some("")), "direct");
-        assert_eq!(channel(Some("   ")), "direct");
+    fn channel_of(referrer: Option<&str>) -> &'static str {
+        channel(&ChannelInput::new(referrer, None, None, None, None))
     }
 
     #[test]
-    fn a_search_engine_is_a_search() {
-        assert_eq!(channel(Some("google.com")), "search");
-        assert_eq!(channel(Some("www.google.com")), "search");
-        assert_eq!(channel(Some("duckduckgo.com")), "search");
-        assert_eq!(channel(Some("news.google.com")), "search");
+    fn nothing_is_direct() {
+        assert_eq!(channel_of(None), "direct");
+        assert_eq!(channel_of(Some("")), "direct");
     }
 
     #[test]
-    fn a_social_network_is_social() {
-        assert_eq!(channel(Some("t.co")), "social");
-        assert_eq!(channel(Some("news.ycombinator.com")), "social");
-        assert_eq!(channel(Some("www.reddit.com")), "social");
+    fn the_search_engines_are_search() {
+        assert_eq!(channel_of(Some("www.google.com")), "Search");
+        assert_eq!(channel_of(Some("bing.com")), "Search");
+        assert_eq!(channel_of(Some("duckduckgo.com")), "Search");
+        assert_eq!(channel_of(Some("search.brave.com")), "Search");
     }
 
     #[test]
-    fn a_mail_client_is_email() {
-        assert_eq!(channel(Some("mail.google.com")), "email");
-        assert_eq!(channel(Some("outlook.live.com")), "email");
+    fn the_social_networks_are_social() {
+        assert_eq!(channel_of(Some("news.ycombinator.com")), "Social");
+        assert_eq!(channel_of(Some("t.co")), "Social");
+        assert_eq!(channel_of(Some("www.reddit.com")), "Social");
+        assert_eq!(channel_of(Some("x.com")), "Social");
     }
 
     #[test]
-    fn an_advertisement_is_ads() {
-        assert_eq!(channel(Some("googleadservices.com")), "ads");
+    fn the_mail_clients_are_email() {
+        assert_eq!(channel_of(Some("mail.google.com")), "email");
+        assert_eq!(channel_of(Some("outlook.live.com")), "email");
     }
 
     #[test]
-    fn something_else_is_unknown() {
-        assert_eq!(channel(Some("example.com")), "unknown");
-        assert_eq!(channel(Some("notgoogle.com")), "unknown");
+    fn the_assistants_are_llm() {
+        assert_eq!(channel_of(Some("chatgpt.com")), "llm");
+        assert_eq!(channel_of(Some("claude.ai")), "llm");
+        assert_eq!(channel_of(Some("gemini.google.com")), "llm");
     }
 
     #[test]
-    fn a_full_url_is_understood() {
-        assert_eq!(channel(Some("https://www.google.com/search?q=x")), "search");
-        assert_eq!(channel(Some("https://example.com/page")), "unknown");
+    fn the_shops_are_shopping() {
+        assert_eq!(channel_of(Some("www.amazon.com")), "Shopping");
+        assert_eq!(channel_of(Some("ebay.com")), "Shopping");
+    }
+
+    #[test]
+    fn the_video_sites_are_video() {
+        assert_eq!(channel_of(Some("www.youtube.com")), "Video");
+        assert_eq!(channel_of(Some("twitch.tv")), "Video");
+    }
+
+    #[test]
+    fn an_unknown_site_is_a_referral() {
+        assert_eq!(channel_of(Some("some-blog.example")), "referral");
+    }
+
+    #[test]
+    fn the_site_itself_is_direct() {
+        let input = ChannelInput::new(Some("example.com"), None, None, None, Some("example.com"));
+        assert_eq!(channel(&input), "direct");
+
+        // The `www.` is stripped on both sides.
+        let input = ChannelInput::new(
+            Some("www.example.com"),
+            None,
+            None,
+            None,
+            Some("www.example.com"),
+        );
+        assert_eq!(channel(&input), "direct");
+    }
+
+    #[test]
+    fn a_paid_click_wins_over_the_referrer() {
+        let input = ChannelInput::new(
+            Some("www.facebook.com"),
+            Some("utm_medium=cpc"),
+            Some("cpc"),
+            None,
+            None,
+        );
+        assert_eq!(channel(&input), "paidAds");
+
+        let input = ChannelInput::new(Some("example.com"), Some("gclid=abc"), None, None, None);
+        assert_eq!(channel(&input), "paidAds");
+    }
+
+    #[test]
+    fn the_medium_can_say_the_bucket() {
+        let input = ChannelInput::new(None, Some("x=1"), Some("referral"), None, None);
+        assert_eq!(channel(&input), "referral");
+
+        let input = ChannelInput::new(None, Some("x=1"), Some("affiliate"), None, None);
+        assert_eq!(channel(&input), "affiliate");
+
+        let input = ChannelInput::new(None, Some("x=1"), Some("sms"), None, None);
+        assert_eq!(channel(&input), "sms");
+
+        let input = ChannelInput::new(None, Some("x=1"), Some("organic"), None, None);
+        assert_eq!(channel(&input), "Search");
+
+        let input = ChannelInput::new(None, Some("x=1"), Some("email"), None, None);
+        assert_eq!(channel(&input), "email");
+
+        let input = ChannelInput::new(None, Some("x=1"), Some("shopping"), None, None);
+        assert_eq!(channel(&input), "Shopping");
+
+        let input = ChannelInput::new(None, Some("x=1"), Some("video"), None, None);
+        assert_eq!(channel(&input), "Video");
+    }
+
+    #[test]
+    fn the_query_string_alone_is_not_direct() {
+        let input = ChannelInput::new(None, Some("a=1"), None, None, None);
+        assert_eq!(channel(&input), "direct");
+    }
+
+    #[test]
+    fn the_referrer_has_a_display_name() {
+        assert_eq!(
+            referrer_name(Some("news.ycombinator.com")),
+            Some("Hacker News".to_string())
+        );
+        assert_eq!(
+            referrer_name(Some("www.google.com")),
+            Some("Google".to_string())
+        );
+        assert_eq!(referrer_name(Some("some-blog.example")), None);
+        assert_eq!(referrer_name(None), None);
     }
 }

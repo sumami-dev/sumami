@@ -39,7 +39,10 @@ use duckdb::Connection;
 /// * v5 — the traffic **channel** is stored with the event (direct, search,
 ///   social, email, ads) instead of being worked out from the referrer at
 ///   report time.
-pub const SCHEMA_VERSION: i64 = 5;
+/// * v6 — the fields the reference implementation has and we did not: the
+///   **visit** id (a visit inside a session), the referrer's **display name**
+///   and the **coordinates**. The channel's value set is aligned with it too.
+pub const SCHEMA_VERSION: i64 = 6;
 
 /// The columns of the `event` table.
 ///
@@ -50,6 +53,7 @@ pub const EVENT_COLUMNS: &str = "
     website_id      VARCHAR NOT NULL,
     session_id      UUID NOT NULL,
     visitor_id      UUID NOT NULL,
+    visit_id        UUID,
     created_at      TIMESTAMP NOT NULL,
 
     url             VARCHAR,
@@ -59,6 +63,7 @@ pub const EVENT_COLUMNS: &str = "
     referrer        VARCHAR,
     referrer_path   VARCHAR,
     referrer_query  VARCHAR,
+    referrer_name   VARCHAR,
     hostname        VARCHAR,
     channel         VARCHAR,
 
@@ -72,6 +77,8 @@ pub const EVENT_COLUMNS: &str = "
     country         VARCHAR,
     region          VARCHAR,
     city            VARCHAR,
+    latitude        DOUBLE,
+    longitude       DOUBLE,
 
     utm_source      VARCHAR,
     utm_medium      VARCHAR,
@@ -286,8 +293,14 @@ fn migration_select_list(conn: &Connection, table: &str, names: &[String]) -> St
 }
 
 /// The SQL that turns an old text id into a UUID.
+///
+/// The hash is taken over the **text** of the column: `sha256` has no UUID
+/// overload, and DuckDB resolves the function when it binds the statement — so
+/// `sha256(session_id)` on a column that is already `UUID` is a binder error,
+/// even when the `CASE` would never take that branch. A v4 file has UUID
+/// columns, so the cast is not optional.
 fn uuid_from_text(column: &str) -> String {
-    let hash = format!("sha256({column})");
+    let hash = format!("sha256(CAST({column} AS VARCHAR))");
     format!(
         "CASE WHEN try_cast({column} AS UUID) IS NOT NULL \
            THEN try_cast({column} AS UUID) \

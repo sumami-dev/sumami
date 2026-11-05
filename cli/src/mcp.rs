@@ -91,7 +91,7 @@ pub const REPORTS: [(&str, &str); 19] = [
     ),
     (
         "channels",
-        "The traffic channels: direct, search, social, email, ads.",
+        "The traffic channels: direct, Search, Social, email, paidAds, referral, affiliate, sms, llm, Shopping, Video.",
     ),
     (
         "regions",

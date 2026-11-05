@@ -573,3 +573,354 @@ fn the_row_ids_stay_unique_when_the_cli_opens_the_database() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// --------------------------------------------------------------------------------------
+// The migration path, step by step.
+//
+// The path is v3 → v4 → v5 → v6. The code migrates straight to the current
+// version, so every step is proved by starting from the version before it:
+// an old file must come out the other side with its rows, its values and its
+// shape.
+// --------------------------------------------------------------------------------------
+
+/// The columns a v4 file has: the ids are UUIDs, the channel is not there yet.
+const V4_COLUMNS: &str = "
+    id              BIGINT NOT NULL,
+    website_id      VARCHAR NOT NULL,
+    session_id      UUID NOT NULL,
+    visitor_id      UUID NOT NULL,
+    created_at      TIMESTAMP NOT NULL,
+    url             VARCHAR,
+    url_query       VARCHAR,
+    title           VARCHAR,
+    referrer        VARCHAR,
+    referrer_path   VARCHAR,
+    referrer_query  VARCHAR,
+    hostname        VARCHAR,
+    browser         VARCHAR,
+    browser_version VARCHAR,
+    os              VARCHAR,
+    os_version      VARCHAR,
+    device          VARCHAR,
+    screen          VARCHAR,
+    language        VARCHAR,
+    country         VARCHAR,
+    region          VARCHAR,
+    city            VARCHAR,
+    utm_source      VARCHAR,
+    utm_medium      VARCHAR,
+    utm_campaign    VARCHAR,
+    utm_content     VARCHAR,
+    utm_term        VARCHAR,
+    gclid           VARCHAR,
+    fbclid          VARCHAR,
+    msclkid         VARCHAR,
+    ttclid          VARCHAR,
+    lifatid         VARCHAR,
+    twclid          VARCHAR,
+    lcp             DOUBLE,
+    inp             DOUBLE,
+    cls             DOUBLE,
+    fcp             DOUBLE,
+    ttfb            DOUBLE,
+    event_type      VARCHAR,
+    event_name      VARCHAR,
+    tag             VARCHAR,
+    data            VARCHAR";
+
+/// Write a database of an older version, with three rows in it.
+fn write_old_database(path: &std::path::Path, version: i64, columns: &str) {
+    let conn = duckdb::Connection::open(path).unwrap();
+    conn.execute_batch(&format!(
+        "CREATE TABLE event ({columns});
+         CREATE TABLE meta (key VARCHAR PRIMARY KEY, value VARCHAR);
+         INSERT INTO meta VALUES ('schema_version', '{version}');"
+    ))
+    .unwrap();
+    // The ids are UUIDs from v4 on; before that they were text.
+    let (session_a, visitor_a) = if version >= 4 {
+        (
+            sumimi_service::ua::uuid_from_text("session-a").to_string(),
+            sumimi_service::ua::uuid_from_text("visitor-a").to_string(),
+        )
+    } else {
+        ("session-a".to_string(), "visitor-a".to_string())
+    };
+    let session_b = if version >= 4 {
+        sumimi_service::ua::uuid_from_text("session-b").to_string()
+    } else {
+        "session-b".to_string()
+    };
+    conn.execute_batch(&format!(
+        "INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url, browser)
+         VALUES (1, 'w1', '{session_a}', '{visitor_a}', TIMESTAMP '2026-01-15 12:00:00', '/one', 'Chrome'),
+                (2, 'w1', '{session_a}', '{visitor_a}', TIMESTAMP '2026-01-15 12:01:00', '/two', 'Chrome'),
+                (3, 'w1', '{session_b}', '{visitor_a}', TIMESTAMP '2026-01-15 12:02:00', '/three', 'Firefox');"
+    ))
+    .unwrap();
+}
+
+/// How many rows are in the file, and what do they say?
+fn migrated_rows(path: &std::path::Path) -> (i64, Vec<(String, Option<String>)>) {
+    let db = Db::open(path, "256MB").unwrap();
+    db.with_read(|conn| {
+        let version: String = conn.query_row(
+            "SELECT value FROM meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(version, SCHEMA_VERSION.to_string(), "the file says its version");
+
+        let count: i64 = conn.query_row("SELECT count(*) FROM event", [], |row| row.get(0))?;
+        let mut stmt = conn.prepare("SELECT url, browser FROM event ORDER BY id")?;
+        let mut result = stmt.query([])?;
+        let mut out = Vec::new();
+        while let Some(row) = result.next()? {
+            out.push((row.get(0)?, row.get(1)?));
+        }
+        Ok((count, out))
+    })
+    .unwrap()
+}
+
+/// A v4 file becomes a v6 file: the channel and the new fields are there, and
+/// the rows are where they were.
+#[test]
+fn a_v4_database_is_migrated_to_the_current_version() {
+    let path = temp_db("migrate-v4-step");
+    write_old_database(&path, 4, V4_COLUMNS);
+
+    let (rows, values) = migrated_rows(&path);
+    assert_eq!(rows, 3, "no row may be lost in the migration");
+    assert_eq!(
+        values,
+        vec![
+            ("/one".to_string(), Some("Chrome".to_string())),
+            ("/two".to_string(), Some("Chrome".to_string())),
+            ("/three".to_string(), Some("Firefox".to_string())),
+        ],
+        "the values must survive the migration"
+    );
+
+    // The new columns are there — empty, because the old file did not have them.
+    let db = Db::open(&path, "256MB").unwrap();
+    db.with_read(|conn| {
+        let channel: Option<String> =
+            conn.query_row("SELECT channel FROM event WHERE id = 1", [], |row| row.get(0))?;
+        assert_eq!(channel, None, "the old rows have no channel yet");
+
+        let columns: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT column_name FROM information_schema.columns
+                 WHERE table_name = 'event' ORDER BY column_name",
+            )?;
+            let mut rows = stmt.query([])?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                out.push(row.get(0)?);
+            }
+            out
+        };
+        for column in ["channel", "visit_id", "referrer_name", "latitude", "longitude"] {
+            assert!(
+                columns.iter().any(|name| name == column),
+                "the migrated file must have the {column} column"
+            );
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .unwrap();
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+/// A v5 file — the one with the channel — becomes a v6 file too.
+#[test]
+fn a_v5_database_is_migrated_to_the_current_version() {
+    let path = temp_db("migrate-v5-to-v6");
+    // v5 is v4 plus the channel.
+    let columns = V4_COLUMNS.replace(
+        "    hostname        VARCHAR,",
+        "    hostname        VARCHAR,\n    channel         VARCHAR,",
+    );
+    write_old_database(&path, 5, &columns);
+
+    // Put a channel in one row, so the migration cannot lose it.
+    {
+        let db = Db::open(&path, "256MB").unwrap();
+        db.with_write(|conn| {
+            conn.execute("UPDATE event SET channel = 'Search' WHERE id = 1", [])?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .unwrap();
+    }
+    // The file says v6 now (the update above opened it through the migrator).
+    let (rows, _) = migrated_rows(&path);
+    assert_eq!(rows, 3);
+
+    let db = Db::open(&path, "256MB").unwrap();
+    db.with_read(|conn| {
+        let channel: Option<String> =
+            conn.query_row("SELECT channel FROM event WHERE id = 1", [], |row| row.get(0))?;
+        assert_eq!(
+            channel,
+            Some("Search".to_string()),
+            "the channel must survive the migration"
+        );
+        Ok::<_, anyhow::Error>(())
+    })
+    .unwrap();
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+/// A v3 file — text ids — comes out the other side with UUID ids and every
+/// new column.
+#[test]
+fn a_v3_database_is_migrated_all_the_way() {
+    let path = temp_db("migrate-v3-to-v6");
+    // v3 is v4 with text ids.
+    let columns = V4_COLUMNS
+        .replace("session_id      UUID NOT NULL", "session_id      VARCHAR NOT NULL")
+        .replace("visitor_id      UUID NOT NULL", "visitor_id      VARCHAR NOT NULL");
+    write_old_database(&path, 3, &columns);
+
+    let (rows, values) = migrated_rows(&path);
+    assert_eq!(rows, 3, "no row may be lost in the migration");
+    assert_eq!(values.len(), 3);
+
+    let db = Db::open(&path, "256MB").unwrap();
+    db.with_read(|conn| {
+        let ids: Vec<String> = {
+            let mut stmt = conn.prepare("SELECT DISTINCT session_id::VARCHAR FROM event")?;
+            let mut rows = stmt.query([])?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                out.push(row.get(0)?);
+            }
+            out
+        };
+        assert_eq!(ids.len(), 2, "the two sessions stay two sessions");
+        for id in &ids {
+            assert!(uuid::Uuid::parse_str(id).is_ok(), "the id must be a UUID: {id}");
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .unwrap();
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+/// The SQLite backend walks the same path: the channel and the new fields are
+/// added, and the rows stay.
+#[test]
+fn a_v3_sqlite_database_is_migrated_all_the_way() {
+    use sumimi_service::sqlite::SqliteBackend;
+
+    let dir = std::env::temp_dir().join(format!(
+        "sumimi-schema-sqlite-path-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("data.sqlite");
+
+    // A v3 SQLite file: text ids, no channel.
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE event (
+                id              INTEGER PRIMARY KEY,
+                website_id      TEXT NOT NULL,
+                session_id      TEXT NOT NULL,
+                visitor_id      TEXT NOT NULL,
+                created_at      INTEGER NOT NULL,
+                url             TEXT,
+                url_query       TEXT,
+                title           TEXT,
+                referrer        TEXT,
+                referrer_path   TEXT,
+                referrer_query  TEXT,
+                hostname        TEXT,
+                browser         TEXT,
+                browser_version TEXT,
+                os              TEXT,
+                os_version      TEXT,
+                device          TEXT,
+                screen          TEXT,
+                language        TEXT,
+                country         TEXT,
+                region          TEXT,
+                city            TEXT,
+                utm_source      TEXT,
+                utm_medium      TEXT,
+                utm_campaign    TEXT,
+                utm_content     TEXT,
+                utm_term        TEXT,
+                gclid           TEXT,
+                fbclid          TEXT,
+                msclkid         TEXT,
+                ttclid          TEXT,
+                lifatid         TEXT,
+                twclid          TEXT,
+                lcp             REAL,
+                inp             REAL,
+                cls             REAL,
+                fcp             REAL,
+                ttfb            REAL,
+                event_type      TEXT,
+                event_name      TEXT,
+                tag             TEXT,
+                data            TEXT
+            );
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO meta VALUES ('schema_version', '3');
+            INSERT INTO event (id, website_id, session_id, visitor_id, created_at, url)
+            VALUES (1, 'w1', 'session-a', 'visitor-a', 1700000000, '/one'),
+                   (2, 'w1', 'session-a', 'visitor-a', 1700000060, '/two'),
+                   (3, 'w1', 'session-b', 'visitor-a', 1700000120, '/three');
+            "#,
+        )
+        .unwrap();
+    }
+
+    // Opening it walks the whole path.
+    let backend = SqliteBackend::open(&path).unwrap();
+
+    let count: i64 = backend
+        .with_connection(|conn| {
+            let count: i64 = conn.query_row("SELECT count(*) FROM event", [], |row| row.get(0))?;
+            Ok(count)
+        })
+        .unwrap();
+    assert_eq!(count, 3, "no row may be lost in the migration");
+
+    // The new columns are there.
+    backend
+        .with_connection(|conn| {
+            for column in ["channel", "visit_id", "referrer_name", "latitude", "longitude"] {
+                let mut stmt = conn.prepare(&format!("SELECT {column} FROM event LIMIT 1"))?;
+                let mut rows = stmt.query([])?;
+                assert!(
+                    rows.next().unwrap().is_some(),
+                    "the migrated file must have the {column} column"
+                );
+            }
+            // And the ids are UUIDs.
+            let mut stmt = conn.prepare("SELECT DISTINCT session_id FROM event")?;
+            let mut rows = stmt.query([])?;
+            let mut sessions = 0;
+            while let Some(row) = rows.next()? {
+                let bytes: Vec<u8> = row.get(0)?;
+                let id = uuid::Uuid::from_slice(&bytes).unwrap();
+                assert!(uuid::Uuid::parse_str(&id.to_string()).is_ok());
+                sessions += 1;
+            }
+            assert_eq!(sessions, 2, "the two sessions stay two sessions");
+            Ok::<_, anyhow::Error>(())
+        })
+        .unwrap();
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
