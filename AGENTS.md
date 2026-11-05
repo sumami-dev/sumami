@@ -618,6 +618,23 @@ have are in the list ✓ (Gmail is too big a referrer to get wrong ✓ ✓).
 Rust (`storage::parse_query_parameters`), because the three engines do not agree on how
 to split a query string and the answer has to be the same in all of them.
 
+**A custom event is not a page view.** The pageview metrics — the summary's page
+views, every breakdown, the time series, the query parameters — count only the
+events that are page views (`event_type NOT IN ('event', 'identify')`). The
+reference implementation does the same (`event_type NOT IN (2, 5)`), and so do we:
+a site with a lot of custom events would otherwise show them as pages.
+
+Two details follow from it, and both are the reference implementation's rules:
+
+* the **visitors** and the **sessions** are counted over *everything* — a visitor
+  who only fired a custom event is still a visitor;
+* a **bounce** is a session with a single *page view* that did not fire a custom
+  event — a session that only fired a custom event has no page view at all, and
+  it is not a bounce.
+
+The **logs** — the session list and the event list — keep every event: they are
+logs.
+
 **Where the visitor is** comes from one of three places, tried in this order:
 
 1. **The header.** A proxy in front of the server knows the country exactly — it is the

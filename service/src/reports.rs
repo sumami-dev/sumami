@@ -310,6 +310,19 @@ fn update_website(conn: &Connection, id: &str, patch: &WebsitePatch) -> Result<W
 // session table to keep in sync, and nothing is stored twice.
 // --------------------------------------------------------------------------------------
 
+/// The condition that selects the **page views**.
+///
+/// A custom event is not a page view, and neither is an identify call. The
+/// reference implementation excludes them from every pageview metric
+/// (`event_type NOT IN (2, 5)`), and so do we — otherwise a site with a lot
+/// of custom events would show them as pages, and its "bounce rate" would be
+/// wrong (a session that only fired a custom event is not a bounce, but it
+/// would look like one).
+///
+/// The **logs** — the session list and the event list — keep everything: they
+/// are logs.
+const PAGEVIEWS: &str = "event_type NOT IN ('event', 'identify')";
+
 /// A WHERE clause and its parameters.
 struct Filters {
     clauses: Vec<String>,
@@ -397,10 +410,16 @@ fn metric(value: i64, previous: f64) -> MetricValue {
 fn summary(conn: &Connection, query: &ReportQuery) -> Result<SummaryMetrics> {
     let filters = Filters::new(query);
 
+    // The page views are counted without the custom events; the visitors and
+    // the visits are counted over everything — a visitor who only fired a
+    // custom event is still a visitor.
     let sql = format!(
-        "SELECT COUNT(*), COUNT(DISTINCT visitor_id), COUNT(DISTINCT session_id)
-         FROM event WHERE {}",
-        filters.clause()
+        "SELECT COUNT(*) FILTER (WHERE {pageviews}),
+                COUNT(DISTINCT visitor_id),
+                COUNT(DISTINCT session_id)
+         FROM event WHERE {filters}",
+        pageviews = PAGEVIEWS,
+        filters = filters.clause()
     );
     let mut stmt = conn.prepare(&sql)?;
     let (pageviews, visitors, views) = match stmt.query(filters.params().as_slice())?.next()? {
@@ -409,18 +428,22 @@ fn summary(conn: &Connection, query: &ReportQuery) -> Result<SummaryMetrics> {
     };
     drop(stmt);
 
-    // Bounces (sessions with a single view) and the average session length.
+    // Bounces (sessions with a single **page view**) and the average session
+    // length. A session that fired a custom event is not a bounce.
     let sql = format!(
-        "SELECT COUNT(*) FILTER (WHERE n = 1),
+        "SELECT COUNT(*) FILTER (WHERE n = 1 AND custom = 0),
                 COALESCE(AVG(d), 0)
          FROM (
              SELECT session_id,
-                    COUNT(*) AS n,
-                    epoch(MAX(created_at) - MIN(created_at)) AS d
-             FROM event WHERE {}
+                    COUNT(*) FILTER (WHERE {pageviews}) AS n,
+                    MAX(CASE WHEN event_type = 'event' THEN 1 ELSE 0 END) AS custom,
+                    epoch(MAX(created_at) FILTER (WHERE {pageviews})
+                        - MIN(created_at) FILTER (WHERE {pageviews})) AS d
+             FROM event WHERE {filters}
              GROUP BY session_id
          )",
-        filters.clause()
+        pageviews = PAGEVIEWS,
+        filters = filters.clause()
     );
     let mut stmt = conn.prepare(&sql)?;
     let (bounces, duration) = match stmt.query(filters.params().as_slice())?.next()? {
@@ -453,13 +476,14 @@ fn breakdown(
 
     let sql = format!(
         "SELECT COALESCE({column}, 'unknown') AS name, {aggregate} AS value
-         FROM event WHERE {where_clause}
+         FROM event WHERE {where_clause} AND {pageviews}
          GROUP BY name
          ORDER BY value DESC, name ASC
          LIMIT {limit}",
         column = dimension.column(),
         aggregate = aggregate,
         where_clause = filters.clause(),
+        pageviews = PAGEVIEWS,
         limit = query.limit.clamp(1, 1000),
     );
 
@@ -488,9 +512,10 @@ fn query_strings(conn: &Connection, query: &ReportQuery) -> Result<Vec<(String, 
 
     let sql = format!(
         "SELECT url_query, COUNT(*) AS value FROM event
-         WHERE {where_clause} AND url_query IS NOT NULL AND url_query <> ''
+         WHERE {where_clause} AND {pageviews} AND url_query IS NOT NULL AND url_query <> ''
          GROUP BY url_query ORDER BY value DESC LIMIT 1000",
         where_clause = filters.clause(),
+        pageviews = PAGEVIEWS,
     );
 
     let mut stmt = conn.prepare(&sql)?;
@@ -516,10 +541,11 @@ fn timeseries(conn: &Connection, query: &ReportQuery) -> Result<Vec<BreakdownRow
 
     let sql = format!(
         "SELECT strftime(date_trunc('{truncate}', created_at), '{format}') AS bucket, COUNT(*) AS value
-         FROM event WHERE {where_clause}
+         FROM event WHERE {where_clause} AND {pageviews}
          GROUP BY bucket
          ORDER BY bucket ASC",
         where_clause = filters.clause(),
+        pageviews = PAGEVIEWS,
     );
 
     let mut stmt = conn.prepare(&sql)?;

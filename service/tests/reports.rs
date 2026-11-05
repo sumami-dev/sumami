@@ -55,10 +55,10 @@ fn database(name: &str) -> (Db, String) {
     // The first two are one session with two views; the other two are one view
     // each.
     let hits = vec![
-        hit(&website, "/one", Some("google.com"), "Chrome", "macOS", "desktop", "en-US", "DE", "Berlin", "Berlin", "example.com", "a=1&b=2", "v1", "s1", 0),
-        hit(&website, "/two", Some("google.com"), "Chrome", "macOS", "desktop", "en-US", "DE", "Berlin", "Berlin", "example.com", "a=1&b=3", "v1", "s1", 60),
-        hit(&website, "/one", Some("news.ycombinator.com"), "Firefox", "Windows", "mobile", "de-DE", "FR", "Ile-de-France", "Paris", "other.example", "a=2", "v2", "s2", 120),
-        hit(&website, "/three", None, "Firefox", "Windows", "mobile", "de-DE", "FR", "Ile-de-France", "Paris", "other.example", "", "v3", "s3", 150),
+        hit(&website, "/one", Some("google.com"), "Chrome", "macOS", "desktop", "en-US", "DE", "Berlin", "Berlin", "example.com", "a=1&b=2", "v1", "s1", 0, "tag-a"),
+        hit(&website, "/two", Some("google.com"), "Chrome", "macOS", "desktop", "en-US", "DE", "Berlin", "Berlin", "example.com", "a=1&b=3", "v1", "s1", 60, "tag-a"),
+        hit(&website, "/one", Some("news.ycombinator.com"), "Firefox", "Windows", "mobile", "de-DE", "FR", "Ile-de-France", "Paris", "other.example", "a=2", "v2", "s2", 120, "tag-b"),
+        hit(&website, "/three", None, "Firefox", "Windows", "mobile", "de-DE", "FR", "Ile-de-France", "Paris", "other.example", "", "v3", "s3", 150, "signup"),
     ];
     db.write_batch(&hits).unwrap();
 
@@ -83,6 +83,7 @@ fn hit(
     visitor: &str,
     session: &str,
     seconds: i64,
+    tag: &str,
 ) -> Hit {
     let at = base() + chrono::Duration::seconds(seconds);
     let referrer = referrer.map(str::to_string);
@@ -155,11 +156,8 @@ fn hit(
         } else {
             None
         },
-        tag: if url == "/three" {
-            Some("signup".to_string())
-        } else {
-            None
-        },
+        // The tag travels with every event, the way the tracker sends it.
+        tag: Some(tag.to_string()),
         data: None,
     }
 }
@@ -179,11 +177,19 @@ fn the_summary_counts_the_traffic() {
     let (db, website) = database("summary");
     let summary = db.summary(&query(&website)).unwrap();
 
-    assert_eq!(summary.pageviews, 4, "every event is a page view here");
+    // The **page views** are the three page views: the custom event is not
+    // one, and the reference implementation excludes it from every pageview
+    // metric too (`event_type NOT IN (2, 5)`).
+    assert_eq!(summary.pageviews, 3, "the custom event is not a page view");
+    // The visitors and the visits are counted over everything: a visitor who
+    // only fired a custom event is still a visitor.
     assert_eq!(summary.visitors, 3, "three visitors came");
     assert_eq!(summary.views, 3, "in three sessions");
-    assert_eq!(summary.bounces, 2, "two sessions had a single view");
-    assert_eq!(summary.visit_duration, 20.0, "the average session is a minute");
+    // One bounce: the session with a single page view. The session that only
+    // fired a custom event has no page view at all, and the session with two
+    // page views is not a bounce either.
+    assert_eq!(summary.bounces, 1, "one session had a single page view");
+    assert_eq!(summary.visit_duration, 30.0, "the average session is a minute");
 }
 
 /// The timeseries: the views over time.
@@ -196,7 +202,7 @@ fn the_timeseries_buckets_by_the_hour() {
 
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0].name, "2026-01-15T12:00:00Z");
-    assert_eq!(rows[0].value, 4);
+    assert_eq!(rows[0].value, 3, "the custom event is not a page view");
     assert_eq!(rows[0].date.as_deref(), Some("2026-01-15T12:00:00Z"));
 }
 
@@ -209,7 +215,7 @@ fn the_pages_are_the_most_visited_ones() {
     let rows = db.breakdown(&query(&website), Dimension::Url).unwrap();
 
     let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
-    assert_eq!(names, vec!["/one", "/three", "/two"], "{rows:?}");
+    assert_eq!(names, vec!["/one", "/two"], "{rows:?}");
 
     let one = rows.iter().find(|row| row.name == "/one").unwrap();
     assert_eq!(one.value, 2);
@@ -227,7 +233,7 @@ fn the_referrers_are_where_the_traffic_came_from() {
     let rows = db.breakdown(&query(&website), Dimension::Referrer).unwrap();
 
     let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
-    assert_eq!(names.len(), 3, "{rows:?}");
+    assert_eq!(names.len(), 2, "{rows:?}");
 
     let google = rows.iter().find(|row| row.name == "google.com").unwrap();
     assert_eq!(google.value, 2);
@@ -237,10 +243,6 @@ fn the_referrers_are_where_the_traffic_came_from() {
         .find(|row| row.name == "news.ycombinator.com")
         .unwrap();
     assert_eq!(hacker.value, 1);
-
-    // The event without a referrer is "unknown".
-    let unknown = rows.iter().find(|row| row.name == "unknown").unwrap();
-    assert_eq!(unknown.value, 1);
 }
 
 /// The browsers.
@@ -253,7 +255,7 @@ fn the_browsers_are_counted_by_visitor() {
     assert_eq!(chrome.value, 1, "one visitor used Chrome");
 
     let firefox = rows.iter().find(|row| row.name == "Firefox").unwrap();
-    assert_eq!(firefox.value, 2, "two visitors used Firefox");
+    assert_eq!(firefox.value, 1, "one visitor used Firefox");
 }
 
 /// The operating systems.
@@ -268,7 +270,7 @@ fn the_operating_systems_are_counted_by_visitor() {
     );
     assert_eq!(
         rows.iter().find(|row| row.name == "Windows").unwrap().value,
-        2
+        1
     );
 }
 
@@ -284,7 +286,7 @@ fn the_devices_are_counted_by_visitor() {
     );
     assert_eq!(
         rows.iter().find(|row| row.name == "mobile").unwrap().value,
-        2
+        1
     );
 }
 
@@ -295,7 +297,7 @@ fn the_countries_are_counted_by_visitor() {
     let rows = db.breakdown(&query(&website), Dimension::Country).unwrap();
 
     assert_eq!(rows.iter().find(|row| row.name == "DE").unwrap().value, 1);
-    assert_eq!(rows.iter().find(|row| row.name == "FR").unwrap().value, 2);
+    assert_eq!(rows.iter().find(|row| row.name == "FR").unwrap().value, 1);
 }
 
 /// The languages.
@@ -305,7 +307,7 @@ fn the_languages_are_counted_by_visitor() {
     let rows = db.breakdown(&query(&website), Dimension::Language).unwrap();
 
     assert_eq!(rows.iter().find(|row| row.name == "en-US").unwrap().value, 1);
-    assert_eq!(rows.iter().find(|row| row.name == "de-DE").unwrap().value, 2);
+    assert_eq!(rows.iter().find(|row| row.name == "de-DE").unwrap().value, 1);
 }
 
 /// The screens.
@@ -314,8 +316,8 @@ fn the_screens_are_counted_by_visitor() {
     let (db, website) = database("screens");
     let rows = db.breakdown(&query(&website), Dimension::Screen).unwrap();
 
-    assert_eq!(rows.len(), 1, "every event has the same screen");
-    assert_eq!(rows[0].value, 3);
+    assert_eq!(rows.len(), 1, "every page view has the same screen");
+    assert_eq!(rows[0].value, 2, "two visitors had that screen");
 }
 
 /// The channels: where the traffic came from, in one word.
@@ -330,20 +332,15 @@ fn the_channels_are_the_reference_implementations_buckets() {
     let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
     assert!(names.contains(&"Search"), "{names:?}");
     assert!(names.contains(&"Social"), "{names:?}");
-    assert!(names.contains(&"direct"), "{names:?}");
 
-    // Two visitors came from a search engine, one from a social network, one
-    // came directly.
+    // One visitor came from a search engine, one from a social network. The
+    // custom event came directly, and it is not a page view.
     assert_eq!(
         rows.iter().find(|row| row.name == "Search").unwrap().value,
         1
     );
     assert_eq!(
         rows.iter().find(|row| row.name == "Social").unwrap().value,
-        1
-    );
-    assert_eq!(
-        rows.iter().find(|row| row.name == "direct").unwrap().value,
         1
     );
 }
@@ -361,7 +358,7 @@ fn the_regions_are_where_the_visitors_are() {
     );
     assert_eq!(
         rows.iter().find(|row| row.name == "Ile-de-France").unwrap().value,
-        2
+        1
     );
 }
 
@@ -376,7 +373,7 @@ fn the_cities_are_where_the_visitors_are() {
         rows.iter().find(|row| row.name == "Berlin").unwrap().value,
         1
     );
-    assert_eq!(rows.iter().find(|row| row.name == "Paris").unwrap().value, 2);
+    assert_eq!(rows.iter().find(|row| row.name == "Paris").unwrap().value, 1);
 }
 
 /// The hosts: the sites the traffic came to.
@@ -397,7 +394,7 @@ fn the_hosts_are_the_sites() {
             .find(|row| row.name == "other.example")
             .unwrap()
             .value,
-        2
+        1
     );
 }
 
@@ -422,10 +419,10 @@ fn the_tags_are_the_events_tags() {
     let rows = db.breakdown(&query(&website), Dimension::Tag).unwrap();
 
     assert_eq!(rows.len(), 2, "{rows:?}");
-    let signup = rows.iter().find(|row| row.name == "signup").unwrap();
-    assert_eq!(signup.value, 1);
-    let unknown = rows.iter().find(|row| row.name == "unknown").unwrap();
-    assert_eq!(unknown.value, 3);
+    let a = rows.iter().find(|row| row.name == "tag-a").unwrap();
+    assert_eq!(a.value, 2);
+    let b = rows.iter().find(|row| row.name == "tag-b").unwrap();
+    assert_eq!(b.value, 1);
 }
 
 /// The query parameters: what the visitors asked for.
