@@ -35,7 +35,7 @@ say ""
 say '```'
 say "\$ cargo test --workspace"
 TESTS=$(cargo test --workspace 2>&1)
-echo "$TESTS" | grep -E "^(test result|running|error)" >> "$OUT"
+echo "$TESTS" | grep -E "^(test result|error)" >> "$OUT"
 PASSED=$(echo "$TESTS" | grep -oE "^test result: ok\. [0-9]+" | grep -oE "[0-9]+" | paste -sd+ - | bc)
 FAILED=$(echo "$TESTS" | grep -cE "^test result: FAILED")
 say '```'
@@ -139,4 +139,18 @@ say ""
 echo "wrote $OUT"
 if [ "${1:-}" = "--print" ]; then
     cat "$OUT"
+fi
+
+# --------------------------------------------------------------------------------------
+# The report goes into an issue
+# --------------------------------------------------------------------------------------
+#
+# A number nobody can find is a number nobody trusts. The report is posted, so
+# it can be read, compared with the last one, and argued with.
+
+if [ "${1:-}" != "--no-post" ]; then
+    URL=$(gh issue create --repo sumimi-dev/sumimi \
+        --title "The test report — $DATE" \
+        --body-file "$OUT" 2>&1 | tail -1)
+    echo "posted: $URL"
 fi
