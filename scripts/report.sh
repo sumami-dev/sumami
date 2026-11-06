@@ -97,6 +97,21 @@ say "\$ cargo run --release --example memory_budget -p sumimi-service -- --engin
 say '```'
 say ""
 
+# The exact peak is measured on Linux, by the daily budget run — the numbers
+# above are the local ones.
+BUDGET=$(gh run list --repo sumimi-dev/sumimi --workflow ci.yml --limit 10 \
+    --json databaseId,conclusion -q '[.[] | select(.conclusion=="success")][0].databaseId' 2>/dev/null)
+if [ -n "$BUDGET" ]; then
+    say "The **exact** peak, from the Linux run ([$BUDGET](https://github.com/sumimi-dev/sumimi/actions/runs/$BUDGET)):"
+    say ""
+    say '```'
+    gh run view "$BUDGET" --repo sumimi-dev/sumimi --log 2>&1 \
+        | grep -E "engine=[0-9]+MB.*peak_rss=" \
+        | sed 's/^[^	]*	//' | sort -u >> "$OUT"
+    say '```'
+    say ""
+fi
+
 # --------------------------------------------------------------------------------------
 # The benchmarks
 # --------------------------------------------------------------------------------------
