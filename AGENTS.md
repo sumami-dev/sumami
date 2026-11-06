@@ -340,6 +340,12 @@ Privacy is not the selling point. *"You can see where the money came from"* is.
   which serves this public repository directly. Set `SUMIMI_APP_URL=/app` to serve it
   from the backend instead (air-gapped installs).
 
+* **One builder for the traffic:** `service/src/testing.rs` has `HitBuilder` —
+  the tests, the benchmarks and the memory budget all put events in the
+  database with it, so there is one place that knows what a hit is made of.
+  It is also in the public API on purpose: the private edition writes the
+  same hits, and it must not have a second, slightly different idea of them.
+
 ### 4.1e The write path: the queue, the batch, and what the client is told
 
 Three rules, and they are one idea: **what we acknowledged, we have.**
