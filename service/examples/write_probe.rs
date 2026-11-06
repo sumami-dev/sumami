@@ -75,7 +75,7 @@ fn duckdb_current(hits: &[Hit]) -> anyhow::Result<Parts> {
     db.with_write(|conn| {
         for chunk in hits.chunks(batch()) {
             let started = Instant::now();
-            let mut next_id: i64 = conn.query_row(
+            let next_id: i64 = conn.query_row(
                 "SELECT COALESCE(MAX(id), 0) + 1 FROM event",
                 [],
                 |row| row.get(0),
@@ -87,9 +87,8 @@ fn duckdb_current(hits: &[Hit]) -> anyhow::Result<Parts> {
             parts.appender += started.elapsed();
 
             let started = Instant::now();
-            for hit in chunk {
-                append_row(&mut appender, next_id, hit)?;
-                next_id += 1;
+            for (index, hit) in chunk.iter().enumerate() {
+                append_row(&mut appender, next_id + index as i64, hit)?;
             }
             parts.appends += started.elapsed();
 
@@ -111,7 +110,7 @@ fn duckdb_counter(hits: &[Hit]) -> anyhow::Result<Parts> {
 
     let mut parts = Parts::default();
     db.with_write(|conn| {
-        let mut next_id: i64 = conn.query_row(
+        let next_id: i64 = conn.query_row(
             "SELECT COALESCE(MAX(id), 0) + 1 FROM event",
             [],
             |row| row.get(0),
@@ -122,9 +121,8 @@ fn duckdb_counter(hits: &[Hit]) -> anyhow::Result<Parts> {
             parts.appender += started.elapsed();
 
             let started = Instant::now();
-            for hit in chunk {
-                append_row(&mut appender, next_id, hit)?;
-                next_id += 1;
+            for (index, hit) in chunk.iter().enumerate() {
+                append_row(&mut appender, next_id + index as i64, hit)?;
             }
             parts.appends += started.elapsed();
 
@@ -146,7 +144,7 @@ fn duckdb_one_appender(hits: &[Hit]) -> anyhow::Result<Parts> {
 
     let mut parts = Parts::default();
     db.with_write(|conn| {
-        let mut next_id: i64 = conn.query_row(
+        let next_id: i64 = conn.query_row(
             "SELECT COALESCE(MAX(id), 0) + 1 FROM event",
             [],
             |row| row.get(0),
@@ -154,9 +152,8 @@ fn duckdb_one_appender(hits: &[Hit]) -> anyhow::Result<Parts> {
         let mut appender = conn.appender("event")?;
         for chunk in hits.chunks(batch()) {
             let started = Instant::now();
-            for hit in chunk {
-                append_row(&mut appender, next_id, hit)?;
-                next_id += 1;
+            for (index, hit) in chunk.iter().enumerate() {
+                append_row(&mut appender, next_id + index as i64, hit)?;
             }
             parts.appends += started.elapsed();
 
@@ -212,10 +209,8 @@ fn id_query_cost(rows: usize) -> anyhow::Result<(f64, f64)> {
     let hits = generate(rows as i64);
     db.with_write(|conn| {
         let mut appender = conn.appender("event")?;
-        let mut next_id: i64 = 1;
-        for hit in &hits {
-            append_row(&mut appender, next_id, hit)?;
-            next_id += 1;
+        for (index, hit) in hits.iter().enumerate() {
+            append_row(&mut appender, 1 + index as i64, hit)?;
         }
         appender.flush()?;
         Ok::<_, anyhow::Error>(())

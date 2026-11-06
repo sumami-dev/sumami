@@ -743,16 +743,16 @@ fn write_revenue(conn: &Connection, records: &[crate::models::Revenue]) -> Resul
     if records.is_empty() {
         return Ok(());
     }
-    let mut next_id: i64 = conn.query_row(
+    let next_id: i64 = conn.query_row(
         "SELECT COALESCE(MAX(id), 0) + 1 FROM revenue",
         [],
         |row| row.get(0),
     )?;
 
     let mut appender = conn.appender("revenue")?;
-    for record in records {
+    for (index, record) in records.iter().enumerate() {
         appender.append_row(duckdb::params![
-            next_id,
+            next_id + index as i64,
             record.website_id,
             record.session_id,
             record.event_id,
@@ -761,7 +761,6 @@ fn write_revenue(conn: &Connection, records: &[crate::models::Revenue]) -> Resul
             record.revenue,
             record.created_at,
         ])?;
-        next_id += 1;
     }
     appender.flush()?;
     Ok(())
