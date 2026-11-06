@@ -175,6 +175,62 @@ SUMIMI_MAX_ADMIT_RPS=20000</code></pre>
       </p>
     </div>
 
+    <h2>How much traffic does my site need?</h2>
+    <p>
+      The table a deployment is sized from. One page view per request (110 bytes),
+      64 connections, and the <strong>worst</strong> of three runs — because the
+      promise is about the peak.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>requests a second</th><th>the peak RSS</th><th>the engine's share</th><th>what it fits</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>5 000</td><td>134 MB</td><td>2 MB</td><td>the minimum tier</td></tr>
+          <tr><td><strong>10 000</strong></td><td><strong>152 MB</strong></td><td>2 MB</td><td>the minimum tier, with 100 MB to spare</td></tr>
+          <tr><td>20 000</td><td>286 MB</td><td>2 MB</td><td>the recommended tier</td></tr>
+          <tr><td>30 000</td><td>312 MB</td><td>4 MB</td><td>the recommended tier</td></tr>
+          <tr><td>50 000</td><td>327 MB</td><td>5 MB</td><td>the recommended tier</td></tr>
+          <tr><td>100 000</td><td>598 MB</td><td>8 MB</td><td>neither — see below</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <strong>The size of an event counts as much as the number of them.</strong> At
+      20 000 requests a second, changing only the size of one event:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>one event</th><th>the peak RSS</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>110 bytes (a page view)</td><td>276 MB</td></tr>
+          <tr><td>1 KB</td><td>390 MB</td></tr>
+          <tr><td>10 KB</td><td>993 MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The number of connections makes no difference (16, 64 and 256 give the same
+      peak), and above about <strong>50 000 requests a second</strong> the write path
+      cannot keep up: the queue fills, and the server starts refusing — which is the
+      right answer, because the traffic is arriving faster than the disk can take it.
+    </p>
+    <div class="callout tip">
+      <p class="callout-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+        Set the limit to your rate, and the peak is the table's row
+      </p>
+      <p>
+        Put the rate your site expects into <code>SUMIMI_MAX_ADMIT_RPS</code> and the
+        process stays at the size the table says, whatever the traffic does. A burst
+        above that rate is refused with a <code>Retry-After</code> instead of taking
+        the box with it.
+      </p>
+    </div>
+
     <h2>If the server is near its limit</h2>
     <ol>
       <li>Read <code>/api/heartbeat</code>. <code>queued</code> and <code>dropped</code> say whether the writer is keeping up; <code>refusedRate</code> says whether the gate is turning traffic away.</li>
