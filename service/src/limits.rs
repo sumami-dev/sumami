@@ -176,13 +176,23 @@ impl Gate {
             return true;
         }
         self.refill(rps);
-        self.tokens
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |tokens| {
-                // `then`, not `then_some`: the subtraction must not happen when
-                // the bucket is empty.
-                (tokens >= 1000).then(|| tokens - 1000)
-            })
-            .is_ok()
+        // A compare-and-swap loop, not `fetch_update`: that one is deprecated in
+        // the newest Rust, and its replacement is not stable in ours.
+        let mut tokens = self.tokens.load(Ordering::Relaxed);
+        loop {
+            if tokens < 1000 {
+                return false;
+            }
+            match self.tokens.compare_exchange_weak(
+                tokens,
+                tokens - 1000,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return true,
+                Err(current) => tokens = current,
+            }
+        }
     }
 
     /// Fill the bucket with the time that has passed since the last fill.
@@ -208,9 +218,22 @@ impl Gate {
         }
         // The bucket holds at most one second's worth of requests.
         let cap = rps.saturating_mul(1000);
-        let _ = self.tokens.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |tokens| {
-            Some(tokens.saturating_add(added as u64).min(cap))
-        });
+        let mut tokens = self.tokens.load(Ordering::Relaxed);
+        loop {
+            let next = tokens.saturating_add(added as u64).min(cap);
+            if next == tokens {
+                return;
+            }
+            match self.tokens.compare_exchange_weak(
+                tokens,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(current) => tokens = current,
+            }
+        }
     }
 
     /// The nanoseconds since the gate was made.

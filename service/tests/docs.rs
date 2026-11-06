@@ -29,8 +29,17 @@ impl Drop for WriterGuard {
 }
 
 /// A unique temporary directory.
+///
+/// The tests run in parallel, and the process id alone is not unique enough:
+/// two of them would share a path, and one would delete the other's database
+/// while it was open. The counter makes every call its own directory.
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sumimi-docs-{name}-{}", std::process::id()));
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let unique = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "sumimi-docs-{name}-{}-{unique}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
