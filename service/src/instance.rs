@@ -1388,19 +1388,19 @@ impl Row for &rusqlite::Row<'_> {
     type Error = rusqlite::Error;
 
     fn text(&self, index: usize) -> std::result::Result<String, Self::Error> {
-        Ok((*self).get(index)?)
+        (*self).get(index)
     }
 
     fn opt_text(&self, index: usize) -> std::result::Result<Option<String>, Self::Error> {
-        Ok((*self).get(index)?)
+        (*self).get(index)
     }
 
     fn number(&self, index: usize) -> std::result::Result<i64, Self::Error> {
-        Ok((*self).get(index)?)
+        (*self).get(index)
     }
 
     fn timestamp(&self, index: usize) -> std::result::Result<i64, Self::Error> {
-        Ok((*self).get(index)?)
+        (*self).get(index)
     }
 }
 
