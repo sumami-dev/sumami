@@ -269,9 +269,10 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(100_000);
 
-        // The admission gate (see `limits`). Everything is off by default: the
-        // numbers are measured, not guessed, and until they are, the gate must
-        // not change what the server does.
+        // The admission gate (see `limits`). The rate is **not** off by
+        // default: a box that never says no is a box that runs out of memory.
+        // When it is not set, the recommended rate for this box is used — see
+        // [`recommended_rate`].
         let max_body_bytes = env_any("SUMIMI_MAX_BODY_BYTES")
             .and_then(|v| v.parse().ok())
             .unwrap_or(crate::limits::DEFAULT_MAX_BODY_BYTES);
@@ -281,9 +282,10 @@ impl Config {
         let max_inflight_bytes = env_any("SUMIMI_MAX_INFLIGHT_BYTES")
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
+        // `0` is a deliberate choice — it turns the limit off.
         let max_admit_rps = env_any("SUMIMI_MAX_ADMIT_RPS")
             .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
+            .unwrap_or_else(|| recommended_rate(&duckdb_memory_limit));
 
         // The batch cap: ten thousand rows is about 5 MB of hit structs and
         // 50 ms of writing — small enough that the dashboard's queries do not
@@ -443,6 +445,30 @@ pub fn default_memory_limit() -> String {
     format!("{}MB", limit / (1024 * 1024))
 }
 
+/// The recommended admission rate, derived from the memory the box has.
+///
+/// **The rule: 20 000 requests a second for every 128 MB of the engine's
+/// budget** — so the minimum tier (a 128 MB engine, a 256 MB process) admits
+/// **20 000/s**, and the recommended tier (a 256 MB engine, a 512 MB process)
+/// admits **40 000/s**.
+///
+/// It comes from the measurement, not from a hunch: the peak resident set is
+/// about **68 MB + 7.8 MB per 1 000 requests a second** on a 2 vCPU box
+/// (`MEMORY.md` §6), so the rate that fills the box is where the rule puts it —
+/// and the box is *full but not over* at the limit. Above it the server
+/// refuses, which is the honest answer: the traffic is arriving faster than
+/// the disk can take it.
+///
+/// The user can always set `SUMIMI_MAX_ADMIT_RPS` to something else — this is
+/// only what happens when they do not.
+pub fn recommended_rate(memory_limit: &str) -> u64 {
+    let budget = parse_size(memory_limit).unwrap_or(128 * 1024 * 1024);
+    let megabytes = budget / (1024 * 1024);
+    // 20 000 a second per 128 MB — the division keeps the smaller budgets
+    // proportional instead of rounding them away.
+    (megabytes.saturating_mul(20_000) / 128).max(1_000)
+}
+
 /// The hard ceiling on the engine's memory limit: 256 MB.
 pub const MEMORY_LIMIT_MAX: u64 = 256 * 1024 * 1024;
 
@@ -464,6 +490,24 @@ pub fn threads_for(memory_limit: &str, cores: usize) -> usize {
 /// memory a query needs scales with the thread count.
 pub fn threads_for_budget(memory_limit: &str) -> usize {
     threads_for(memory_limit, std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The recommended rate follows the memory: twice the memory, twice the
+    /// rate. The minimum tier (a 128 MB engine) admits 20 000 a second, the
+    /// recommended tier (256 MB) admits 40 000 ✓.
+    #[test]
+    fn the_recommended_rate_follows_the_memory() {
+        assert_eq!(recommended_rate("128MB"), 20_000);
+        assert_eq!(recommended_rate("256MB"), 40_000);
+        assert_eq!(recommended_rate("64MB"), 10_000);
+        // Nonsense in, the default out — never a rate of zero.
+        assert_eq!(recommended_rate("not a size"), 20_000);
+        assert_eq!(recommended_rate("1MB"), 1_000);
+    }
 }
 
 /// Parse a size like `128MB` into bytes.

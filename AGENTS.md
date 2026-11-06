@@ -128,8 +128,11 @@ that allocates on the collection path. Two things from it belong here:
   shape. The memory is in **our** collection path and in the allocator's retention.
 * **The admission gate** (`service/src/limits.rs`) sits **before the body is read**:
   `SUMIMI_MAX_BODY_BYTES`, `SUMIMI_MAX_INFLIGHT_REQUESTS`, `SUMIMI_MAX_INFLIGHT_BYTES`,
-  `SUMIMI_MAX_ADMIT_RPS`. **Zero means "no limit"**, so the gate is off until the
-  measurements turn it on — but it is there, and it is adjustable.
+  `SUMIMI_MAX_ADMIT_RPS`. **Zero means "no limit"**. The rate is the one that is **on
+  by default** — when it is not set, the server uses **the recommended rate for the
+  memory it has** (20 000 requests a second per 128 MB of the engine's budget: 20 000/s
+  on the minimum tier, 40 000/s on the recommended one), which is where the measured
+  rule puts the box: full, but not over.
 
 Measured, one variable at a time (200 MB of payload over 20 s, the median of three runs
 per configuration — the sweep is `gate_sweep` in the private edition):

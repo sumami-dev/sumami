@@ -32,5 +32,6 @@ pub async fn heartbeat(State(state): State<AppState>) -> Json<Heartbeat> {
         refused_rate: gate.refused_rate,
         refused_inflight: gate.refused_inflight,
         refused_body: gate.refused_body,
+        admit_rps: state.config.max_admit_rps,
     })
 }

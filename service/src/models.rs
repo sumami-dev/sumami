@@ -480,6 +480,8 @@ pub struct Heartbeat {
     pub refused_inflight: u64,
     /// How many requests the admission gate refused because the body was too large.
     pub refused_body: u64,
+    /// How many requests a second the admission gate admits (`0` = no limit).
+    pub admit_rps: u64,
 }
 
 /// Query parameters shared by the stats endpoints (Umami-compatible names).

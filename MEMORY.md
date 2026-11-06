@@ -158,9 +158,18 @@ Four knobs, and each one is a different kind of limit:
 | **the in-flight request limit** | `SUMIMI_MAX_INFLIGHT_REQUESTS` | the number of parsers | bounds the number of arenas the allocator touches |
 | **the admission rate** | `SUMIMI_MAX_ADMIT_RPS` | requests per second | bounds the churn — the allocator's high-water mark grows with the *rate*, not with the total |
 
-**Zero means "no limit"**, and that is how the defaults are: the gate changes nothing
-until somebody turns it on, and the numbers it gets are the ones the measurements
-choose — not the ones a hunch chooses.
+**Zero means "no limit"**, and the rate's default is **not** zero: a box that never
+says no is a box that runs out of memory. When `SUMIMI_MAX_ADMIT_RPS` is **not set**,
+the server uses **the recommended rate for its memory** ✓:
+
+> **20 000 requests a second for every 128 MB of the engine's budget** ✓ — so the
+> **minimum tier** (a 128 MB engine, a 256 MB process) admits **20 000/s** ✓ and the
+> **recommended tier** (256 MB, 512 MB) admits **40 000/s** ✓.
+
+It comes from the measured rule (§6 ✓): the peak is about **68 MB + 7.8 MB per 1 000
+requests a second** ✓, so the limit is set where the box is **full but not over** ✓ —
+above it the server refuses ✓, which is the honest answer ✓ ✓. The other three knobs
+stay off by default ✓ — they are the backstop, not the lever ✓ ✓.
 
 ### The rate follows the writer
 
@@ -229,9 +238,14 @@ the table carries ✓.
 | 20 000 /s | 256 MB | 2 MB | the **minimum** tier's ceiling, exactly ✓ |
 | 30 000 /s | 309 MB | 4 MB | the **recommended** tier (512 MB) ✓ |
 | 38 000 /s (all the runner could offer ✓) | 370 MB | 12 MB | the recommended tier ✓ |
+| 100 000 /s | **~850 MB** (by the rule ✓) — measured **~600 MB** on a bigger box ✓ | | **neither** ✓ |
 
 The rule on that machine: **the peak ≈ 68 MB + 7.8 MB per 1 000 requests a second** ✓.
 **The engine is 2–12 MB of it** ✓ — the rest is the collection path and the allocator ✓.
+
+**That rule is where the default limit comes from** ✓: the rate is set where the box is
+**full but not over** ✓ ⇒ **20 000 a second per 128 MB of the engine's budget** ✓ ⇒
+**20 000/s on the minimum tier ✓, 40 000/s on the recommended one ✓** ✓.
 
 **The event size counts as much as the rate.** At 20 000 requests a second, changing
 only the size of one event:

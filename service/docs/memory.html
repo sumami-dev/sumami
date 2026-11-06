@@ -144,7 +144,7 @@
           <tr><td><code>SUMIMI_MAX_BODY_BYTES</code></td><td>one request's body</td><td>2 MB</td></tr>
           <tr><td><code>SUMIMI_MAX_INFLIGHT_REQUESTS</code></td><td>requests being read or parsed at once</td><td>unlimited</td></tr>
           <tr><td><code>SUMIMI_MAX_INFLIGHT_BYTES</code></td><td>the bytes in flight at once</td><td>unlimited</td></tr>
-          <tr><td><code>SUMIMI_MAX_ADMIT_RPS</code></td><td>requests admitted per second</td><td>unlimited</td></tr>
+          <tr><td><code>SUMIMI_MAX_ADMIT_RPS</code></td><td>requests admitted per second</td><td><strong>the recommended rate for this box</strong> — 20 000/s on a 512 MB VPS, 40 000/s on a 1 GB one</td></tr>
         </tbody>
       </table>
     </div>
@@ -154,6 +154,14 @@
       the in-flight budget is counted in bytes. The rate limit is what bounds the
       churn: the allocator's high-water mark grows with how <em>fast</em> the
       traffic arrives, not with how much of it there is.
+    </p>
+    <p>
+      The rate is the one that is <strong>on by default</strong>, because a box that
+      never says no is a box that runs out of memory. When you do not set it, the
+      server works it out from the memory it has: <strong>20 000 requests a second
+      for every 128 MB of the database's budget</strong> — the point where the box
+      is full but not over. Set it yourself when you know better; set it to
+      <code>0</code> to turn the limit off.
     </p>
     <p>To set them, put them in the environment file next to the systemd unit:</p>
     <pre class="shell"><code><span class="cmt"># /etc/sumimi/sumimi.env</span>
@@ -192,6 +200,7 @@ SUMIMI_MAX_ADMIT_RPS=20000</code></pre>
           <tr><td>20 000</td><td>256 MB</td><td>2 MB</td><td>exactly the minimum tier's ceiling</td></tr>
           <tr><td>30 000</td><td>309 MB</td><td>4 MB</td><td>the recommended tier</td></tr>
           <tr><td>38 000 (all that box could offer)</td><td>370 MB</td><td>12 MB</td><td>the recommended tier</td></tr>
+          <tr><td>100 000</td><td>about 850 MB</td><td>—</td><td>neither — it needs a bigger box</td></tr>
         </tbody>
       </table>
     </div>
