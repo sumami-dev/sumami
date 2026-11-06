@@ -145,6 +145,11 @@ per configuration — the sweep is `gate_sweep` in the private edition):
 flight — and the rate limit fixed the queue overflow for free (0 dropped, against 6 233).
 The rate that belongs in production is the writer's drain rate, not a constant.
 
+**The deployment reference is [`MEMORY.md` §6](MEMORY.md)** — the peak by the rate
+offered, the peak by the size of an event, and the three-line rule for sizing a box.
+The short version: **10 000 requests a second costs about 150 MB** (2 MB of it the
+engine's), which fits the minimum tier with room to spare.
+
 ```
                     ┌────────────────────────────────────┐
    browser ───────▶ │  sumimi (one binary)                │
