@@ -120,6 +120,31 @@ keeping freed pages, not live data. `SUMIMI_DUCKDB_MEMORY_LIMIT` tunes the ceili
 `/api/heartbeat` reports the usage, the configured limit, the limit DuckDB itself
 reports back, and the thread count.
 
+**The memory strategy is [`MEMORY.md`](MEMORY.md)** — the promise, the ledger of where
+the memory goes, the five lines and the invariants. Read it before touching anything
+that allocates on the collection path. Two things from it belong here:
+
+* **The engine is not the problem.** It holds 2–7 MB in every run, at every traffic
+  shape. The memory is in **our** collection path and in the allocator's retention.
+* **The admission gate** (`service/src/limits.rs`) sits **before the body is read**:
+  `SUMIMI_MAX_BODY_BYTES`, `SUMIMI_MAX_INFLIGHT_REQUESTS`, `SUMIMI_MAX_INFLIGHT_BYTES`,
+  `SUMIMI_MAX_ADMIT_RPS`. **Zero means "no limit"**, so the gate is off until the
+  measurements turn it on — but it is there, and it is adjustable.
+
+Measured, one variable at a time (200 MB of payload over 20 s, the median of three runs
+per configuration — the sweep is `gate_sweep` in the private edition):
+
+| configuration | the peak RSS |
+| --- | ---: |
+| no gate | **659 MB** |
+| the body limit, the in-flight limits | 592–605 MB (no difference) |
+| **the rate, 20 000/s** | **188 MB** |
+| **the rate, 5 000/s** | **95 MB** |
+
+**The rate is the lever** — the peak follows the *rate of allocation*, not the volume in
+flight — and the rate limit fixed the queue overflow for free (0 dropped, against 6 233).
+The rate that belongs in production is the writer's drain rate, not a constant.
+
 ```
                     ┌────────────────────────────────────┐
    browser ───────▶ │  sumimi (one binary)                │

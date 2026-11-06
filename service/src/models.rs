@@ -470,6 +470,16 @@ pub struct Heartbeat {
     pub flush_max_ms: u64,
     /// The size of the database file on disk.
     pub database_size_bytes: i64,
+    /// How many collection requests are being read or parsed right now.
+    pub inflight_requests: u64,
+    /// How many bytes are being read or parsed right now.
+    pub inflight_bytes: u64,
+    /// How many requests the admission gate refused by its rate limit.
+    pub refused_rate: u64,
+    /// How many requests the admission gate refused because too many were in flight.
+    pub refused_inflight: u64,
+    /// How many requests the admission gate refused because the body was too large.
+    pub refused_body: u64,
 }
 
 /// Query parameters shared by the stats endpoints (Umami-compatible names).

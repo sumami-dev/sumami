@@ -23,7 +23,14 @@ pub async fn send(
     peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     body: Result<Json<SendRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Response, ApiError> {
-    let Json(request) = body.map_err(|_| ApiError::BadRequest("invalid json body".into()))?;
+    let Json(request) = body.map_err(|rejection| {
+        // A body that is too large is not a malformed body: it is a `413`.
+        if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            ApiError::PayloadTooLarge
+        } else {
+            ApiError::BadRequest("invalid json body".into())
+        }
+    })?;
     let raw = request.into_hit();
 
     let website_key = raw

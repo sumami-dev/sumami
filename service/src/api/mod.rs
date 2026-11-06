@@ -62,6 +62,9 @@ pub struct AppState {
     /// The open-source build has none — it uses the country header a proxy
     /// sends. The private edition adds one.
     pub geo: Option<Arc<dyn crate::geo::Resolver>>,
+    /// The admission gate: what may be in flight on the collection path, and how
+    /// fast it may come in.
+    pub gate: Arc<crate::limits::Gate>,
 }
 
 impl AppState {
@@ -73,6 +76,9 @@ impl AppState {
         config: Arc<Config>,
         jwt_secret: Arc<String>,
     ) -> Self {
+        // The gate is built from the configuration before it is moved into the
+        // state.
+        let gate = Arc::new(crate::limits::Gate::new(config.limits()));
         Self {
             storage,
             instance,
@@ -83,6 +89,7 @@ impl AppState {
             website_cache: Arc::new(RwLock::new(HashMap::new())),
             cache_stamp: Arc::new(AtomicU64::new(0)),
             geo: None,
+            gate,
         }
     }
 
@@ -203,10 +210,31 @@ async fn require_auth(
 
 /// Build the router.
 pub fn router(state: AppState) -> Router {
+    // The collection path is the only one whose size the traffic decides, so it
+    // is the only one with a gate: the body limit and the admission control
+    // both sit **in front of** the handler, so a request that is not admitted
+    // never costs any memory.
+    let body_limit = state.config.max_body_bytes;
     Router::new()
         // --- collection (public) ---
-        .route("/api/send", post(collect::send))
-        .route("/api/collect", post(collect::collect))
+        .route(
+            "/api/send",
+            post(collect::send)
+                .layer(axum::extract::DefaultBodyLimit::max(body_limit))
+                .layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    crate::limits::admit,
+                )),
+        )
+        .route(
+            "/api/collect",
+            post(collect::collect)
+                .layer(axum::extract::DefaultBodyLimit::max(body_limit))
+                .layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    crate::limits::admit,
+                )),
+        )
         .route("/api/heartbeat", get(health::heartbeat))
         // --- auth ---
         .route("/api/login", post(auth::login))

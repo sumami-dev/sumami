@@ -9,6 +9,7 @@ use crate::models::Heartbeat;
 /// `GET /api/heartbeat` — liveness plus a few counters.
 pub async fn heartbeat(State(state): State<AppState>) -> Json<Heartbeat> {
     let stats = state.storage.stats().unwrap_or_default();
+    let gate = state.gate.stats();
 
     Json(Heartbeat {
         ok: true,
@@ -26,5 +27,10 @@ pub async fn heartbeat(State(state): State<AppState>) -> Json<Heartbeat> {
         flush_p99_ms: state.writer.flush_percentile(99),
         flush_max_ms: state.writer.flush_history().iter().copied().max().unwrap_or(0),
         database_size_bytes: stats.size_bytes,
+        inflight_requests: gate.inflight_requests,
+        inflight_bytes: gate.inflight_bytes,
+        refused_rate: gate.refused_rate,
+        refused_inflight: gate.refused_inflight,
+        refused_body: gate.refused_body,
     })
 }

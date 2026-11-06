@@ -128,6 +128,30 @@ pub struct Config {
     pub duckdb_threads: usize,
     /// Maximum number of events buffered in memory before the oldest are dropped.
     pub max_queue: usize,
+    /// The largest request body the collector will read, in bytes.
+    ///
+    /// The collection path is the only place where the traffic decides how much
+    /// memory is used, so it is the only place that needs a limit on a single
+    /// request. Axum's own default (2 MB) is a request that can be forty times
+    /// the size of a page view.
+    pub max_body_bytes: usize,
+    /// How many collection requests may be in flight — being read or parsed — at
+    /// once. `0` = no limit.
+    ///
+    /// This bounds the collector's live working set: the allocator's arenas grow
+    /// to the high-water mark of what is being parsed at the same time, and they
+    /// do not shrink afterwards.
+    pub max_inflight_requests: u64,
+    /// How many bytes may be in flight at once. `0` = no limit.
+    ///
+    /// **Bytes, not requests**: a request is not a memory unit. This is the
+    /// budget the collector spends out of.
+    pub max_inflight_bytes: u64,
+    /// How many collection requests per second are admitted. `0` = no limit.
+    ///
+    /// The allocator's high-water mark grows with the *rate* of allocation, not
+    /// with the total, so a rate limit is what bounds the churn.
+    pub max_admit_rps: u64,
     /// Maximum number of events written in one batch.
     ///
     /// **The batch is what the write path costs in memory** — a batch is one
@@ -245,6 +269,22 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(100_000);
 
+        // The admission gate (see `limits`). Everything is off by default: the
+        // numbers are measured, not guessed, and until they are, the gate must
+        // not change what the server does.
+        let max_body_bytes = env_any("SUMIMI_MAX_BODY_BYTES")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(crate::limits::DEFAULT_MAX_BODY_BYTES);
+        let max_inflight_requests = env_any("SUMIMI_MAX_INFLIGHT_REQUESTS")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let max_inflight_bytes = env_any("SUMIMI_MAX_INFLIGHT_BYTES")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let max_admit_rps = env_any("SUMIMI_MAX_ADMIT_RPS")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
         // The batch cap: ten thousand rows is about 5 MB of hit structs and
         // 50 ms of writing — small enough that the dashboard's queries do not
         // wait behind it (the writer holds DuckDB's single write connection),
@@ -326,6 +366,10 @@ impl Config {
             duckdb_threads,
             max_queue,
             max_batch,
+            max_body_bytes,
+            max_inflight_requests,
+            max_inflight_bytes,
+            max_admit_rps,
             flush_interval_secs,
             cache_stale_secs,
             uptime_interval_secs,
@@ -343,6 +387,26 @@ impl Config {
             ssl_cache_dir,
             ssl_port,
         })
+    }
+
+    /// The collection path's limits — what the admission gate enforces.
+    ///
+    /// **One request must always fit in the budget.** A request whose length is
+    /// not declared reserves the whole per-request limit, so a body limit larger
+    /// than the in-flight budget would refuse everything — including the first
+    /// request. The body limit is therefore lowered to the budget.
+    pub fn limits(&self) -> crate::limits::Limits {
+        let max_body_bytes = if self.max_inflight_bytes > 0 {
+            self.max_body_bytes.min(self.max_inflight_bytes as usize)
+        } else {
+            self.max_body_bytes
+        };
+        crate::limits::Limits {
+            max_body_bytes,
+            max_inflight_requests: self.max_inflight_requests,
+            max_inflight_bytes: self.max_inflight_bytes,
+            max_admit_rps: self.max_admit_rps,
+        }
     }
 }
 

@@ -16,6 +16,8 @@ pub enum ApiError {
     NotFound(String),
     /// 409 — the resource already exists.
     Conflict(String),
+    /// 413 — the request body is larger than the server will read.
+    PayloadTooLarge,
     /// 500 — something went wrong on our side.
     Internal(String),
 }
@@ -33,6 +35,7 @@ impl ApiError {
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
             ApiError::NotFound(_) => StatusCode::NOT_FOUND,
             ApiError::Conflict(_) => StatusCode::CONFLICT,
+            ApiError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             ApiError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -45,6 +48,7 @@ impl ApiError {
             | ApiError::Conflict(m)
             | ApiError::Internal(m) => m.clone(),
             ApiError::Unauthorized => "unauthorized".to_string(),
+            ApiError::PayloadTooLarge => "payload too large".to_string(),
         }
     }
 }
