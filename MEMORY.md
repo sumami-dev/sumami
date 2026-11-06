@@ -217,51 +217,51 @@ actually drain — not from a constant. The in-flight limits stay as the backsto
 ## 6. The deployment reference
 
 **What the memory costs, by the rate.** Measured with the sweep
-(`gate_sweep --curve`): one page view per request (110 bytes), 64 connections, 20 s,
-the **worst** of three runs — the promise is about the peak, so the peak is what the
-table carries. (Sampled on macOS, so these are lower bounds; the CI runs the same
-sweep on Linux, where the peak is exact.)
+(`gate_sweep --curve`) on the **CI runner** (Linux, 2 vCPU ✓ — the peak is the exact
+high-water mark ✓), one page view per request (110 bytes ✓), 64 connections ✓, 20 s ✓,
+the **worst** of three runs ✓ — the promise is about the peak ✓, so the peak is what
+the table carries ✓.
 
 | the rate offered | the peak RSS | the engine holds | what it fits |
 | --- | ---: | ---: | --- |
-| 5 000 /s | 134 MB | 2 MB | the **minimum** tier (256 MB) ✓ |
-| **10 000 /s** | **152 MB** | 2 MB | the **minimum** tier ✓ — 100 MB to spare ✓ |
-| 20 000 /s | 286 MB | 2 MB | the **recommended** tier (512 MB) ✓ |
-| 30 000 /s | 312 MB | 4 MB | the recommended tier ✓ |
-| 50 000 /s | 327 MB | 5 MB | the recommended tier ✓ |
-| 100 000 /s | 598 MB | 8 MB | **neither** ✓ — see below ✓ |
+| 5 000 /s | 84 MB | 2 MB | the **minimum** tier (256 MB) ✓ |
+| **10 000 /s** | **149 MB** | 2 MB | the **minimum** tier ✓ — 107 MB to spare ✓ |
+| 20 000 /s | 256 MB | 2 MB | the **minimum** tier's ceiling, exactly ✓ |
+| 30 000 /s | 309 MB | 4 MB | the **recommended** tier (512 MB) ✓ |
+| 38 000 /s (all the runner could offer ✓) | 370 MB | 12 MB | the recommended tier ✓ |
 
-**The body size counts as much as the rate.** At 20 000 requests a second, changing
+The rule on that machine: **the peak ≈ 68 MB + 7.8 MB per 1 000 requests a second** ✓.
+**The engine is 2–12 MB of it** ✓ — the rest is the collection path and the allocator ✓.
+
+**The event size counts as much as the rate.** At 20 000 requests a second, changing
 only the size of one event:
 
-| the body | the peak |
-| --- | ---: |
-| 110 bytes (a page view) | 276 MB |
-| 1 KB | 390 MB |
-| 10 KB | 993 MB |
+| the body | the payload | the peak | the queue |
+| --- | ---: | ---: | --- |
+| 110 bytes (a page view) | 2 MB/s | 275 MB | empty ✓ |
+| 1 KB | 20 MB/s | 407 MB | empty ✓ |
+| **10 KB** | **200 MB/s** | **1812 MB** ✗ | **overflowed** ✓ (115 200 refused ✓) |
 
-⇒ **the currency is the payload bytes a second** ✓ — a site that sends few big
-events costs more than a site that sends many small ones ✓.
+⇒ **the write path's capacity is in bytes a second** ✓, not in rows ✓ — at 200 MB/s
+the disk could not keep up ✓ and the server refused ✓ ✓.
 
 **What does *not* matter**, measured one at a time: the number of connections (16, 64
-and 256 give the same peak ✓) ✓ and the two in-flight limits ✓ — they are the
-backstop, not the lever ✓.
-
-**Above the sustainable rate the server refuses ✓** — at 100 000/s the write path
-could not keep up ✓ (124 776 refused ✓, 124 776 dropped ✓) ✓. On this box the
-writer drains **50 000 rows a second** ✓; above that, refusing is the correct
-answer ✓ — the traffic is faster than the disk ✓.
+and 256 → 250, 275 and 255 MB ✓) ✓ and the two in-flight limits ✓ (248 and 243 MB ✓)
+— they are the **backstop** ✓, not the lever ✓ ✓.
 
 **So the rule for a deployment is three lines:**
 
-1. **How many requests a second does the site get?** ✓ → the first table ✓;
-2. **How big are its events?** ✓ → the second table ✓;
+1. **How many requests a second does the site get, and how big are the events?** ✓
+   → the two tables ✓ — **the payload bytes a second is the number that matters** ✓ ✓;
+2. **Does it fit?** ✓ → the first table ✓ — **10 000 page views a second costs
+   149 MB** ✓ ✓, which is the **minimum** tier ✓ with 107 MB to spare ✓ ✓;
 3. **Set `SUMIMI_MAX_ADMIT_RPS` to that rate** ✓ — then the peak is the table's row
    whatever the traffic does ✓, and a burst above it is refused (with a
    `Retry-After` ✓) instead of taking the box with it ✓ ✓.
 
-**The 10 000 requests a second target fits the minimum tier** ✓ ✓ — 152 MB against
-a 256 MB ceiling ✓, of which the engine is 2 MB ✓ ✓.
+**The 10 000 requests a second target fits the minimum tier** ✓ ✓ — and the numbers
+are from a **2 vCPU** box ✓: a bigger box has more threads ✓ (more allocator arenas
+✓) and a different slope ✓ ⇒ **measure on the box you ship on** ✓ ✓.
 
 ## 7. Where each piece is decided
 

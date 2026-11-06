@@ -177,9 +177,9 @@ SUMIMI_MAX_ADMIT_RPS=20000</code></pre>
 
     <h2>How much traffic does my site need?</h2>
     <p>
-      The table a deployment is sized from. One page view per request (110 bytes),
-      64 connections, and the <strong>worst</strong> of three runs — because the
-      promise is about the peak.
+      The table a deployment is sized from, measured on a 2 vCPU Linux box (the exact
+      high-water mark, the worst of three runs — because the promise is about the
+      peak). One page view per request (110 bytes), 64 connections.
     </p>
     <div class="table-wrap">
       <table>
@@ -187,12 +187,11 @@ SUMIMI_MAX_ADMIT_RPS=20000</code></pre>
           <tr><th>requests a second</th><th>the peak RSS</th><th>the engine's share</th><th>what it fits</th></tr>
         </thead>
         <tbody>
-          <tr><td>5 000</td><td>134 MB</td><td>2 MB</td><td>the minimum tier</td></tr>
-          <tr><td><strong>10 000</strong></td><td><strong>152 MB</strong></td><td>2 MB</td><td>the minimum tier, with 100 MB to spare</td></tr>
-          <tr><td>20 000</td><td>286 MB</td><td>2 MB</td><td>the recommended tier</td></tr>
-          <tr><td>30 000</td><td>312 MB</td><td>4 MB</td><td>the recommended tier</td></tr>
-          <tr><td>50 000</td><td>327 MB</td><td>5 MB</td><td>the recommended tier</td></tr>
-          <tr><td>100 000</td><td>598 MB</td><td>8 MB</td><td>neither — see below</td></tr>
+          <tr><td>5 000</td><td>84 MB</td><td>2 MB</td><td>the minimum tier</td></tr>
+          <tr><td><strong>10 000</strong></td><td><strong>149 MB</strong></td><td>2 MB</td><td>the minimum tier, with 107 MB to spare</td></tr>
+          <tr><td>20 000</td><td>256 MB</td><td>2 MB</td><td>exactly the minimum tier's ceiling</td></tr>
+          <tr><td>30 000</td><td>309 MB</td><td>4 MB</td><td>the recommended tier</td></tr>
+          <tr><td>38 000 (all that box could offer)</td><td>370 MB</td><td>12 MB</td><td>the recommended tier</td></tr>
         </tbody>
       </table>
     </div>
@@ -203,20 +202,21 @@ SUMIMI_MAX_ADMIT_RPS=20000</code></pre>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>one event</th><th>the peak RSS</th></tr>
+          <tr><th>one event</th><th>the payload</th><th>the peak RSS</th></tr>
         </thead>
         <tbody>
-          <tr><td>110 bytes (a page view)</td><td>276 MB</td></tr>
-          <tr><td>1 KB</td><td>390 MB</td></tr>
-          <tr><td>10 KB</td><td>993 MB</td></tr>
+          <tr><td>110 bytes (a page view)</td><td>2 MB/s</td><td>275 MB</td></tr>
+          <tr><td>1 KB</td><td>20 MB/s</td><td>407 MB</td></tr>
+          <tr><td>10 KB</td><td>200 MB/s</td><td>1812 MB — and the queue overflowed</td></tr>
         </tbody>
       </table>
     </div>
     <p>
       The number of connections makes no difference (16, 64 and 256 give the same
-      peak), and above about <strong>50 000 requests a second</strong> the write path
-      cannot keep up: the queue fills, and the server starts refusing — which is the
-      right answer, because the traffic is arriving faster than the disk can take it.
+      peak), and what the write path can absorb is counted in <strong>bytes a
+      second</strong>, not in rows: at 200 MB/s of events the disk cannot keep up, the
+      queue fills, and the server starts refusing — which is the right answer, because
+      the traffic is arriving faster than the disk can take it.
     </p>
     <div class="callout tip">
       <p class="callout-title">
