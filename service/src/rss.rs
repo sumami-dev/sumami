@@ -139,7 +139,13 @@ mod tests {
 
     #[test]
     fn the_peak_is_at_least_the_current() {
-        if let (Some(peak), Some(current)) = (peak_rss(), current_rss()) {
+        // The current is read **first**: the peak is a high-water mark, so it
+        // can only go up — and a process that grows between the two reads
+        // would otherwise make the peak look smaller than the current.
+        let Some(current) = current_rss() else {
+            return;
+        };
+        if let Some(peak) = peak_rss() {
             assert!(
                 peak >= current,
                 "the peak ({peak}) cannot be below the current ({current})"
