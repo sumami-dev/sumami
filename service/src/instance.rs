@@ -388,16 +388,7 @@ impl SqliteInstance {
                     "SELECT id, username, password_hash, created_at, role, team_id
                      FROM \"user\" WHERE username = ?1",
                     params![username],
-                    |row| {
-                        Ok(Account {
-                            id: row.get(0)?,
-                            username: row.get(1)?,
-                            password_hash: row.get(2)?,
-                            created_at: from_ts(row.get(3)?),
-                            role: row.get(4)?,
-                            team_id: row.get(5)?,
-                        })
-                    },
+                    |row| account_from(row),
                 )
                 .optional()?)
         })
@@ -413,14 +404,7 @@ impl SqliteInstance {
             let mut rows = stmt.query([])?;
             let mut out = Vec::new();
             while let Some(row) = rows.next()? {
-                out.push(Account {
-                    id: row.get(0)?,
-                    username: row.get(1)?,
-                    password_hash: row.get(2)?,
-                    created_at: from_ts(row.get(3)?),
-                    role: row.get(4)?,
-                    team_id: row.get(5)?,
-                });
+                out.push(account_from(row)?);
             }
             Ok(out)
         })
@@ -454,16 +438,7 @@ impl SqliteInstance {
                         "SELECT id, username, password_hash, created_at, role, team_id
                          FROM \"user\" WHERE username = ?1",
                         params![username],
-                        |row| {
-                            Ok(Account {
-                                id: row.get(0)?,
-                                username: row.get(1)?,
-                                password_hash: row.get(2)?,
-                                created_at: from_ts(row.get(3)?),
-                                role: row.get(4)?,
-                                team_id: row.get(5)?,
-                            })
-                        },
+                        |row| account_from(row),
                     )?;
                     Ok(account)
                 }
@@ -584,15 +559,7 @@ impl SqliteInstance {
             let mut rows = stmt.query(params![kind, limit.clamp(1, 1000)])?;
             let mut out = Vec::new();
             while let Some(row) = rows.next()? {
-                out.push(LogEntry {
-                    at: from_ts(row.get(0)?),
-                    level: row.get(1)?,
-                    kind: row.get(2)?,
-                    actor: row.get(3)?,
-                    website_id: row.get(4)?,
-                    message: row.get(5)?,
-                    data: row.get(6)?,
-                });
+                out.push(log_from(row)?);
             }
             Ok(out)
         })
@@ -1158,11 +1125,7 @@ impl SqliteInstance {
             let mut rows = stmt.query([])?;
             let mut out = Vec::new();
             while let Some(row) = rows.next()? {
-                out.push(Team {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    created_at: from_ts(row.get(2)?),
-                });
+                out.push(team_from(row)?);
             }
             Ok(out)
         })
@@ -1175,13 +1138,7 @@ impl SqliteInstance {
                 .query_row(
                     "SELECT id, name, created_at FROM team WHERE id = ?1",
                     params![id],
-                    |row| {
-                        Ok(Team {
-                            id: row.get(0)?,
-                            name: row.get(1)?,
-                            created_at: from_ts(row.get(2)?),
-                        })
-                    },
+                    |row| team_from(row),
                 )
                 .optional()?)
         })
@@ -1372,6 +1329,81 @@ fn ts(value: chrono::NaiveDateTime) -> i64 {
 }
 
 /// A timestamp from epoch seconds.
+/// A row of the instance store.
+///
+/// The store has two implementations — SQLite and PostgreSQL — and both read
+/// the same rows in the same order. The order is what the mappings below are
+/// made of, so it lives here, once; each implementation says how to read a
+/// column.
+pub trait Row {
+    /// The error a column read can fail with.
+    type Error;
+
+    /// The text of a column.
+    fn text(&self, index: usize) -> std::result::Result<String, Self::Error>;
+    /// The text of a column that may be empty.
+    fn opt_text(&self, index: usize) -> std::result::Result<Option<String>, Self::Error>;
+    /// A number column.
+    fn number(&self, index: usize) -> std::result::Result<i64, Self::Error>;
+    /// A timestamp column, in milliseconds.
+    fn timestamp(&self, index: usize) -> std::result::Result<i64, Self::Error>;
+}
+
+/// An account, from a row.
+pub fn account_from<R: Row>(row: R) -> std::result::Result<Account, R::Error> {
+    Ok(Account {
+        id: row.text(0)?,
+        username: row.text(1)?,
+        password_hash: row.text(2)?,
+        created_at: from_ts(row.timestamp(3)?),
+        role: row.text(4)?,
+        team_id: row.opt_text(5)?,
+    })
+}
+
+/// A team, from a row.
+pub fn team_from<R: Row>(row: R) -> std::result::Result<Team, R::Error> {
+    Ok(Team {
+        id: row.text(0)?,
+        name: row.text(1)?,
+        created_at: from_ts(row.timestamp(2)?),
+    })
+}
+
+/// A log line, from a row.
+pub fn log_from<R: Row>(row: R) -> std::result::Result<LogEntry, R::Error> {
+    Ok(LogEntry {
+        at: from_ts(row.timestamp(0)?),
+        level: row.text(1)?,
+        kind: row.text(2)?,
+        actor: row.opt_text(3)?,
+        website_id: row.opt_text(4)?,
+        message: row.text(5)?,
+        data: row.opt_text(6)?,
+    })
+}
+
+/// A row of the SQLite instance store.
+impl Row for &rusqlite::Row<'_> {
+    type Error = rusqlite::Error;
+
+    fn text(&self, index: usize) -> std::result::Result<String, Self::Error> {
+        Ok((*self).get(index)?)
+    }
+
+    fn opt_text(&self, index: usize) -> std::result::Result<Option<String>, Self::Error> {
+        Ok((*self).get(index)?)
+    }
+
+    fn number(&self, index: usize) -> std::result::Result<i64, Self::Error> {
+        Ok((*self).get(index)?)
+    }
+
+    fn timestamp(&self, index: usize) -> std::result::Result<i64, Self::Error> {
+        Ok((*self).get(index)?)
+    }
+}
+
 fn from_ts(value: i64) -> chrono::NaiveDateTime {
     chrono::DateTime::from_timestamp(value, 0)
         .map(|d| d.naive_utc())
