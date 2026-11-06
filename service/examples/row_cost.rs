@@ -13,6 +13,7 @@
 
 use std::time::Instant;
 
+use anyhow::anyhow;
 use duckdb::Connection;
 
 
@@ -45,34 +46,43 @@ fn parity() -> anyhow::Result<()> {
         let conn = Connection::open(&path)?;
         // The real schema: the same 42 columns, the same expressions.
         conn.execute_batch(&format!(
-            "CREATE TABLE event ({ddl});
-             INSERT INTO event
-             SELECT
-               i, 'w1', {session}, {visitor},
-               now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE,
-               '/post/' || (i % 5000)::VARCHAR,
-               'utm_source=twitter&utm_campaign=spring&utm_medium=cpc',
-               'A reasonably long article title number ' || (i % 2000)::VARCHAR,
-               (ARRAY['news.ycombinator.com','www.google.com','github.com','x.com'])[1 + (i % 4)],
-               '/ref/path/' || (i % 1000)::VARCHAR, '?q=search+' || (i % 500)::VARCHAR, 'example.com',
-               (ARRAY['Chrome','Safari','Firefox','Edge'])[1 + (i % 4)], '120',
-               (ARRAY['Windows','macOS','iOS','Android'])[1 + (i % 4)], '10',
-               (ARRAY['desktop','mobile','tablet'])[1 + (i % 3)], (ARRAY['1920x1080','390x844','768x1024'])[1 + (i % 3)],
-               (ARRAY['en-US','zh-CN','de-DE'])[1 + (i % 3)],
-               (ARRAY['US','CN','DE','JP'])[1 + (i % 4)], NULL, NULL,
-               (ARRAY['twitter','newsletter','google','hn'])[1 + (i % 4)], 'cpc', 'spring',
-               'cta-' || (i % 5)::VARCHAR, 'analytics',
-               CASE WHEN i % 9 = 0 THEN 'gclid-' || i::VARCHAR ELSE NULL END,
-               CASE WHEN i % 11 = 0 THEN 'fbclid-' || i::VARCHAR ELSE NULL END,
-               NULL, NULL, NULL, NULL,
-               600.0 + (i % 1800), 30.0 + (i % 260), (i % 100) / 1000.0,
-               400.0 + (i % 900), 60.0 + (i % 220),
-               'pageview', NULL, NULL, NULL
-             FROM generate_series(1, {rows}) t(i);",
+            "CREATE TABLE event ({ddl});",
             ddl = sumimi_service::db::EVENT_COLUMNS,
-            session = uuid("md5((1 + (i / 2))::text || '-s')"),
-            visitor = uuid("md5((i % 3000)::text || '-v')"),
         ))?;
+        let row = row_with(vec![
+            ("session_id", uuid("md5((1 + (i / 2))::text || '-s')")),
+            ("visitor_id", uuid("md5((i % 3000)::text || '-v')")),
+            ("url", "'/post/' || (i % 5000)::VARCHAR".to_string()),
+            (
+                "url_query",
+                "'utm_source=twitter&utm_campaign=spring&utm_medium=cpc'".to_string(),
+            ),
+            (
+                "title",
+                "'A reasonably long article title number ' || (i % 2000)::VARCHAR".to_string(),
+            ),
+            (
+                "referrer_path",
+                "'/ref/path/' || (i % 1000)::VARCHAR".to_string(),
+            ),
+            (
+                "referrer_query",
+                "'?q=search+' || (i % 500)::VARCHAR".to_string(),
+            ),
+            ("hostname", "'example.com'".to_string()),
+            (
+                "utm_source",
+                "(ARRAY['twitter','newsletter','google','hn'])[1 + (i % 4)]".to_string(),
+            ),
+            ("utm_campaign", "'spring'".to_string()),
+            ("utm_content", "'cta-' || (i % 5)::VARCHAR".to_string()),
+            ("utm_term", "'analytics'".to_string()),
+            (
+                "gclid",
+                "CASE WHEN i % 9 = 0 THEN 'gclid-' || i::VARCHAR ELSE NULL END".to_string(),
+            ),
+        ]);
+        conn.execute_batch(&fill_sql(&row, rows)?)?;
         conn.execute_batch("CHECKPOINT")?;
         let size = std::fs::metadata(&path)?.len();
         println!("  {rows:>9} views -> {:>8.2} MB", size as f64 / 1e6);
@@ -88,6 +98,126 @@ fn parity() -> anyhow::Result<()> {
 
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
+}
+
+/// The expressions of one synthetic row, by column name.
+type Row = Vec<(&'static str, String)>;
+
+/// The columns that are the same in every measurement.
+fn standard_row() -> Row {
+    vec![
+        ("id", "i".to_string()),
+        ("website_id", "'w1'".to_string()),
+        ("visit_id", "NULL".to_string()),
+        (
+            "created_at",
+            "now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE".to_string(),
+        ),
+        (
+            "referrer",
+            "(ARRAY['news.ycombinator.com','www.google.com','github.com','x.com'])[1 + (i % 4)]"
+                .to_string(),
+        ),
+        ("referrer_name", "NULL".to_string()),
+        ("channel", "NULL".to_string()),
+        (
+            "browser",
+            "(ARRAY['Chrome','Safari','Firefox','Edge'])[1 + (i % 4)]".to_string(),
+        ),
+        ("browser_version", "'120'".to_string()),
+        (
+            "os",
+            "(ARRAY['Windows','macOS','iOS','Android'])[1 + (i % 4)]".to_string(),
+        ),
+        ("os_version", "'10'".to_string()),
+        (
+            "device",
+            "(ARRAY['desktop','mobile','tablet'])[1 + (i % 3)]".to_string(),
+        ),
+        (
+            "screen",
+            "(ARRAY['1920x1080','390x844','768x1024'])[1 + (i % 3)]".to_string(),
+        ),
+        (
+            "language",
+            "(ARRAY['en-US','zh-CN','de-DE'])[1 + (i % 3)]".to_string(),
+        ),
+        (
+            "country",
+            "(ARRAY['US','CN','DE','JP'])[1 + (i % 4)]".to_string(),
+        ),
+        ("region", "NULL".to_string()),
+        ("city", "NULL".to_string()),
+        ("latitude", "NULL".to_string()),
+        ("longitude", "NULL".to_string()),
+        ("utm_medium", "'cpc'".to_string()),
+        (
+            "utm_campaign",
+            "'campaign-' || (i % 200)::VARCHAR".to_string(),
+        ),
+        ("utm_content", "'cta-' || (i % 20)::VARCHAR".to_string()),
+        ("utm_term", "'term-' || (i % 50)::VARCHAR".to_string()),
+        (
+            "fbclid",
+            "CASE WHEN i % 11 = 0 THEN 'fbclid-' || i::VARCHAR ELSE NULL END".to_string(),
+        ),
+        ("msclkid", "NULL".to_string()),
+        ("ttclid", "NULL".to_string()),
+        ("lifatid", "NULL".to_string()),
+        ("twclid", "NULL".to_string()),
+        ("lcp", "600.0 + (i % 1800)".to_string()),
+        ("inp", "30.0 + (i % 260)".to_string()),
+        ("cls", "(i % 100) / 1000.0".to_string()),
+        ("fcp", "400.0 + (i % 900)".to_string()),
+        ("ttfb", "60.0 + (i % 220)".to_string()),
+        ("event_type", "'pageview'".to_string()),
+        ("event_name", "NULL".to_string()),
+        ("tag", "NULL".to_string()),
+        ("data", "NULL".to_string()),
+    ]
+}
+
+/// The row of a measurement: the standard one with a few columns changed.
+fn row_with(overrides: Vec<(&'static str, String)>) -> Row {
+    let mut row = standard_row();
+    for (column, expression) in overrides {
+        match row.iter_mut().find(|(name, _)| *name == column) {
+            Some(entry) => entry.1 = expression,
+            None => row.push((column, expression)),
+        }
+    }
+    row
+}
+
+/// The SQL that fills the `event` table with one row per generated id.
+///
+/// The columns are the schema's, in the schema's order, and every value is
+/// looked up **by column name** — so a column the schema has and this row
+/// does not is an error, not a silently misplaced value.
+fn fill_sql(row: &Row, rows: i64) -> anyhow::Result<String> {
+    let columns = sumimi_service::db::event_columns();
+    let mut values = Vec::with_capacity(columns.len());
+    for column in &columns {
+        let expression = row
+            .iter()
+            .find(|(name, _)| name == column)
+            .map(|(_, expression)| expression.as_str())
+            .ok_or_else(|| anyhow!("no expression for the column {column}"))?;
+        values.push(expression);
+    }
+    Ok(format!(
+        "INSERT INTO event ({}) SELECT {} FROM generate_series(1, {rows}) t(i);",
+        columns.join(", "),
+        values.join(", "),
+    ))
+}
+
+/// How the ids are written.
+struct Ids {
+    /// The expression for the session id.
+    session: String,
+    /// The expression for the visitor id.
+    visitor: String,
 }
 
 /// The three levels of realism.
@@ -188,39 +318,29 @@ fn build_ids(
             "'v' || (i % 30000)::VARCHAR",
         ),
     };
+    let (session, visitor) = (session.to_string(), visitor.to_string());
 
-    let sql = format!(
-        "INSERT INTO event
-         SELECT
-           i, 'w1', {session}, {visitor},
-           now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE,
-           {url},
-           'utm_source=twitter&utm_medium=cpc&utm_campaign=campaign-' || (i % 200)::VARCHAR
-             || '&utm_content=cta&utm_term=term',
-           {title},
-           (ARRAY['news.ycombinator.com','www.google.com','github.com','x.com'])[1 + (i % 4)],
-           {referrer}, {query}, '{host}',
-           (ARRAY['Chrome','Safari','Firefox','Edge'])[1 + (i % 4)], '120',
-           (ARRAY['Windows','macOS','iOS','Android'])[1 + (i % 4)], '10',
-           (ARRAY['desktop','mobile','tablet'])[1 + (i % 3)], (ARRAY['1920x1080','390x844','768x1024'])[1 + (i % 3)],
-           (ARRAY['en-US','zh-CN','de-DE'])[1 + (i % 3)],
-           (ARRAY['US','CN','DE','JP'])[1 + (i % 4)], NULL, NULL,
-           'twitter', 'cpc', 'campaign-' || (i % 200)::VARCHAR,
-           'cta-' || (i % 20)::VARCHAR, 'term-' || (i % 50)::VARCHAR,
-           CASE WHEN i % 3 = 0 THEN 'gclid-' || i::VARCHAR ELSE NULL END,
-           CASE WHEN i % 11 = 0 THEN 'fbclid-' || i::VARCHAR ELSE NULL END,
-           NULL, NULL, NULL, NULL,
-           600.0 + (i % 1800), 30.0 + (i % 260), (i % 100) / 1000.0,
-           400.0 + (i % 900), 60.0 + (i % 220),
-           'pageview', NULL, NULL, NULL
-         FROM generate_series(1, {rows}) t(i);",
-        url = level.url,
-        title = level.title,
-        referrer = level.referrer,
-        query = level.query,
-        host = level.host,
-    );
-    conn.execute_batch(&sql)?;
+    let row = row_with(vec![
+        ("session_id", session),
+        ("visitor_id", visitor),
+        ("url", level.url.clone()),
+        (
+            "url_query",
+            "'utm_source=twitter&utm_medium=cpc&utm_campaign=campaign-' || (i % 200)::VARCHAR
+             || '&utm_content=cta&utm_term=term'"
+                .to_string(),
+        ),
+        ("title", level.title.clone()),
+        ("referrer_path", level.referrer.clone()),
+        ("referrer_query", level.query.clone()),
+        ("hostname", format!("'{}'", level.host)),
+        ("utm_source", "'twitter'".to_string()),
+        (
+            "gclid",
+            "CASE WHEN i % 3 = 0 THEN 'gclid-' || i::VARCHAR ELSE NULL END".to_string(),
+        ),
+    ]);
+    conn.execute_batch(&fill_sql(&row, rows)?)?;
     conn.execute_batch("CHECKPOINT")?;
     Ok(std::fs::metadata(path)?.len() as f64)
 }
@@ -282,7 +402,15 @@ fn main() -> anyhow::Result<()> {
         sumimi_service::db::init_schema(&conn)?;
 
         let started = Instant::now();
-        fill(&conn, &level, 100_000)?;
+        fill(
+            &conn,
+            &level,
+            100_000,
+            Ids {
+                session: uuid(&level.session),
+                visitor: uuid(&level.visitor),
+            },
+        )?;
         let seconds = started.elapsed().as_secs_f64();
 
         conn.execute_batch("CHECKPOINT")?;
@@ -374,7 +502,16 @@ fn migration() -> anyhow::Result<()> {
     {
         let conn = Connection::open(&fresh_path)?;
         sumimi_service::db::init_schema(&conn)?;
-        fill(&conn, &levels()[1], 100_000)?;
+        let level = levels()[1].clone();
+        fill(
+            &conn,
+            &level,
+            100_000,
+            Ids {
+                session: uuid(&level.session),
+                visitor: uuid(&level.visitor),
+            },
+        )?;
         conn.execute_batch("CHECKPOINT")?;
     }
     let fresh = std::fs::metadata(&fresh_path)?.len();
@@ -391,86 +528,46 @@ fn migration() -> anyhow::Result<()> {
 /// Fill the event table with a dataset of the given level.
 /// Fill the table with the ids as **text** — what a v3 database holds.
 fn fill_text(conn: &Connection, level: &Level, rows: i64) -> anyhow::Result<()> {
-    let sql = format!(
-        "INSERT INTO event
-         SELECT
-           i, 'w1', {session}, {visitor},
-           now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE,
-           {url},
-           'utm_source=' || {utm} || '&utm_medium=cpc&utm_campaign=campaign-' || (i % 200)::VARCHAR
-             || '&utm_content=cta&utm_term=term',
-           {title},
-           (ARRAY['news.ycombinator.com','www.google.com','github.com','x.com'])[1 + (i % 4)],
-           {referrer}, {query}, '{host}',
-           (ARRAY['Chrome','Safari','Firefox','Edge'])[1 + (i % 4)], '120',
-           (ARRAY['Windows','macOS','iOS','Android'])[1 + (i % 4)], '10',
-           (ARRAY['desktop','mobile','tablet'])[1 + (i % 3)],
-           (ARRAY['1920x1080','390x844','768x1024'])[1 + (i % 3)],
-           (ARRAY['en-US','zh-CN','de-DE'])[1 + (i % 3)],
-           (ARRAY['US','CN','DE','JP'])[1 + (i % 4)], NULL, NULL,
-           {utm}, 'cpc', 'campaign-' || (i % 200)::VARCHAR,
-           'cta-' || (i % 20)::VARCHAR, 'term-' || (i % 50)::VARCHAR,
-           {click},
-           CASE WHEN i % 11 = 0 THEN 'fbclid-' || i::VARCHAR ELSE NULL END,
-           NULL, NULL, NULL, NULL,
-           600.0 + (i % 1800), 30.0 + (i % 260), (i % 100) / 1000.0,
-           400.0 + (i % 900), 60.0 + (i % 220),
-           'pageview', NULL, NULL, NULL
-         FROM generate_series(1, {rows}) t(i);",
-        session = level.session,
-        visitor = level.visitor,
-        url = level.url,
-        utm = level.utm,
-        title = level.title,
-        referrer = level.referrer,
-        query = level.query,
-        host = level.host,
-        click = level.click,
-    );
-    conn.execute_batch(&sql)?;
+    fill(
+        conn,
+        level,
+        rows,
+        Ids {
+            session: level.session.clone(),
+            visitor: level.visitor.clone(),
+        },
+    )
+}
+
+/// Fill the table with the dataset of a level.
+///
+/// The ids are given as expressions, because the two measurements differ in
+/// how the ids are written — as text (what a v3 database holds) or as the
+/// 16-byte UUID the server writes today.
+fn fill(conn: &Connection, level: &Level, rows: i64, ids: Ids) -> anyhow::Result<()> {
+    let row = row_with(vec![
+        ("session_id", ids.session),
+        ("visitor_id", ids.visitor),
+        ("url", level.url.clone()),
+        (
+            "url_query",
+            format!(
+                "'utm_source=' || ({utm}) || '&utm_medium=cpc&utm_campaign=campaign-' || (i % 200)::VARCHAR
+                 || '&utm_content=cta&utm_term=term'",
+                utm = level.utm,
+            ),
+        ),
+        ("title", level.title.clone()),
+        ("referrer_path", level.referrer.clone()),
+        ("referrer_query", level.query.clone()),
+        ("hostname", format!("'{}'", level.host)),
+        ("utm_source", level.utm.clone()),
+        ("gclid", level.click.clone()),
+    ]);
+    conn.execute_batch(&fill_sql(&row, rows)?)?;
     Ok(())
 }
 
-fn fill(conn: &Connection, level: &Level, rows: i64) -> anyhow::Result<()> {
-    let sql = format!(
-        "INSERT INTO event
-         SELECT
-           i, 'w1', {session}, {visitor},
-           now()::TIMESTAMP - INTERVAL (i % 30000000) MINUTE,
-           {url},
-           'utm_source=' || {utm} || '&utm_medium=cpc&utm_campaign=campaign-' || (i % 200)::VARCHAR
-             || '&utm_content=cta&utm_term=term',
-           {title},
-           (ARRAY['news.ycombinator.com','www.google.com','github.com','x.com'])[1 + (i % 4)],
-           {referrer}, {query}, '{host}',
-           (ARRAY['Chrome','Safari','Firefox','Edge'])[1 + (i % 4)], '120',
-           (ARRAY['Windows','macOS','iOS','Android'])[1 + (i % 4)], '10',
-           (ARRAY['desktop','mobile','tablet'])[1 + (i % 3)],
-           (ARRAY['1920x1080','390x844','768x1024'])[1 + (i % 3)],
-           (ARRAY['en-US','zh-CN','de-DE'])[1 + (i % 3)],
-           (ARRAY['US','CN','DE','JP'])[1 + (i % 4)], NULL, NULL,
-           {utm}, 'cpc', 'campaign-' || (i % 200)::VARCHAR,
-           'cta-' || (i % 20)::VARCHAR, 'term-' || (i % 50)::VARCHAR,
-           {click},
-           CASE WHEN i % 11 = 0 THEN 'fbclid-' || i::VARCHAR ELSE NULL END,
-           NULL, NULL, NULL, NULL,
-           600.0 + (i % 1800), 30.0 + (i % 260), (i % 100) / 1000.0,
-           400.0 + (i % 900), 60.0 + (i % 220),
-           'pageview', NULL, NULL, NULL
-         FROM generate_series(1, {rows}) t(i);",
-        session = uuid(&level.session),
-        visitor = uuid(&level.visitor),
-        url = level.url,
-        utm = level.utm,
-        title = level.title,
-        referrer = level.referrer,
-        query = level.query,
-        host = level.host,
-        click = level.click,
-    );
-    conn.execute_batch(&sql)?;
-    Ok(())
-}
 
 /// A byte count as a human string.
 fn fmt_bytes(bytes: u64) -> String {

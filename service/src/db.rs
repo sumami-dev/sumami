@@ -247,6 +247,76 @@ pub fn rebuild_to_new_file(path: &Path, conn: &Connection) -> Result<PathBuf> {
     Ok(new_path)
 }
 
+/// The names of the `event` table's columns, in order.
+pub fn event_columns() -> Vec<String> {
+    column_names(EVENT_COLUMNS)
+}
+
+/// The values of one row of the `event` table, in the schema's order.
+///
+/// The appender takes the values **positionally**, so the order has to be the
+/// schema's — and there is exactly one place that knows it. The server writes
+/// its rows with this, and so does anything that writes rows the way the
+/// server does.
+///
+/// The kind is a `&str` in the row, and a `&str` cannot become a trait object
+/// on its own — so the caller hands over a reference to it.
+pub fn event_row<'a>(
+    id: &'a i64,
+    hit: &'a crate::models::Hit,
+    kind: &'a &'a str,
+) -> Vec<&'a dyn duckdb::ToSql> {
+    vec![
+        id,
+        &hit.website_id,
+        &hit.session_id,
+        &hit.visitor_id,
+        &hit.visit_id,
+        &hit.created_at,
+        &hit.url,
+        &hit.url_query,
+        &hit.title,
+        &hit.referrer,
+        &hit.referrer_path,
+        &hit.referrer_query,
+        &hit.referrer_name,
+        &hit.hostname,
+        &hit.channel,
+        &hit.browser,
+        &hit.browser_version,
+        &hit.os,
+        &hit.os_version,
+        &hit.device,
+        &hit.screen,
+        &hit.language,
+        &hit.country,
+        &hit.region,
+        &hit.city,
+        &hit.latitude,
+        &hit.longitude,
+        &hit.utm_source,
+        &hit.utm_medium,
+        &hit.utm_campaign,
+        &hit.utm_content,
+        &hit.utm_term,
+        &hit.gclid,
+        &hit.fbclid,
+        &hit.msclkid,
+        &hit.ttclid,
+        &hit.lifatid,
+        &hit.twclid,
+        &hit.lcp,
+        &hit.inp,
+        &hit.cls,
+        &hit.fcp,
+        &hit.ttfb,
+        kind,
+        &hit.name,
+        &hit.tag,
+        &hit.data,
+    ]
+}
+
 /// The columns of a column definition, in order.
 ///
 /// The definitions are written one per line, so the first word of each part is the

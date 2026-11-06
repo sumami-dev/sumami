@@ -729,55 +729,10 @@ fn write_batch(conn: &Connection, batch: &[Hit], next_id: &AtomicI64) -> Result<
     // counter are what keep the ids unique.
     let mut appender = conn.appender("event")?;
     for hit in kept {
-        appender.append_row(duckdb::params![
-            next_id.fetch_add(1, Ordering::Relaxed),
-            hit.website_id,
-            hit.session_id,
-            hit.visitor_id,
-            hit.visit_id,
-            hit.created_at,
-            hit.url,
-            hit.url_query,
-            hit.title,
-            hit.referrer,
-            hit.referrer_path,
-            hit.referrer_query,
-            hit.referrer_name,
-            hit.hostname,
-            hit.channel,
-            hit.browser,
-            hit.browser_version,
-            hit.os,
-            hit.os_version,
-            hit.device,
-            hit.screen,
-            hit.language,
-            hit.country,
-            hit.region,
-            hit.city,
-            hit.latitude,
-            hit.longitude,
-            hit.utm_source,
-            hit.utm_medium,
-            hit.utm_campaign,
-            hit.utm_content,
-            hit.utm_term,
-            hit.gclid,
-            hit.fbclid,
-            hit.msclkid,
-            hit.ttclid,
-            hit.lifatid,
-            hit.twclid,
-            hit.lcp,
-            hit.inp,
-            hit.cls,
-            hit.fcp,
-            hit.ttfb,
-            hit.kind.as_str(),
-            hit.name,
-            hit.tag,
-            hit.data,
-        ])?;
+        let id = next_id.fetch_add(1, Ordering::Relaxed);
+        let kind = hit.kind.as_str();
+        let row = crate::db::event_row(&id, hit, &kind);
+        appender.append_row(&row[..])?;
     }
     appender.flush()?;
     Ok(())

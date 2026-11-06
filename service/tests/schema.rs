@@ -913,3 +913,17 @@ fn a_v3_sqlite_database_is_migrated_all_the_way() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The row of an event has one value for every column.
+///
+/// The appender takes the values positionally, so a row that is one value short
+/// — or one too long — would put a page view in the wrong column. This is the
+/// check that the schema and the row cannot drift apart.
+#[test]
+fn the_event_row_has_a_value_for_every_column() {
+    let hit = HitBuilder::new("w1", "s1", "v1").build();
+    let kind = hit.kind.as_str();
+    let row = sumimi_service::db::event_row(&1, &hit, &kind);
+
+    assert_eq!(row.len(), sumimi_service::db::event_columns().len());
+}

@@ -192,50 +192,11 @@ fn append_row(
     id: i64,
     hit: &Hit,
 ) -> anyhow::Result<()> {
-    appender.append_row(duckdb::params![
-        id,
-        hit.website_id,
-        hit.session_id,
-        hit.visitor_id,
-        hit.created_at,
-        hit.url,
-        hit.url_query,
-        hit.title,
-        hit.referrer,
-        hit.referrer_path,
-        hit.referrer_query,
-        hit.hostname,
-        hit.browser,
-        hit.browser_version,
-        hit.os,
-        hit.os_version,
-        hit.device,
-        hit.screen,
-        hit.language,
-        hit.country,
-        hit.region,
-        hit.city,
-        hit.utm_source,
-        hit.utm_medium,
-        hit.utm_campaign,
-        hit.utm_content,
-        hit.utm_term,
-        hit.gclid,
-        hit.fbclid,
-        hit.msclkid,
-        hit.ttclid,
-        hit.lifatid,
-        hit.twclid,
-        hit.lcp,
-        hit.inp,
-        hit.cls,
-        hit.fcp,
-        hit.ttfb,
-        hit.kind.as_str(),
-        hit.name,
-        hit.tag,
-        hit.data,
-    ])?;
+    // The row is the server's row: the columns and their order come from the
+    // schema, so this cannot drift away from it.
+    let kind = hit.kind.as_str();
+    let row = sumimi_service::db::event_row(&id, hit, &kind);
+    appender.append_row(&row[..])?;
     Ok(())
 }
 
@@ -287,7 +248,8 @@ fn main() -> anyhow::Result<()> {
     let hits = generate(total as i64);
 
     println!(
-        "{total} rows, {per_batch} per batch, the production schema (42 columns)\n"
+        "{total} rows, {per_batch} per batch, the production schema ({} columns)\n",
+        sumimi_service::db::event_columns().len()
     );
 
     let current = duckdb_current(&hits)?;
