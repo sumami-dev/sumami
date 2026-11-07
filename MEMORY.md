@@ -310,6 +310,13 @@ higher rate** ✓ ✓ (and at the ceiling the M5 uses *more* ✓ — it churns m
 the memory follows from it ✓ ✓ — **and until a third machine says otherwise, treat the
 table as "measured on two boxes" ✓, not as a law ✓** ✓.
 
+**And every one of these numbers is loopback traffic** ✓ ✓ — the client connects to
+`127.0.0.1` ✓, so **no TLS ✓, no network card ✓, no latency** ✓ ✓. That does not
+change the **memory** a request costs ✓ ✓ (the parsing is the same ✓) — but it makes
+**how much the box can take** ✓ look better than it is ✓ ✓: a real deployment pays
+for the TLS handshake and the encryption ✓ ✓ ⇒ **the ceiling is lower there** ✓ ✓.
+**Measure the TLS case too** ✓ before promising a rate ✓ ✓.
+
 **The mechanism, tested where it is cheapest to test** ✓: the same machine ✓, the same
 rate ✓, only the **thread count** changed ✓ — glibc gives every thread its own arena
 ✓, so the thread count *is* the arena count ✓:
