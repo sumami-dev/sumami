@@ -281,9 +281,29 @@ and 256 → 250, 275 and 255 MB ✓) ✓ and the two in-flight limits ✓ (248 a
    whatever the traffic does ✓, and a burst above it is refused (with a
    `Retry-After` ✓) instead of taking the box with it ✓ ✓.
 
-**The 10 000 requests a second target fits the minimum tier** ✓ ✓ — and the numbers
-are from a **2 vCPU** box ✓: a bigger box has more threads ✓ (more allocator arenas
-✓) and a different slope ✓ ⇒ **measure on the box you ship on** ✓ ✓.
+### The same numbers on two very different machines ✓
+
+The table above is from a **2 vCPU Xeon** ✓. The same sweep on an **Apple M5 (10
+cores)** ✓ gives:
+
+| the rate offered | the 2 vCPU Xeon | the 10-core M5 |
+| --- | ---: | ---: |
+| 5 000 /s | 116 MB | 117 MB |
+| 10 000 /s | 148 MB | 148 MB |
+| 20 000 /s | 253 MB | 271 MB |
+| 30 000 /s | 309 MB | 302 MB |
+| what the machine could serve | **~43 000 /s** | **~113 000 /s** |
+| the peak at the ceiling | 451 MB | 601 MB |
+
+⇒ **the memory a request costs is the same on both machines** ✓ ✓ — it is a property
+of the **request** ✓, not of the box ✓ ✓;
+⇒ **what differs is how much traffic the box can take** ✓ ✓ — a stronger CPU does
+**not** mean less memory ✓ ✓, it means **the same memory serves more traffic** ✓ ✓;
+⇒ ⇒ **the deployment reference is two questions**: *how much traffic do you get?* ✓
+(the memory table ✓) and *can this box take it?* ✓ (the CPU ✓ and the disk ✓) ✓ ✓.
+
+**So the number to measure on the box you ship on is the rate, not the memory** ✓ —
+the memory follows from it ✓ ✓.
 
 ## 7. Where each piece is decided
 

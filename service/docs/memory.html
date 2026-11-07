@@ -249,6 +249,31 @@ SUMIMI_MAX_ADMIT_RPS=20000</code></pre>
       </p>
     </div>
 
+    <h2>Does this depend on the machine?</h2>
+    <p>
+      The table above is from a 2 vCPU Xeon. The same sweep on a 10-core Apple M5:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>requests a second</th><th>the 2 vCPU Xeon</th><th>the 10-core M5</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>5 000</td><td>116 MB</td><td>117 MB</td></tr>
+          <tr><td>10 000</td><td>148 MB</td><td>148 MB</td></tr>
+          <tr><td>20 000</td><td>253 MB</td><td>271 MB</td></tr>
+          <tr><td>30 000</td><td>309 MB</td><td>302 MB</td></tr>
+          <tr><td><strong>what the machine could serve</strong></td><td>about 43 000 /s</td><td>about 113 000 /s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <strong>The memory a request costs is the same on both.</strong> What differs is
+      how much traffic the box can take: a stronger CPU does not mean less memory, it
+      means the same memory serves more traffic. So sizing a box is two questions —
+      how much traffic do you get, and can this machine take it?
+    </p>
+
     <h2>If the server is near its limit</h2>
     <ol>
       <li>Read <code>/api/heartbeat</code>. <code>queued</code> and <code>dropped</code> say whether the writer is keeping up; <code>refusedRate</code> says whether the gate is turning traffic away.</li>
