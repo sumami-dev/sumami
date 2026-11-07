@@ -93,11 +93,15 @@ jobs:
 
       # The debug symbols are most of the size of a DuckDB build, and nobody
       # needs them in a release.
+      #
+      # `--target` on purpose: the runner is already the right architecture,
+      # but naming the target puts the executable in a **predictable** place
+      # (`target/<triple>/release/`), and the cache key already knows it.
       - name: Build
         env:
           CARGO_PROFILE_RELEASE_DEBUG: 0
           CARGO_HTTP_TIMEOUT: 600
-        run: cargo build --release -p sumimi --bin sumimi
+        run: cargo build --release --target ${{ matrix.target }} -p sumimi --bin sumimi
 
       # The bundle: the binary (under its two alias names as well), the
       # dashboard frontend and the documentation.
