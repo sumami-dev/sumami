@@ -239,9 +239,17 @@ the table carries ✓.
 | 30 000 /s | 309 MB | 4 MB | the **recommended** tier (512 MB) ✓ |
 | 38 000 /s (all the runner could offer ✓) | 370 MB | 12 MB | the recommended tier ✓ |
 | 100 000 /s | **~850 MB** (by the rule ✓) — measured **~600 MB** on a bigger box ✓ | | **neither** ✓ |
+| 200 000 /s | **~600 MB, and it stops growing** ✓ | | the traffic is refused, not stored ✓ |
 
 The rule on that machine: **the peak ≈ 68 MB + 7.8 MB per 1 000 requests a second** ✓.
 **The engine is 2–12 MB of it** ✓ — the rest is the collection path and the allocator ✓.
+
+**And the rule stops applying at the top** ✓: on a bigger box, 100 000, 150 000 and
+200 000 requests a second all land at **~600 MB** ✓ ✓ — because the server parses
+about **113 000 requests a second** and no more ✓, and everything above that is
+**refused** ✓ (587 511 of them at 200 000/s ✓) ✓. So 200 000/s is not a "more
+memory" regime, it is a **"most of it is turned away"** regime ✓ ✓ — a real 200 000/s
+needs a stronger box and a faster write path ✓, not more RAM ✓ ✓.
 
 **That rule is where the default limit comes from** ✓: the rate is set where the box is
 **full but not over** ✓ ⇒ **20 000 a second per 128 MB of the engine's budget** ✓ ⇒

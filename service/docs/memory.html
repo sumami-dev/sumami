@@ -201,9 +201,18 @@ SUMIMI_MAX_ADMIT_RPS=20000</code></pre>
           <tr><td>30 000</td><td>309 MB</td><td>4 MB</td><td>the recommended tier</td></tr>
           <tr><td>38 000 (all that box could offer)</td><td>370 MB</td><td>12 MB</td><td>the recommended tier</td></tr>
           <tr><td>100 000</td><td>about 850 MB</td><td>—</td><td>neither — it needs a bigger box</td></tr>
+          <tr><td>200 000</td><td>about 600 MB, and it stops growing</td><td>—</td><td>the traffic is refused, not stored</td></tr>
         </tbody>
       </table>
     </div>
+    <p>
+      The rule stops applying at the top: 100 000, 150 000 and 200 000 requests a
+      second all land at about <strong>600 MB</strong>, because the server parses
+      roughly 113 000 requests a second and no more — everything above that is
+      <strong>refused</strong>. So 200 000 requests a second is not a "more memory"
+      regime, it is a <strong>"most of it is turned away"</strong> regime: a real
+      200 000 needs a stronger box and a faster write path, not more RAM.
+    </p>
     <p>
       <strong>The size of an event counts as much as the number of them.</strong> At
       20 000 requests a second, changing only the size of one event:
