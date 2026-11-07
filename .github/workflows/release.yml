@@ -1,0 +1,213 @@
+# The release.
+#
+# **Six artefacts** — macOS, Linux and Windows, each in arm64 and x64 — so the
+# release can be downloaded on any machine, without a toolchain.
+#
+# Each one is built on a runner **of its own architecture**: DuckDB is compiled
+# from source, and compiling it for the target beats cross-compiling it. All
+# six architectures have a runner, so there is no cross-compilation here at all.
+#
+# The tag is the version: push `v0.4.0` and the release appears. The notes come
+# from `.github/release-notes/<tag>.md` when that file is there; otherwise a
+# short note with the file list is written.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to publish (v0.4.0)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  # The tag being published: the tag on a tag push, the input by hand.
+  # Everything else derives from it.
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  # ---------------------------------------------------------------------
+  # The build: one archive per platform.
+  # ---------------------------------------------------------------------
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: Darwin-arm64
+          - name: macOS x64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            suffix: Darwin-x86_64
+          - name: Linux x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: Linux-x86_64
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            suffix: Linux-aarch64
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: Windows-x86_64
+          - name: Windows arm64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            suffix: Windows-aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The archive has to be the code of the tag, not of the branch.
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: The cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ matrix.target }}-
+
+      # The runner's disk is not big enough for a cold DuckDB build: the link
+      # step dies with a bus error when it runs out. The Android SDK and the
+      # Haskell toolchain are not needed here.
+      - name: Free the disk
+        if: runner.os == 'Linux'
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet
+
+      # The debug symbols are most of the size of a DuckDB build, and nobody
+      # needs them in a release.
+      - name: Build
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: 0
+          CARGO_HTTP_TIMEOUT: 600
+        run: cargo build --release -p sumimi --bin sumimi
+
+      # The bundle: the binary (under its two alias names as well), the
+      # dashboard frontend and the documentation.
+      - name: The bundle
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/bundle
+          cp target/${{ matrix.target }}/release/sumimi dist/bundle/
+          # The program decides its mode by the name it was invoked under, so
+          # these two names are the same file.
+          ln -sf sumimi dist/bundle/sumimi-server
+          ln -sf sumimi dist/bundle/sumimi-client
+          cp -r js dist/bundle/js
+          cp -r service/docs dist/bundle/docs
+          cp LICENSE NOTICE dist/bundle/
+          ls -la dist/bundle
+
+      - name: The bundle (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/bundle | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/sumimi.exe" dist/bundle/
+          # No symlinks on Windows: the two alias names are Unix-only.
+          Copy-Item -Recurse js dist/bundle/js
+          Copy-Item -Recurse service/docs dist/bundle/docs
+          Copy-Item LICENSE, NOTICE dist/bundle/
+          Get-ChildItem dist/bundle
+
+      - name: The archive
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          NAME="sumimi-v${VERSION}-${{ matrix.suffix }}"
+          tar czf "dist/${NAME}.tar.gz" -C dist/bundle .
+          ls -la dist/
+
+      - name: The archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ env.TAG }}" -replace '^v', ''
+          $name = "sumimi-v$version-${{ matrix.suffix }}"
+          Compress-Archive -Path dist/bundle/* -DestinationPath "dist/$name.zip"
+          Get-ChildItem dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sumimi-${{ matrix.suffix }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------
+  # The release itself.
+  # ---------------------------------------------------------------------
+  publish:
+    name: The release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: The notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          if [ -f ".github/release-notes/v${VERSION}.md" ]; then
+            cp ".github/release-notes/v${VERSION}.md" notes.md
+          else
+            {
+              echo "Sumimi v${VERSION} — the server and the client in one self-contained binary."
+              echo
+              echo "| platform | file |"
+              echo "| --- | --- |"
+              echo "| macOS (Apple Silicon) | \`sumimi-v${VERSION}-Darwin-arm64.tar.gz\` |"
+              echo "| macOS (Intel) | \`sumimi-v${VERSION}-Darwin-x86_64.tar.gz\` |"
+              echo "| Linux (x86-64) | \`sumimi-v${VERSION}-Linux-x86_64.tar.gz\` |"
+              echo "| Linux (ARM64) | \`sumimi-v${VERSION}-Linux-aarch64.tar.gz\` |"
+              echo "| Windows (x86-64) | \`sumimi-v${VERSION}-Windows-x86_64.zip\` |"
+              echo "| Windows (ARM64) | \`sumimi-v${VERSION}-Windows-aarch64.zip\` |"
+            } > notes.md
+          fi
+          cat notes.md
+
+      - name: The release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # A re-run: the release is already there, so the archives replace
+            # the old ones instead of failing.
+            gh release upload "$TAG" artifacts/*/* --clobber
+            gh release edit "$TAG" --title "Sumimi v${VERSION}" --notes-file notes.md
+          else
+            gh release create "$TAG" artifacts/*/* \
+              --title "Sumimi v${VERSION}" --notes-file notes.md
+          fi
+          echo "published $TAG"
