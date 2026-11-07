@@ -15,6 +15,7 @@ pub mod error;
 pub mod geo;
 pub mod instance;
 pub mod limits;
+pub mod machine;
 pub mod memcheck;
 pub mod models;
 pub mod pool;

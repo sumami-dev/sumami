@@ -217,6 +217,7 @@ there is exactly one implementation of the schema, the metrics and the reports.
 | Repository            | Visibility | Contents                                                                                        |
 | --------------------- | ---------- | ----------------------------------------------------------------------------------------------- |
 | `sumimi-dev/sumimi`   | public     | This repo: code, website, docs, public design (this file). **No private material, ever.**        |
+| `sumimi-dev/sumimi-gotest` | public | The measuring instrument: the load generator and the probe. Go, the standard library only.     |
 | `sumimi-dev/mneme`    | private    | Decision log, agent notes, private discussion issues, unreleased plans, draft design.            |
 | `sumimi-dev/sumimi-dev` | private  | Org-level meta / non-code assets.                                                                 |
 
@@ -1034,6 +1035,15 @@ produced the numbers is not shipped.
 publicly — a release note, a conclusion, a comparison — the report is written
 into this repository (`benchmarks/<date>.md`). The benchmark *code* stays
 private; the *result* does not have to.
+
+**The measuring tool is public.** The load generator and the probe live in
+[`sumimi-dev/sumimi-gotest`](https://github.com/sumimi-dev/sumimi-gotest) — Go,
+the standard library only, one static file per platform, so it runs on a
+machine that has nothing on it but the server. It is a **second implementation**
+of the API on purpose: a probe that shares code with the server cannot
+disagree with it, and a probe that cannot disagree cannot find anything. What
+stays private is the *heavy* work: millions of rows, and the comparison with
+other implementations.
 
 ### The two CI paths
 

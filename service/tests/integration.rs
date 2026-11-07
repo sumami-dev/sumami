@@ -561,3 +561,83 @@ async fn the_collector_says_when_it_is_shedding() {
 
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
+
+/// The heartbeat says **what machine this is** — and what this process is
+/// using.
+///
+/// It is what makes a measurement portable: a load test that runs on another
+/// machine can still say which machine was measured, because the server
+/// says so itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_heartbeat_says_what_machine_this_is() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use sumimi_service::api::{self, AppState};
+    use sumimi_service::config::Config;
+    use sumimi_service::pool::Db;
+    use tower::ServiceExt;
+
+    let path = temp_db("heartbeat");
+    let db = std::sync::Arc::new(Db::open(&path, "256MB").unwrap());
+
+    let mut config = Config::from_env_and_flags(
+        sumimi_service::config::Paths::new(
+            Some(path.clone().parent().unwrap().to_path_buf()),
+            Some(path.clone()),
+            "duckdb",
+        ),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    config.jwt_secret = "test-secret".to_string();
+
+    let (writer, _handle) = Writer::spawn(
+        db.clone(),
+        std::time::Duration::from_millis(200),
+        1000,
+    );
+    let _guard = WriterGuard(writer.clone());
+
+    let state = AppState::new(
+        db.clone(),
+        std::sync::Arc::new(sumimi_service::instance::SqliteInstance::open_in_memory().unwrap()),
+        writer.clone(),
+        std::sync::Arc::new(config),
+        std::sync::Arc::new("test-secret".to_string()),
+    );
+    let app = api::router(state);
+
+    let request = Request::builder()
+        .uri("/api/heartbeat")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(
+        json["machine"]["os"].is_string(),
+        "the operating system is always known: {json}"
+    );
+    assert!(
+        json["machine"]["arch"].is_string(),
+        "the architecture is always known: {json}"
+    );
+    assert!(
+        json["machine"]["cores"].as_u64().unwrap_or(0) >= 1,
+        "the CPUs are always known: {json}"
+    );
+    assert!(
+        json["rssBytes"].as_u64().unwrap_or(0) > 0,
+        "a running process has a resident set: {json}"
+    );
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}

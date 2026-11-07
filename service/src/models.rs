@@ -482,6 +482,22 @@ pub struct Heartbeat {
     pub refused_body: u64,
     /// How many requests a second the admission gate admits (`0` = no limit).
     pub admit_rps: u64,
+    /// The resident set of the server's process right now, in bytes.
+    ///
+    /// On Linux this is the exact number from `/proc`; elsewhere it is the
+    /// portable approximation (`ps`), which counts the shared pages of every
+    /// mapped binary differently — for information, not for the budget.
+    pub rss_bytes: Option<u64>,
+    /// The **peak** resident set, in bytes: the high-water mark, which is the
+    /// number the memory budgets are asserted against.
+    ///
+    /// `None` off Linux: only `/proc` has the exact high-water mark.
+    pub peak_rss_bytes: Option<u64>,
+    /// What machine this is — the CPU, the CPUs, the memory.
+    ///
+    /// So a load test can stamp its report with the machine that was
+    /// measured, and not with the machine that measured it.
+    pub machine: crate::machine::Machine,
 }
 
 /// Query parameters shared by the stats endpoints (Umami-compatible names).
