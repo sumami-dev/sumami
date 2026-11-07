@@ -105,33 +105,37 @@ jobs:
 
       # The bundle: the binary (under its two alias names as well), the
       # dashboard frontend and the documentation.
+      #
+      # The bundle is built **outside** `dist/`, so that `dist/` holds the
+      # archives and nothing else — the upload takes the whole directory.
       - name: The bundle
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist/bundle
-          cp target/${{ matrix.target }}/release/sumimi dist/bundle/
+          mkdir -p bundle dist
+          cp target/${{ matrix.target }}/release/sumimi bundle/
           # The program decides its mode by the name it was invoked under, so
           # these two names are the same file.
-          ln -sf sumimi dist/bundle/sumimi-server
-          ln -sf sumimi dist/bundle/sumimi-client
-          cp -r js dist/bundle/js
-          cp -r service/docs dist/bundle/docs
-          cp LICENSE NOTICE dist/bundle/
-          ls -la dist/bundle
+          ln -sf sumimi bundle/sumimi-server
+          ln -sf sumimi bundle/sumimi-client
+          cp -r js bundle/js
+          cp -r service/docs bundle/docs
+          cp LICENSE NOTICE bundle/
+          ls -la bundle
 
       - name: The bundle (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist/bundle | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/sumimi.exe" dist/bundle/
+          New-Item -ItemType Directory -Force bundle | Out-Null
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/sumimi.exe" bundle/
           # No symlinks on Windows: the two alias names are Unix-only.
-          Copy-Item -Recurse js dist/bundle/js
-          Copy-Item -Recurse service/docs dist/bundle/docs
-          Copy-Item LICENSE, NOTICE dist/bundle/
-          Get-ChildItem dist/bundle
+          Copy-Item -Recurse js bundle/js
+          Copy-Item -Recurse service/docs bundle/docs
+          Copy-Item LICENSE, NOTICE bundle/
+          Get-ChildItem bundle
 
       - name: The archive
         if: runner.os != 'Windows'
@@ -140,7 +144,7 @@ jobs:
           set -euo pipefail
           VERSION="${TAG#v}"
           NAME="sumimi-v${VERSION}-${{ matrix.suffix }}"
-          tar czf "dist/${NAME}.tar.gz" -C dist/bundle .
+          tar czf "dist/${NAME}.tar.gz" -C bundle .
           ls -la dist/
 
       - name: The archive (Windows)
@@ -149,7 +153,7 @@ jobs:
         run: |
           $version = "${{ env.TAG }}" -replace '^v', ''
           $name = "sumimi-v$version-${{ matrix.suffix }}"
-          Compress-Archive -Path dist/bundle/* -DestinationPath "dist/$name.zip"
+          Compress-Archive -Path bundle/* -DestinationPath "dist/$name.zip"
           Get-ChildItem dist/
 
       - uses: actions/upload-artifact@v4
@@ -205,13 +209,17 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
+          # The archives, and nothing else: a glob would happily hand a
+          # directory to the upload.
+          mapfile -t assets < <(find artifacts -type f | sort)
+          echo "${assets[@]}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             # A re-run: the release is already there, so the archives replace
             # the old ones instead of failing.
-            gh release upload "$TAG" artifacts/*/* --clobber
+            gh release upload "$TAG" "${assets[@]}" --clobber
             gh release edit "$TAG" --title "Sumimi v${VERSION}" --notes-file notes.md
           else
-            gh release create "$TAG" artifacts/*/* \
+            gh release create "$TAG" "${assets[@]}" \
               --title "Sumimi v${VERSION}" --notes-file notes.md
           fi
           echo "published $TAG"
