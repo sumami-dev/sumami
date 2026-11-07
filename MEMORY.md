@@ -283,6 +283,11 @@ and 256 → 250, 275 and 255 MB ✓) ✓ and the two in-flight limits ✓ (248 a
 
 ### The same numbers on two very different machines ✓
 
+**Two machines is an observation, not a law** ✓ ✓ — the doubt is recorded ✓
+([#14](https://github.com/sumimi-dev/sumimi/issues/14) ✓): two points cannot prove a
+rule ✓, and these two might be a coincidence ✓ ✓. What the measurement does say is
+that **at the same rate, the two machines cost the same memory** ✓ ✓.
+
 The table above is from a **2 vCPU Xeon** ✓. The same sweep on an **Apple M5 (10
 cores)** ✓ gives:
 
@@ -295,15 +300,30 @@ cores)** ✓ gives:
 | what the machine could serve | **~43 000 /s** | **~113 000 /s** |
 | the peak at the ceiling | 451 MB | 601 MB |
 
-⇒ **the memory a request costs is the same on both machines** ✓ ✓ — it is a property
-of the **request** ✓, not of the box ✓ ✓;
-⇒ **what differs is how much traffic the box can take** ✓ ✓ — a stronger CPU does
-**not** mean less memory ✓ ✓, it means **the same memory serves more traffic** ✓ ✓;
+⇒ **at the same rate, the memory is the same** ✓ ✓ — so **a stronger CPU does not
+mean less memory for the same traffic** ✓ ✓; it means **the same memory reaches a
+higher rate** ✓ ✓ (and at the ceiling the M5 uses *more* ✓ — it churns more ✓);
 ⇒ ⇒ **the deployment reference is two questions**: *how much traffic do you get?* ✓
 (the memory table ✓) and *can this box take it?* ✓ (the CPU ✓ and the disk ✓) ✓ ✓.
 
 **So the number to measure on the box you ship on is the rate, not the memory** ✓ —
-the memory follows from it ✓ ✓.
+the memory follows from it ✓ ✓ — **and until a third machine says otherwise, treat the
+table as "measured on two boxes" ✓, not as a law ✓** ✓.
+
+**The mechanism, tested where it is cheapest to test** ✓: the same machine ✓, the same
+rate ✓, only the **thread count** changed ✓ — glibc gives every thread its own arena
+✓, so the thread count *is* the arena count ✓:
+
+| threads | the peak (10 000 /s ✓) |
+| ---: | ---: |
+| 1 | 139 MB |
+| 2 | 144 MB |
+| 4 | 138 MB |
+| 10 | 139 MB |
+
+⇒ **one thread and ten threads cost the same** ✓ ✓ — the arena count does not matter ✓
+⇒ ⇒ the memory follows the **churn** ✓, the churn follows the **rate** ✓, and the
+machine's capability enters only through **how high the rate can go** ✓ ✓ ✓.
 
 ## 7. Where each piece is decided
 
