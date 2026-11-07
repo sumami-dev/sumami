@@ -91,6 +91,10 @@ fn ram_bytes() -> Option<u64> {
 }
 
 /// The first line of a command's output, if the command worked.
+///
+/// Only the platforms without a `/proc` need it — on Linux the facts come
+/// from the files themselves.
+#[cfg(not(target_os = "linux"))]
 fn command_line(program: &str, arguments: &[&str]) -> Option<String> {
     let output = std::process::Command::new(program)
         .args(arguments)
