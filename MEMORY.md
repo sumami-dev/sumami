@@ -283,8 +283,8 @@ and 256 → 250, 275 and 255 MB ✓) ✓ and the two in-flight limits ✓ (248 a
 
 ### The same numbers on two very different machines ✓
 
-**Two machines is an observation, not a law** ✓ ✓ — the doubt is recorded ✓
-([#14](https://github.com/sumimi-dev/sumimi/issues/14) ✓): two points cannot prove a
+**Two machines is an observation, not a law** ✓ ✓ — the doubt has its own issue ✓
+([#15](https://github.com/sumimi-dev/sumimi/issues/15) ✓): two points cannot prove a
 rule ✓, and these two might be a coincidence ✓ ✓. What the measurement does say is
 that **at the same rate, the two machines cost the same memory** ✓ ✓.
 
