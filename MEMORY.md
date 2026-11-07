@@ -87,7 +87,7 @@ Our five lines are the same shape — one per account in §2:
 | --- | --- | --- |
 | **G1** | the engine's ceiling — `min(RAM/4, 256 MB)` | ✅ in place |
 | **G2** | the write batch — `SUMIMI_MAX_BATCH` = 10 000 rows | ✅ in place, but counted in **rows**, not bytes |
-| **G3** | **the admission gate before the queue** — nothing may be parsed without a bound | ✅ **built** (`service/src/limits.rs`) — the knobs exist and are adjustable; the **defaults are still off** until the numbers are settled |
+| **G3** | **the admission gate before the queue** — nothing may be parsed without a bound | ✅ **built and on** (`service/src/limits.rs`) — the knobs are adjustable, and the rate's **default is derived from the engine's budget**: 20 000/s per 128 MB (40 000/s at 256 MB). `SUMIMI_MAX_ADMIT_RPS` overrides it |
 | **G4** | the queue's capacity — `SUMIMI_MAX_QUEUE` = 100 000 rows | ⚠ in place, but 100 000 rows is ~50 MB of structs **plus the strings**, and the strings are the bigger half |
 | **G5** | giving the allocator's pages back | ❌ missing (needs `malloc_trim`, which needs §5 rule 1 relaxed) |
 
@@ -338,6 +338,7 @@ machine's capability enters only through **how high the rate can go** ✓ ✓ �
 | --- | --- |
 | the promise, the ledger, the invariants | this file, and [AGENTS.md §4.1a](AGENTS.md) |
 | **the deployment reference — what it costs, by the rate** | **§6 of this file** ✓ |
+| **how the numbers are measured** | **[sumimi-gotest](https://github.com/sumimi-dev/sumimi-gotest)** — the load generator and the probe, in Go. The server reports its own machine and its own peak in `/api/heartbeat`, so the report says which machine was measured |
 | how DuckDB manages its own memory | [#13](https://github.com/sumimi-dev/sumimi/issues/13) |
 | what decides the collector's peak | [#14](https://github.com/sumimi-dev/sumimi/issues/14) |
 | the two big problems, and the disk half | [#12](https://github.com/sumimi-dev/sumimi/issues/12) |
